@@ -1,7 +1,7 @@
 use super::Color;
 use super::Image;
 
-static FONT: &'static [u8] = include_bytes!("../../filesystem/ui/unifont.font");
+static FONT: &'static [u8] = include_bytes!("../../../filesystem/ui/unifont.font");
 
 pub struct Font;
 

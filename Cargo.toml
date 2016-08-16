@@ -1,0 +1,10 @@
+[package]
+name = "orbital"
+description = "The Orbital Window Manager"
+repository = "https://github.com/redox-os/orbital"
+version = "0.1.0"
+license-file = "LICENSE"
+readme = "README.md"
+authors = ["Jeremy Soller <jackpot51@gmail.com>"]
+
+[dependencies]
