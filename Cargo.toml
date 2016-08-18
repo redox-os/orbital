@@ -1,6 +1,6 @@
 [package]
 name = "orbital"
-description = "The Orbital Window Manager"
+description = "The Orbital Windowing System and Compositor"
 repository = "https://github.com/redox-os/orbital"
 version = "0.1.0"
 license-file = "LICENSE"
