@@ -483,6 +483,7 @@ fn main() {
     env::set_current_dir("file:").unwrap();
 
     env::set_var("DISPLAY", &display_path);
+    env::set_var("PATH", "file:bin");
 
     let status_mutex = Arc::new(Mutex::new(Status::Starting));
 
@@ -528,7 +529,7 @@ fn main() {
         match *status_mutex.lock().unwrap() {
             Status::Starting => (),
             Status::Running => {
-                Command::new("/bin/launcher").spawn().expect("orbital: failed to spawn launcher");
+                Command::new("launcher").spawn().expect("orbital: failed to spawn launcher");
                 break 'waiting;
             },
             Status::Stopping => break 'waiting,
