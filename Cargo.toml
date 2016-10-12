@@ -9,10 +9,7 @@ authors = ["Jeremy Soller <jackpot51@gmail.com>"]
 
 [dependencies]
 orbclient = "0.1"
-
-[dependencies.orbimage]
-git = "https://github.com/redox-os/orbimage.git"
-default-features = false
+orbimage = "0.1"
 
 [dependencies.syscall]
 path = "../../syscall/"
