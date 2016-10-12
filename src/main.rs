@@ -11,7 +11,6 @@ use std::{env, mem, str, thread};
 use std::io::SeekFrom;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
 use syscall::data::Packet;
 use syscall::error::{Error, Result, EBADF, EINVAL};
@@ -57,7 +56,6 @@ fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
 }
 
 struct OrbitalScheme {
-    start: Instant,
     image: Image,
     background: Image,
     cursor: Image,
@@ -78,7 +76,6 @@ struct OrbitalScheme {
 impl OrbitalScheme {
     fn new(width: i32, height: i32, config: &Config) -> OrbitalScheme {
         OrbitalScheme {
-            start: Instant::now(),
             image: Image::new(width, height),
             background: Image::from_path(&config.background),
             cursor: Image::from_path(&config.cursor),
@@ -286,7 +283,9 @@ impl OrbitalScheme {
 
 impl SchemeMut for OrbitalScheme {
     fn open(&mut self, url: &[u8], _flags: usize, _uid: u32, _gid: u32) -> Result<usize> {
+        println!("orbital: open {:p}:{}", url.as_ptr(), url.len());
         let path = try!(str::from_utf8(url).or(Err(Error::new(EINVAL))));
+        println!("orbital: open {}", path);
         let mut parts = path.split("/");
 
         let flags = parts.next().unwrap_or("");
@@ -481,6 +480,10 @@ enum Status {
 fn main() {
     let display_path = env::args().nth(1).expect("orbital: no display argument");
 
+    env::set_current_dir("file:").unwrap();
+
+    env::set_var("DISPLAY", &display_path);
+
     let status_mutex = Arc::new(Mutex::new(Status::Starting));
 
     let status_daemon = status_mutex.clone();
@@ -505,13 +508,13 @@ fn main() {
                     let display_event = display.clone();
                     let socket_event = socket.clone();
 
-                    let server_thread = thread::spawn(move || {
-                        server_loop(scheme, display, socket);
+                    let event_thread = thread::spawn(move || {
+                        event_loop(scheme_event, display_event, socket_event);
                     });
 
-                    event_loop(scheme_event, display_event, socket_event);
+                    server_loop(scheme, display, socket);
 
-                    let _ = server_thread.join();
+                    let _ = event_thread.join();
                 },
                 Err(err) => println!("orbital: no display found: {}", err)
             },
@@ -525,7 +528,7 @@ fn main() {
         match *status_mutex.lock().unwrap() {
             Status::Starting => (),
             Status::Running => {
-                Command::new("launcher").spawn().unwrap();
+                Command::new("/bin/launcher").spawn().expect("orbital: failed to spawn launcher");
                 break 'waiting;
             },
             Status::Stopping => break 'waiting,
