@@ -2,7 +2,30 @@ use std::{cmp, mem};
 use std::path::Path;
 
 use orbimage;
-use system::graphics::{fast_copy, fast_set};
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+#[cold]
+pub unsafe fn fast_copy(dst: *mut u8, src: *const u8, len: usize) {
+    asm!("cld
+        rep movsb"
+        :
+        : "{rdi}"(dst as usize), "{rsi}"(src as usize), "{rcx}"(len)
+        : "cc", "memory", "rdi", "rsi", "rcx"
+        : "intel", "volatile");
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+#[cold]
+pub unsafe fn fast_set32(dst: *mut u32, src: u32, len: usize) {
+    asm!("cld
+        rep stosd"
+        :
+        : "{rdi}"(dst as usize), "{eax}"(src), "{rcx}"(len)
+        : "cc", "memory", "rdi", "rcx"
+        : "intel", "volatile");
+}
 
 use super::{Color, Rect};
 
@@ -123,7 +146,7 @@ impl<'a> ImageRoi<'a> {
     pub fn blit(&'a mut self, other: &ImageRoi) {
         for (mut self_row, other_row) in self.rows_mut().zip(other.rows()) {
             let len = cmp::min(self_row.len(), other_row.len());
-            unsafe { fast_copy(self_row.as_mut_ptr() as *mut u32, other_row.as_ptr() as *const u32, len); }
+            unsafe { fast_copy(self_row.as_mut_ptr() as *mut u8, other_row.as_ptr() as *const u8, len * 4); }
         }
     }
 
@@ -133,7 +156,7 @@ impl<'a> ImageRoi<'a> {
         let alpha = (new >> 24) & 0xFF;
         if alpha >= 255 {
             for mut self_row in self.rows_mut() {
-                unsafe { fast_set(self_row.as_mut_ptr() as *mut u32, new, self_row.len()); }
+                unsafe { fast_set32(self_row.as_mut_ptr() as *mut u32, new, self_row.len()); }
             }
         } else if alpha > 0 {
             let n_r = (((new >> 16) & 0xFF) * alpha) >> 8;

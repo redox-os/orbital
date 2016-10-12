@@ -2,21 +2,23 @@
 #![feature(const_fn)]
 
 extern crate core;
+extern crate orbclient;
 extern crate orbimage;
-extern crate system;
+extern crate syscall;
 
-use std::collections::BTreeMap;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
+use std::{env, mem, str, thread};
 use std::io::SeekFrom;
-use std::mem;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Instant;
 
-use system::error::{Error, Result, EBADF};
-use system::scheme::{Packet, Scheme};
-use system::syscall::SYS_READ;
+use syscall::data::Packet;
+use syscall::error::{Error, Result, EBADF, EINVAL};
+use syscall::number::SYS_READ;
+use syscall::scheme::SchemeMut;
+
+pub use orbclient::event;
 
 pub use self::color::Color;
 pub use self::event::{Event, EventOption};
@@ -31,8 +33,6 @@ use self::event::{EVENT_KEY, EVENT_MOUSE, FocusEvent, QuitEvent};
 
 pub mod color;
 pub mod config;
-#[path="../../orbclient/src/event.rs"]
-pub mod event;
 pub mod font;
 pub mod image;
 pub mod rect;
@@ -284,9 +284,9 @@ impl OrbitalScheme {
     }
 }
 
-impl Scheme for OrbitalScheme {
-    fn open(&mut self, url: &str, _flags: usize) -> Result<usize> {
-        let path = url.splitn(2, ":").last().unwrap_or("");
+impl SchemeMut for OrbitalScheme {
+    fn open(&mut self, url: &[u8], _flags: usize, _uid: u32, _gid: u32) -> Result<usize> {
+        let path = try!(str::from_utf8(url).or(Err(Error::new(EINVAL))));
         let mut parts = path.split("/");
 
         let flags = parts.next().unwrap_or("");
@@ -362,7 +362,7 @@ impl Scheme for OrbitalScheme {
         }
     }
 
-    fn fpath(&self, id: usize, buf: &mut [u8]) -> Result<usize> {
+    fn fpath(&mut self, id: usize, buf: &mut [u8]) -> Result<usize> {
         if let Some(window) = self.windows.get(&id) {
             window.path(buf)
         } else {
@@ -479,17 +479,19 @@ enum Status {
 }
 
 fn main() {
+    let display_path = env::args().nth(1).expect("orbital: no display argument");
+
     let status_mutex = Arc::new(Mutex::new(Status::Starting));
 
     let status_daemon = status_mutex.clone();
     thread::spawn(move || {
         match Socket::create(":orbital").map(|socket| Arc::new(socket)) {
-            Ok(socket) => match Socket::open("display:manager").map(|display| Arc::new(display)) {
+            Ok(socket) => match Socket::open(&display_path).map(|display| Arc::new(display)) {
                 Ok(display) => {
                     let path = display.path().map(|path| path.into_os_string().into_string().unwrap_or(String::new())).unwrap_or(String::new());
                     let res = path.split(":").nth(1).unwrap_or("");
-                    let width = res.split("/").nth(0).unwrap_or("").parse::<i32>().unwrap_or(0);
-                    let height = res.split("/").nth(1).unwrap_or("").parse::<i32>().unwrap_or(0);
+                    let width = res.split("/").nth(1).unwrap_or("").parse::<i32>().unwrap_or(0);
+                    let height = res.split("/").nth(2).unwrap_or("").parse::<i32>().unwrap_or(0);
 
                     println!("orbital: found display {}x{}", width, height);
 

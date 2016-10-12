@@ -4,9 +4,9 @@ use std::mem::size_of;
 use std::{ptr, slice};
 
 use super::{Color, Event, Font, Image, Rect};
+use image::fast_copy;
 
-use system::error::{Error, Result, EINVAL};
-use system::graphics::fast_copy;
+use syscall::error::{Error, Result, EINVAL};
 
 const BAR_COLOR: Color = Color::rgb(40, 45, 57);
 const BAR_HIGHLIGHT_COLOR: Color = Color::rgb(80, 86, 102);
@@ -130,7 +130,7 @@ impl Window {
 
         let len = min(old.len(), new.len());
         unsafe {
-            fast_copy(old.as_mut_ptr(), new.as_ptr(), len);
+            fast_copy(old.as_mut_ptr() as *mut u8, new.as_ptr() as *const u8, len * 4);
         }
 
         Ok(len)
