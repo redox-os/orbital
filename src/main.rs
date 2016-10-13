@@ -146,6 +146,7 @@ impl OrbitalScheme {
             }
         }
 
+        /*
         for rect in redraws.iter_mut() {
             if ! rect.is_empty() {
                 let data = self.image.data();
@@ -158,6 +159,8 @@ impl OrbitalScheme {
                 }
             }
         }
+        */
+        display.send_type(self.image.data()).unwrap();
     }
 
     fn event(&mut self, event: Event){
