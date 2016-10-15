@@ -7,9 +7,9 @@ extern crate orbclient;
 extern crate orbimage;
 extern crate syscall;
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
-use std::{env, mem, str, thread};
-use std::io;
+use std::{env, io, mem, str, thread};
 use std::os::unix::io::AsRawFd;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -370,31 +370,29 @@ impl SchemeMut for OrbitalScheme {
     }
 }
 
-fn run(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, socket: Arc<Socket>) {
+fn run(scheme_cell: Arc<RefCell<OrbitalScheme>>, display: Arc<Socket>, socket: Arc<Socket>) {
     {
-        let mut scheme = scheme_mutex.lock().unwrap();
+        let mut scheme = scheme_cell.borrow_mut();
         scheme.redraw(&display);
     }
 
     let mut event_queue = EventQueue::<()>::new().unwrap();
 
-    let scheme_event = scheme_mutex.clone();
+    let scheme_event = scheme_cell.clone();
     let display_event = display.clone();
     let socket_event = socket.clone();
     let display_fd = display.as_raw_fd();
     event_queue.add(display_fd, move |_count: usize| -> io::Result<Option<()>> {
-        let mut events = [Event::new(); 128];
-        let count = display_event.receive_type(&mut events).unwrap();
-        let mut responses = Vec::new();
-        {
-            let mut scheme = scheme_event.lock().unwrap();
-            for &event in events[.. count].iter() {
-                scheme.event(event);
-            }
+        let mut event = Event::new();
+        if display_event.receive(&mut event)? == mem::size_of::<Event>() {
+            let mut scheme = scheme_event.borrow_mut();
 
-            let mut packets = Vec::new();
-            mem::swap(&mut scheme.todo, &mut packets);
-            for mut packet in packets.iter_mut() {
+            scheme.event(event);
+
+            let mut i = 0;
+            while i < scheme.todo.len() {
+                let mut packet = scheme.todo[i];
+
                 let delay = if packet.a == SYS_READ {
                     if let Some(window) = scheme.windows.get(&packet.b) {
                         window.async == false
@@ -405,21 +403,16 @@ fn run(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, socket: Ar
                     false
                 };
 
-                scheme.handle(packet);
+                scheme.handle(&mut packet);
 
                 if delay && packet.a == 0 {
-                    scheme.todo.push(*packet);
+                    i += 1;
                 }else{
-                    responses.push(*packet);
+                    socket_event.send(&packet)?;
+                    scheme.todo.remove(i);
                 }
             }
-        }
-        if ! responses.is_empty() {
-            socket_event.send_type(&responses).unwrap();
-        }
 
-        {
-            let mut scheme = scheme_event.lock().unwrap();
             scheme.redraw(&display_event);
         }
 
@@ -428,37 +421,29 @@ fn run(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, socket: Ar
 
     let socket_fd = socket.as_raw_fd();
     event_queue.add(socket_fd, move |_count: usize| -> io::Result<Option<()>> {
-        let mut packets = [Packet::default(); 128];
-        let count = socket.receive_type(&mut packets).unwrap();
-        let mut responses = Vec::new();
-        {
-            let mut scheme = scheme_mutex.lock().unwrap();
-            for mut packet in packets[.. count].iter_mut() {
-                let delay = if packet.a == SYS_READ {
-                    if let Some(window) = scheme.windows.get(&packet.b) {
-                        window.async == false
-                    } else {
-                        true
-                    }
-                } else {
-                    false
-                };
+        let mut packet = Packet::default();
+        if socket.receive(&mut packet)? == mem::size_of::<Packet>() {
+            let mut scheme = scheme_cell.borrow_mut();
 
-                scheme.handle(packet);
-
-                if delay && packet.a == 0 {
-                    scheme.todo.push(*packet);
+            let delay = if packet.a == SYS_READ {
+                if let Some(window) = scheme.windows.get(&packet.b) {
+                    window.async == false
                 } else {
-                    responses.push(*packet);
+                    true
                 }
-            }
-        }
-        if ! responses.is_empty() {
-            socket.send_type(&responses).unwrap();
-        }
+            } else {
+                false
+            };
 
-        {
-            let mut scheme = scheme_mutex.lock().unwrap();
+            scheme.handle(&mut packet);
+
+            if delay && packet.a == 0 {
+                packet.a = SYS_READ;
+                scheme.todo.push(packet);
+            } else {
+                socket.send(&packet)?;
+            }
+
             scheme.redraw(&display);
         }
 
@@ -476,8 +461,6 @@ enum Status {
 
 fn main() {
     let display_path = env::args().nth(1).expect("orbital: no display argument");
-
-    env::set_current_dir("file:").unwrap();
 
     env::set_var("DISPLAY", &display_path);
 
@@ -497,7 +480,7 @@ fn main() {
 
                     let config = Config::from_path("/etc/orbital.conf");
 
-                    let scheme = Arc::new(Mutex::new(OrbitalScheme::new(width, height, &config)));
+                    let scheme = Arc::new(RefCell::new(OrbitalScheme::new(width, height, &config)));
 
                     *status_daemon.lock().unwrap() = Status::Running;
 
