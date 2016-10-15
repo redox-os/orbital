@@ -266,9 +266,7 @@ impl OrbitalScheme {
 
 impl SchemeMut for OrbitalScheme {
     fn open(&mut self, url: &[u8], _flags: usize, _uid: u32, _gid: u32) -> Result<usize> {
-        println!("orbital: open {:p}:{}", url.as_ptr(), url.len());
         let path = try!(str::from_utf8(url).or(Err(Error::new(EINVAL))));
-        println!("orbital: open {}", path);
         let mut parts = path.split("/");
 
         let flags = parts.next().unwrap_or("");
@@ -517,7 +515,7 @@ fn main() {
         match *status_mutex.lock().unwrap() {
             Status::Starting => (),
             Status::Running => {
-                Command::new("/bin/orblogin").spawn().expect("orbital: failed to spawn launcher");
+                Command::new("orblogin").spawn().expect("orbital: failed to spawn launcher");
                 break 'waiting;
             },
             Status::Stopping => break 'waiting,
