@@ -2,33 +2,34 @@
 #![feature(const_fn)]
 
 extern crate core;
+extern crate event;
 extern crate orbclient;
 extern crate orbimage;
 extern crate syscall;
 
 use std::collections::{BTreeMap, VecDeque};
 use std::{env, mem, str, thread};
-use std::io::SeekFrom;
+use std::io;
+use std::os::unix::io::AsRawFd;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
+use event::EventQueue;
+use orbclient::event::{EVENT_KEY, EVENT_MOUSE, FocusEvent, QuitEvent};
 use syscall::data::Packet;
 use syscall::error::{Error, Result, EBADF, EINVAL};
 use syscall::number::SYS_READ;
 use syscall::scheme::SchemeMut;
 
-pub use orbclient::event;
+use self::config::Config;
 
+pub use orbclient::event::{Event, EventOption};
 pub use self::color::Color;
-pub use self::event::{Event, EventOption};
 pub use self::font::Font;
 pub use self::image::{Image, ImageRoi};
 pub use self::rect::Rect;
 pub use self::socket::Socket;
 pub use self::window::Window;
-
-use self::config::Config;
-use self::event::{EVENT_KEY, EVENT_MOUSE, FocusEvent, QuitEvent};
 
 pub mod color;
 pub mod config;
@@ -165,27 +166,6 @@ impl OrbitalScheme {
 
     fn event(&mut self, event: Event){
         if event.code == EVENT_KEY {
-            if event.c > 0 {
-                if event.b as u8 == event::K_F1 {
-                    let cursor_rect = self.cursor_rect();
-                    schedule(&mut self.redraws, cursor_rect);
-
-                    self.cursor_x = 0;
-                    self.cursor_y = 0;
-
-                    let cursor_rect = self.cursor_rect();
-                    schedule(&mut self.redraws, cursor_rect);
-                } else if event.b as u8 == event::K_F2 {
-                    let cursor_rect = self.cursor_rect();
-                    schedule(&mut self.redraws, cursor_rect);
-
-                    self.cursor_x = self.screen_rect().width();
-                    self.cursor_y = self.screen_rect().height();
-
-                    let cursor_rect = self.cursor_rect();
-                    schedule(&mut self.redraws, cursor_rect);
-                }
-            }
             if let Some(id) = self.order.front() {
                 if let Some(mut window) = self.windows.get_mut(&id) {
                     window.event(event);
@@ -392,18 +372,24 @@ impl SchemeMut for OrbitalScheme {
     }
 }
 
-fn event_loop(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, socket: Arc<Socket>){
-    loop {
-        {
-            let mut scheme = scheme_mutex.lock().unwrap();
-            scheme.redraw(&display);
-        }
+fn run(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, socket: Arc<Socket>) {
+    {
+        let mut scheme = scheme_mutex.lock().unwrap();
+        scheme.redraw(&display);
+    }
 
+    let mut event_queue = EventQueue::<()>::new().unwrap();
+
+    let scheme_event = scheme_mutex.clone();
+    let display_event = display.clone();
+    let socket_event = socket.clone();
+    let display_fd = display.as_raw_fd();
+    event_queue.add(display_fd, move |_count: usize| -> io::Result<Option<()>> {
         let mut events = [Event::new(); 128];
-        let count = display.receive_type(&mut events).unwrap();
+        let count = display_event.receive_type(&mut events).unwrap();
         let mut responses = Vec::new();
         {
-            let mut scheme = scheme_mutex.lock().unwrap();
+            let mut scheme = scheme_event.lock().unwrap();
             for &event in events[.. count].iter() {
                 scheme.event(event);
             }
@@ -431,18 +417,19 @@ fn event_loop(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, soc
             }
         }
         if ! responses.is_empty() {
-            socket.send_type(&responses).unwrap();
+            socket_event.send_type(&responses).unwrap();
         }
-    }
-}
 
-fn server_loop(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, socket: Arc<Socket>){
-    loop {
         {
-            let mut scheme = scheme_mutex.lock().unwrap();
-            scheme.redraw(&display);
+            let mut scheme = scheme_event.lock().unwrap();
+            scheme.redraw(&display_event);
         }
 
+        Ok(None)
+    }).unwrap();
+
+    let socket_fd = socket.as_raw_fd();
+    event_queue.add(socket_fd, move |_count: usize| -> io::Result<Option<()>> {
         let mut packets = [Packet::default(); 128];
         let count = socket.receive_type(&mut packets).unwrap();
         let mut responses = Vec::new();
@@ -471,7 +458,16 @@ fn server_loop(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, so
         if ! responses.is_empty() {
             socket.send_type(&responses).unwrap();
         }
-    }
+
+        {
+            let mut scheme = scheme_mutex.lock().unwrap();
+            scheme.redraw(&display);
+        }
+
+        Ok(None)
+    }).unwrap();
+
+    event_queue.run().unwrap();
 }
 
 enum Status {
@@ -507,17 +503,7 @@ fn main() {
 
                     *status_daemon.lock().unwrap() = Status::Running;
 
-                    let scheme_event = scheme.clone();
-                    let display_event = display.clone();
-                    let socket_event = socket.clone();
-
-                    let event_thread = thread::spawn(move || {
-                        event_loop(scheme_event, display_event, socket_event);
-                    });
-
-                    server_loop(scheme, display, socket);
-
-                    let _ = event_thread.join();
+                    run(scheme, display, socket);
                 },
                 Err(err) => println!("orbital: no display found: {}", err)
             },

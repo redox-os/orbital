@@ -2,6 +2,7 @@ use std::cell::UnsafeCell;
 use std::fs::File;
 use std::io::{Read, Write, Result, Seek, SeekFrom};
 use std::mem;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::PathBuf;
 use std::slice;
 
@@ -50,5 +51,11 @@ impl Socket {
 
     pub fn send_type<T: Copy>(&self, buf: &[T]) -> Result<usize> {
         self.send(unsafe { slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len() * mem::size_of::<T>()) }).map(|count| count/mem::size_of::<T>())
+    }
+}
+
+impl AsRawFd for Socket {
+    fn as_raw_fd(&self) -> RawFd {
+        unsafe { (*self.file.get()).as_raw_fd() }
     }
 }

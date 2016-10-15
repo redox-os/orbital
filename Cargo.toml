@@ -8,8 +8,7 @@ readme = "README.md"
 authors = ["Jeremy Soller <jackpot51@gmail.com>"]
 
 [dependencies]
+event = { path = "../../crates/event/" }
 orbclient = "0.1"
 orbimage = "0.1"
-
-[dependencies.syscall]
-path = "../../syscall/"
+syscall = { path = "../../syscall/" }
