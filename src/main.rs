@@ -468,8 +468,8 @@ fn main() {
 
     let status_daemon = status_mutex.clone();
     thread::spawn(move || {
-        match Socket::create(":orbital").map(|socket| Arc::new(socket)) {
-            Ok(socket) => match Socket::open(&display_path).map(|display| Arc::new(display)) {
+        match syscall::open(":orbital", syscall::O_RDWR | syscall::O_CREAT | syscall::O_NONBLOCK).map(|socket_fd| Arc::new(Socket::new(socket_fd))) {
+            Ok(socket) => match syscall::open(&display_path, syscall::O_RDWR | syscall::O_NONBLOCK).map(|display_fd| Arc::new(Socket::new(display_fd))) {
                 Ok(display) => {
                     let path = display.path().map(|path| path.into_os_string().into_string().unwrap_or(String::new())).unwrap_or(String::new());
                     let res = path.split(":").nth(1).unwrap_or("");

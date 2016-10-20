@@ -2,7 +2,7 @@ use std::cell::UnsafeCell;
 use std::fs::File;
 use std::io::{Read, Write, Result, Seek, SeekFrom};
 use std::mem;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::path::PathBuf;
 use std::slice;
 
@@ -15,18 +15,10 @@ unsafe impl Send for Socket {}
 unsafe impl Sync for Socket {}
 
 impl Socket {
-    pub fn open(path: &str) -> Result<Socket> {
-        let file = try!(File::open(path));
-        Ok(Socket {
-            file: UnsafeCell::new(file)
-        })
-    }
-
-    pub fn create(path: &str) -> Result<Socket> {
-        let file = try!(File::create(path));
-        Ok(Socket {
-            file: UnsafeCell::new(file)
-        })
+    pub fn new(fd: RawFd) -> Socket {
+        Socket {
+            file: UnsafeCell::new(unsafe { File::from_raw_fd(fd) })
+        }
     }
 
     pub fn path(&self) -> Result<PathBuf> {
