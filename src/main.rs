@@ -383,8 +383,12 @@ fn run(scheme_cell: Arc<RefCell<OrbitalScheme>>, display: Arc<Socket>, socket: A
     let socket_event = socket.clone();
     let display_fd = display.as_raw_fd();
     event_queue.add(display_fd, move |_count: usize| -> io::Result<Option<()>> {
-        let mut event = Event::new();
-        if display_event.receive(&mut event)? == mem::size_of::<Event>() {
+        loop {
+            let mut event = Event::new();
+            if display_event.receive(&mut event)? == 0 {
+                break;
+            }
+
             let mut scheme = scheme_event.borrow_mut();
 
             scheme.event(event);
@@ -421,8 +425,12 @@ fn run(scheme_cell: Arc<RefCell<OrbitalScheme>>, display: Arc<Socket>, socket: A
 
     let socket_fd = socket.as_raw_fd();
     event_queue.add(socket_fd, move |_count: usize| -> io::Result<Option<()>> {
-        let mut packet = Packet::default();
-        if socket.receive(&mut packet)? == mem::size_of::<Packet>() {
+        loop {
+            let mut packet = Packet::default();
+            if socket.receive(&mut packet)? == 0 {
+                break;
+            }
+
             let mut scheme = scheme_cell.borrow_mut();
 
             let delay = if packet.a == SYS_READ {
@@ -449,6 +457,8 @@ fn run(scheme_cell: Arc<RefCell<OrbitalScheme>>, display: Arc<Socket>, socket: A
 
         Ok(None)
     }).unwrap();
+
+    event_queue.trigger_all(0).unwrap();
 
     event_queue.run().unwrap();
 }
