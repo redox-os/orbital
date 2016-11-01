@@ -8,7 +8,6 @@ extern crate syscall;
 
 use std::collections::{BTreeMap, VecDeque};
 use std::{env, mem, str, thread};
-use std::io::SeekFrom;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
@@ -286,9 +285,7 @@ impl OrbitalScheme {
 
 impl SchemeMut for OrbitalScheme {
     fn open(&mut self, url: &[u8], _flags: usize, _uid: u32, _gid: u32) -> Result<usize> {
-        println!("orbital: open {:p}:{}", url.as_ptr(), url.len());
         let path = try!(str::from_utf8(url).or(Err(Error::new(EINVAL))));
-        println!("orbital: open {}", path);
         let mut parts = path.split("/");
 
         let flags = parts.next().unwrap_or("");
