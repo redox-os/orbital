@@ -110,19 +110,17 @@ impl OrbitalScheme {
     }
 
     fn redraw(&mut self, display: &Socket){
-        let mut redraws = Vec::new();
-        mem::swap(&mut self.redraws, &mut redraws);
-
         let screen_rect = self.screen_rect();
+        let background_rect = self.background_rect();
+        let cursor_rect = self.cursor_rect();
 
-        for mut rect in redraws.iter_mut() {
+        for mut rect in self.redraws.iter_mut() {
             *rect = rect.intersection(&screen_rect);
 
             if ! rect.is_empty() {
                 //TODO: only clear area not covered by background
                 self.image.roi(&rect).set(Color::rgb(75, 163, 253));
 
-                let background_rect = self.background_rect();
                 let background_intersect = rect.intersection(&background_rect);
                 if ! background_intersect.is_empty(){
                     self.image.roi(&background_intersect).blit(&self.background.roi(&background_intersect.offset(-background_rect.left(), -background_rect.top())));
@@ -137,7 +135,6 @@ impl OrbitalScheme {
                     }
                 }
 
-                let cursor_rect = self.cursor_rect();
                 let cursor_intersect = rect.intersection(&cursor_rect);
                 if ! cursor_intersect.is_empty() {
                     self.image.roi(&cursor_intersect).blend(&self.cursor.roi(&cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())));
@@ -146,7 +143,31 @@ impl OrbitalScheme {
         }
 
         /*
-        for rect in redraws.iter_mut() {
+        use std::io::SeekFrom;
+        if let Some(mut sum_rect) = self.redraws.pop() {
+            for rect in self.redraws.drain(..) {
+                if ! rect.is_empty() {
+                    if sum_rect.is_empty() {
+                        sum_rect = rect;
+                    } else {
+                        sum_rect = sum_rect.container(&rect);
+                    }
+                }
+            }
+
+            if ! sum_rect.is_empty() {
+                let data = self.image.data();
+                let start = sum_rect.top() * self.image.width() + sum_rect.left();
+                let end = sum_rect.bottom() * self.image.width() + sum_rect.right();
+
+                unsafe { display.seek(SeekFrom::Start(start as u64 * 4)).unwrap(); }
+                display.send_type(&data[start as usize .. end as usize]).unwrap();
+            }
+        }
+        */
+
+        /* Send each redraw rect
+        for rect in self.redraws.drain(..) {
             if ! rect.is_empty() {
                 let data = self.image.data();
                 for row in rect.top()..rect.bottom() {
@@ -159,6 +180,7 @@ impl OrbitalScheme {
             }
         }
         */
+
         display.send_type(self.image.data()).unwrap();
     }
 
