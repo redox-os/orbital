@@ -142,7 +142,6 @@ impl OrbitalScheme {
             }
         }
 
-        /*
         use std::io::SeekFrom;
         if let Some(mut sum_rect) = self.redraws.pop() {
             for rect in self.redraws.drain(..) {
@@ -155,16 +154,17 @@ impl OrbitalScheme {
                 }
             }
 
+            //println!("{:?}", sum_rect);
+
             if ! sum_rect.is_empty() {
                 let data = self.image.data();
                 let start = sum_rect.top() * self.image.width() + sum_rect.left();
-                let end = sum_rect.bottom() * self.image.width() + sum_rect.right();
+                let end = (sum_rect.bottom() - 1) * self.image.width() + sum_rect.right();
 
                 unsafe { display.seek(SeekFrom::Start(start as u64 * 4)).unwrap(); }
                 display.send_type(&data[start as usize .. end as usize]).unwrap();
             }
         }
-        */
 
         /* Send each redraw rect
         for rect in self.redraws.drain(..) {
@@ -181,7 +181,9 @@ impl OrbitalScheme {
         }
         */
 
+        /*
         display.send_type(self.image.data()).unwrap();
+        */
     }
 
     fn event(&mut self, event: Event){
