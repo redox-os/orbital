@@ -361,6 +361,14 @@ impl SchemeMut for OrbitalScheme {
         }
     }
 
+    fn fevent(&mut self, id: usize, _flags: usize) -> Result<usize> {
+        if self.windows.contains_key(&id) {
+            Ok(id)
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+
     fn fpath(&mut self, id: usize, buf: &mut [u8]) -> Result<usize> {
         if let Some(window) = self.windows.get(&id) {
             window.path(buf)
@@ -398,16 +406,16 @@ fn event_loop(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, soc
 
         let mut events = [Event::new(); 128];
         let count = display.receive_type(&mut events).unwrap();
-        let mut responses = Vec::new();
         {
             let mut scheme = scheme_mutex.lock().unwrap();
             for &event in events[.. count].iter() {
                 scheme.event(event);
             }
 
-            let mut packets = Vec::new();
-            mem::swap(&mut scheme.todo, &mut packets);
-            for mut packet in packets.iter_mut() {
+            let mut i = 0;
+            while i < scheme.todo.len() {
+                let mut packet = scheme.todo[i].clone();
+
                 let delay = if packet.a == SYS_READ {
                     if let Some(window) = scheme.windows.get(&packet.b) {
                         window.async == false
@@ -418,17 +426,30 @@ fn event_loop(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, soc
                     false
                 };
 
-                scheme.handle(packet);
+                scheme.handle(&mut packet);
 
                 if delay && packet.a == 0 {
-                    scheme.todo.push(*packet);
+                    i += 1;
                 }else{
-                    responses.push(*packet);
+                    scheme.todo.remove(i);
+                    socket.send(&packet).unwrap();
                 }
             }
-        }
-        if ! responses.is_empty() {
-            socket.send_type(&responses).unwrap();
+
+            for (id, window) in scheme.windows.iter() {
+                if ! window.events.is_empty() {
+                    socket.send(&Packet {
+                        id: 0,
+                        pid: 0,
+                        uid: 0,
+                        gid: 0,
+                        a: syscall::number::SYS_FEVENT,
+                        b: *id,
+                        c: syscall::flag::EVENT_READ,
+                        d: window.events.len() * mem::size_of::<Event>()
+                    }).unwrap();
+                }
+            }
         }
     }
 }
@@ -442,7 +463,6 @@ fn server_loop(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, so
 
         let mut packets = [Packet::default(); 128];
         let count = socket.receive_type(&mut packets).unwrap();
-        let mut responses = Vec::new();
         {
             let mut scheme = scheme_mutex.lock().unwrap();
             for mut packet in packets[.. count].iter_mut() {
@@ -461,12 +481,24 @@ fn server_loop(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, so
                 if delay && packet.a == 0 {
                     scheme.todo.push(*packet);
                 } else {
-                    responses.push(*packet);
+                    socket.send(&packet).unwrap();
                 }
             }
-        }
-        if ! responses.is_empty() {
-            socket.send_type(&responses).unwrap();
+
+            for (id, window) in scheme.windows.iter() {
+                if ! window.events.is_empty() {
+                    socket.send(&Packet {
+                        id: 0,
+                        pid: 0,
+                        uid: 0,
+                        gid: 0,
+                        a: syscall::number::SYS_FEVENT,
+                        b: *id,
+                        c: syscall::flag::EVENT_READ,
+                        d: window.events.len() * mem::size_of::<Event>()
+                    }).unwrap();
+                }
+            }
         }
     }
 }

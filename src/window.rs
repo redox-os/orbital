@@ -16,10 +16,10 @@ const TEXT_HIGHLIGHT_COLOR: Color = Color::rgb(235, 241, 255);
 pub struct Window {
     pub x: i32,
     pub y: i32,
-        pub async: bool,
+    pub async: bool,
     image: Image,
     title: String,
-    events: VecDeque<Event>,
+    pub events: VecDeque<Event>,
 }
 
 impl Window {
