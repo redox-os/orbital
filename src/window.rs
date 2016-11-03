@@ -108,7 +108,7 @@ impl Window {
     }
 
     pub fn map(&self, offset: usize, size: usize) -> Result<usize> {
-        if offset + size < self.image.data().len() * 4 {
+        if offset + size <= self.image.data().len() * 4 {
             Ok(self.image.data().as_ptr() as usize + offset + size)
         } else {
             Err(Error::new(EINVAL))
