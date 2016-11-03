@@ -31,7 +31,8 @@ use super::{Color, Rect};
 
 pub struct ImageRoiRows<'a> {
     rect: Rect,
-    image: &'a Image,
+    w: i32,
+    data: &'a [u32],
     i: i32,
 }
 
@@ -39,10 +40,10 @@ impl<'a> Iterator for ImageRoiRows<'a> {
     type Item = &'a [u32];
     fn next(&mut self) -> Option<Self::Item> {
         if self.i < self.rect.height() {
-            let start = (self.rect.top() + self.i) * self.image.width() + self.rect.left();
+            let start = (self.rect.top() + self.i) * self.w + self.rect.left();
             let end = start + self.rect.width();
             self.i += 1;
-            Some(& self.image.data[start as usize .. end as usize])
+            Some(unsafe { mem::transmute(& self.data[start as usize .. end as usize]) })
         } else {
             None
         }
@@ -51,7 +52,8 @@ impl<'a> Iterator for ImageRoiRows<'a> {
 
 pub struct ImageRoiRowsMut<'a> {
     rect: Rect,
-    image: &'a mut Image,
+    w: i32,
+    data: &'a mut [u32],
     i: i32,
 }
 
@@ -59,11 +61,11 @@ impl<'a> Iterator for ImageRoiRowsMut<'a> {
     type Item = &'a mut [u32];
     fn next(&mut self) -> Option<Self::Item> {
         if self.i < self.rect.height() {
-            let start = (self.rect.top() + self.i) * self.image.width() + self.rect.left();
+            let start = (self.rect.top() + self.i) * self.w + self.rect.left();
             let end = start + self.rect.width();
             self.i += 1;
             // it does not appear to be possible to do this in safe rust
-            Some(unsafe { mem::transmute(&mut self.image.data[start as usize .. end as usize]) })
+            Some(unsafe { mem::transmute(&mut self.data[start as usize .. end as usize]) })
         } else {
             None
         }
@@ -72,7 +74,8 @@ impl<'a> Iterator for ImageRoiRowsMut<'a> {
 
 pub struct ImageRoi<'a> {
     rect: Rect,
-    image: &'a mut Image
+    w: i32,
+    data: &'a mut [u32]
 }
 
 impl<'a> ImageRoi<'a> {
@@ -107,7 +110,8 @@ impl<'a> ImageRoi<'a> {
     pub fn rows(&'a self) -> ImageRoiRows<'a> {
         ImageRoiRows {
             rect: self.rect,
-            image: self.image,
+            w: self.w,
+            data: self.data,
             i: 0
         }
     }
@@ -115,7 +119,8 @@ impl<'a> ImageRoi<'a> {
     pub fn rows_mut(&'a mut self) -> ImageRoiRowsMut<'a> {
         ImageRoiRowsMut {
             rect: self.rect,
-            image: self.image,
+            w: self.w,
+            data: self.data,
             i: 0
         }
     }
@@ -178,6 +183,54 @@ impl<'a> ImageRoi<'a> {
     }
 }
 
+pub struct ImageRef<'a> {
+    w: i32,
+    h: i32,
+    data: &'a mut [u32]
+}
+
+impl<'a> ImageRef<'a> {
+    pub fn from_data(width: i32, height: i32, data: &'a mut [u32]) -> ImageRef {
+        ImageRef {
+            w: width,
+            h: height,
+            data: data
+        }
+    }
+
+    pub fn width(&self) -> i32 {
+        self.w
+    }
+
+    pub fn height(&self) -> i32 {
+        self.h
+    }
+
+    pub fn data(&self) -> &[u32] {
+        &self.data
+    }
+
+    pub fn data_mut(&mut self) -> &mut [u32] {
+        &mut self.data
+    }
+
+    pub fn as_roi(&mut self) -> ImageRoi {
+        ImageRoi {
+            rect: Rect::new(0, 0, self.w, self.h),
+            w: self.w,
+            data: &mut self.data
+        }
+    }
+
+    pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
+        ImageRoi {
+            rect: *rect,
+            w: self.w,
+            data: &mut self.data
+        }
+    }
+}
+
 pub struct Image {
     w: i32,
     h: i32,
@@ -235,14 +288,16 @@ impl Image {
     pub fn as_roi(&mut self) -> ImageRoi {
         ImageRoi {
             rect: Rect::new(0, 0, self.w, self.h),
-            image: self
+            w: self.w,
+            data: &mut self.data
         }
     }
 
     pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
         ImageRoi {
             rect: *rect,
-            image: self
+            w: self.w,
+            data: &mut self.data
         }
     }
 }

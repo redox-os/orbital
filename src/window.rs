@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use std::mem::size_of;
 use std::{ptr, slice};
 
-use super::{Color, Event, Font, Image, Rect};
+use super::{Color, Event, Font, Image, ImageRef, Rect};
 use image::fast_copy;
 
 use syscall::error::{Error, Result, EINVAL};
@@ -58,7 +58,7 @@ impl Window {
         ! self.title.is_empty() && x >= max(self.x, self.x + self.width() - 10)  && y >= self.y - 18 && x < self.x + self.width() && y < self.y
     }
 
-    pub fn draw_title(&mut self, image: &mut Image, rect: &Rect, focused: bool) {
+    pub fn draw_title(&mut self, image: &mut ImageRef, rect: &Rect, focused: bool) {
         let title_rect = self.title_rect();
         let title_intersect = rect.intersection(&title_rect);
         if ! title_intersect.is_empty() {
@@ -95,7 +95,7 @@ impl Window {
         }
     }
 
-    pub fn draw(&mut self, image: &mut Image, rect: &Rect) {
+    pub fn draw(&mut self, image: &mut ImageRef, rect: &Rect) {
         let self_rect = self.rect();
         let intersect = self_rect.intersection(&rect);
         if ! intersect.is_empty() {
@@ -105,6 +105,14 @@ impl Window {
 
     pub fn event(&mut self, event: Event) {
         self.events.push_back(event);
+    }
+
+    pub fn map(&self, offset: usize, size: usize) -> Result<usize> {
+        if offset + size < self.image.data().len() * 4 {
+            Ok(self.image.data().as_ptr() as usize + offset + size)
+        } else {
+            Err(Error::new(EINVAL))
+        }
     }
 
     pub fn read(&mut self, buf: &mut [u8]) -> Result<usize> {

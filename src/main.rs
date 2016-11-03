@@ -7,7 +7,8 @@ extern crate orbimage;
 extern crate syscall;
 
 use std::collections::{BTreeMap, VecDeque};
-use std::{env, mem, str, thread};
+use std::{env, mem, slice, str, thread};
+use std::os::unix::io::AsRawFd;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
@@ -21,7 +22,7 @@ pub use orbclient::event;
 pub use self::color::Color;
 pub use self::event::{Event, EventOption};
 pub use self::font::Font;
-pub use self::image::{Image, ImageRoi};
+pub use self::image::{Image, ImageRef, ImageRoi};
 pub use self::rect::Rect;
 pub use self::socket::Socket;
 pub use self::window::Window;
@@ -29,13 +30,13 @@ pub use self::window::Window;
 use self::config::Config;
 use self::event::{EVENT_KEY, EVENT_MOUSE, FocusEvent, QuitEvent};
 
-pub mod color;
-pub mod config;
-pub mod font;
-pub mod image;
-pub mod rect;
-pub mod socket;
-pub mod window;
+mod color;
+mod config;
+mod font;
+mod image;
+mod rect;
+mod socket;
+mod window;
 
 fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
     let mut push = true;
@@ -55,7 +56,7 @@ fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
 }
 
 struct OrbitalScheme {
-    image: Image,
+    image: ImageRef<'static>,
     background: Image,
     cursor: Image,
     cursor_x: i32,
@@ -73,9 +74,9 @@ struct OrbitalScheme {
 }
 
 impl OrbitalScheme {
-    fn new(width: i32, height: i32, config: &Config) -> OrbitalScheme {
+    fn new(width: i32, height: i32, data: &'static mut [u32], config: &Config) -> OrbitalScheme {
         OrbitalScheme {
-            image: Image::new(width, height),
+            image: ImageRef::from_data(width, height, data),
             background: Image::from_path(&config.background),
             cursor: Image::from_path(&config.cursor),
             cursor_x: 0,
@@ -114,8 +115,8 @@ impl OrbitalScheme {
         let background_rect = self.background_rect();
         let cursor_rect = self.cursor_rect();
 
-        for mut rect in self.redraws.iter_mut() {
-            *rect = rect.intersection(&screen_rect);
+        for mut rect in self.redraws.drain(..) {
+            rect = rect.intersection(&screen_rect);
 
             if ! rect.is_empty() {
                 //TODO: only clear area not covered by background
@@ -142,48 +143,7 @@ impl OrbitalScheme {
             }
         }
 
-        use std::io::SeekFrom;
-        if let Some(mut sum_rect) = self.redraws.pop() {
-            for rect in self.redraws.drain(..) {
-                if ! rect.is_empty() {
-                    if sum_rect.is_empty() {
-                        sum_rect = rect;
-                    } else {
-                        sum_rect = sum_rect.container(&rect);
-                    }
-                }
-            }
-
-            //println!("{:?}", sum_rect);
-
-            if ! sum_rect.is_empty() {
-                let data = self.image.data();
-                let start = sum_rect.top() * self.image.width() + sum_rect.left();
-                let end = (sum_rect.bottom() - 1) * self.image.width() + sum_rect.right();
-
-                unsafe { display.seek(SeekFrom::Start(start as u64 * 4)).unwrap(); }
-                display.send_type(&data[start as usize .. end as usize]).unwrap();
-            }
-        }
-
-        /* Send each redraw rect
-        for rect in self.redraws.drain(..) {
-            if ! rect.is_empty() {
-                let data = self.image.data();
-                for row in rect.top()..rect.bottom() {
-                    let off1 = row * self.image.width() + rect.left();
-                    let off2 = row * self.image.width() + rect.right();
-
-                    unsafe { display.seek(SeekFrom::Start(off1 as u64 * 4)).unwrap(); }
-                    display.send_type(&data[off1 as usize .. off2 as usize]).unwrap();
-                }
-            }
-        }
-        */
-
-        /*
-        display.send_type(self.image.data()).unwrap();
-        */
+        display.sync().unwrap();
     }
 
     fn event(&mut self, event: Event){
@@ -393,6 +353,14 @@ impl SchemeMut for OrbitalScheme {
         }
     }
 
+    fn fmap(&mut self, id: usize, offset: usize, size: usize) -> Result<usize> {
+        if let Some(window) = self.windows.get(&id) {
+            window.map(offset, size)
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+
     fn fpath(&mut self, id: usize, buf: &mut [u8]) -> Result<usize> {
         if let Some(window) = self.windows.get(&id) {
             window.path(buf)
@@ -554,9 +522,13 @@ fn main() {
 
                     println!("orbital: found display {}x{}", width, height);
 
+                    let display_ptr = unsafe { syscall::fmap(display.as_raw_fd(), 0, (width * height * 4) as usize).unwrap() };
+                    let display_slice = unsafe { slice::from_raw_parts_mut(display_ptr as *mut u32, (width * height) as usize) };
+                    println!("orbital: mapped display to {:X}", display_ptr);
+
                     let config = Config::from_path("/etc/orbital.conf");
 
-                    let scheme = Arc::new(Mutex::new(OrbitalScheme::new(width, height, &config)));
+                    let scheme = Arc::new(Mutex::new(OrbitalScheme::new(width, height, display_slice, &config)));
 
                     *status_daemon.lock().unwrap() = Status::Running;
 
@@ -571,6 +543,8 @@ fn main() {
                     server_loop(scheme, display, socket);
 
                     let _ = event_thread.join();
+
+                    unsafe { let _ = syscall::funmap(display_ptr); }
                 },
                 Err(err) => println!("orbital: no display found: {}", err)
             },
