@@ -369,6 +369,15 @@ impl SchemeMut for OrbitalScheme {
         }
     }
 
+    fn fsync(&mut self, id: usize) -> Result<usize> {
+        if let Some(window) = self.windows.get(&id) {
+            schedule(&mut self.redraws, window.rect());
+            Ok(0)
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+
     fn close(&mut self, id: usize) -> Result<usize> {
         self.order.retain(|&e| e != id);
 

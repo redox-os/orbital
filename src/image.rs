@@ -207,18 +207,18 @@ impl<'a> ImageRef<'a> {
     }
 
     pub fn data(&self) -> &[u32] {
-        &self.data
+        self.data
     }
 
     pub fn data_mut(&mut self) -> &mut [u32] {
-        &mut self.data
+        self.data
     }
 
     pub fn as_roi(&mut self) -> ImageRoi {
         ImageRoi {
             rect: Rect::new(0, 0, self.w, self.h),
             w: self.w,
-            data: &mut self.data
+            data: self.data
         }
     }
 
@@ -226,7 +226,7 @@ impl<'a> ImageRef<'a> {
         ImageRoi {
             rect: *rect,
             w: self.w,
-            data: &mut self.data
+            data: self.data
         }
     }
 }
