@@ -1,5 +1,6 @@
 #![feature(asm)]
 #![feature(const_fn)]
+#![feature(file_path)]
 
 extern crate core;
 extern crate orbclient;
