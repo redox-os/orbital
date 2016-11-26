@@ -512,7 +512,10 @@ enum Status {
 }
 
 fn main() {
-    let display_path = env::args().nth(1).expect("orbital: no display argument");
+    let mut args = env::args().skip(1);
+
+    let display_path = args.next().expect("orbital: no display argument");
+    let login_cmd = args.next().expect("orbital: no login manager argument");
 
     env::set_current_dir("file:").unwrap();
 
@@ -568,7 +571,11 @@ fn main() {
         match *status_mutex.lock().unwrap() {
             Status::Starting => (),
             Status::Running => {
-                Command::new("/bin/orblogin").spawn().expect("orbital: failed to spawn launcher");
+                let mut command = Command::new(&login_cmd);
+                for arg in args {
+                    command.arg(&arg);
+                }
+                command.spawn().expect("orbital: failed to spawn login manager");
                 break 'waiting;
             },
             Status::Stopping => break 'waiting,
