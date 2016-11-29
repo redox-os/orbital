@@ -1,6 +1,6 @@
+#![deny(warnings)]
 #![feature(asm)]
 #![feature(const_fn)]
-#![feature(file_path)]
 
 extern crate core;
 extern crate orbclient;
@@ -12,6 +12,7 @@ use std::{env, mem, slice, str, thread};
 use std::os::unix::io::AsRawFd;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use syscall::data::Packet;
 use syscall::error::{Error, Result, EBADF, EINVAL};
@@ -528,7 +529,9 @@ fn main() {
         match Socket::create(":orbital").map(|socket| Arc::new(socket)) {
             Ok(socket) => match Socket::open(&display_path).map(|display| Arc::new(display)) {
                 Ok(display) => {
-                    let path = display.path().map(|path| path.into_os_string().into_string().unwrap_or(String::new())).unwrap_or(String::new());
+                    let mut buf: [u8; 4096] = [0; 4096];
+                    let count = syscall::fpath(display.as_raw_fd() as usize, &mut buf).unwrap();
+                    let path = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
                     let res = path.split(":").nth(1).unwrap_or("");
                     let width = res.split("/").nth(1).unwrap_or("").parse::<i32>().unwrap_or(0);
                     let height = res.split("/").nth(2).unwrap_or("").parse::<i32>().unwrap_or(0);
@@ -581,6 +584,6 @@ fn main() {
             Status::Stopping => break 'waiting,
         }
 
-        thread::sleep_ms(30);
+        thread::sleep(Duration::new(0, 30000000));
     }
 }

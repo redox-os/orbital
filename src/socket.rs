@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io::{Read, Write, Result, Seek, SeekFrom};
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::path::PathBuf;
 use std::slice;
 
 /// Redox domain socket
@@ -27,10 +26,6 @@ impl Socket {
         Ok(Socket {
             file: UnsafeCell::new(file)
         })
-    }
-
-    pub fn path(&self) -> Result<PathBuf> {
-        unsafe { (*self.file.get()).path() }
     }
 
     pub fn receive(&self, buf: &mut [u8]) -> Result<usize> {
