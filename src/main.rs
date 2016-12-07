@@ -12,7 +12,6 @@ use std::{env, mem, slice, str, thread};
 use std::os::unix::io::AsRawFd;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use syscall::data::Packet;
 use syscall::error::{Error, Result, EBADF, EINVAL};
@@ -66,6 +65,7 @@ struct OrbitalScheme {
     dragging: bool,
     drag_x: i32,
     drag_y: i32,
+    win_key: bool,
     next_id: isize,
     next_x: i32,
     next_y: i32,
@@ -86,6 +86,7 @@ impl OrbitalScheme {
             dragging: false,
             drag_x: 0,
             drag_y: 0,
+            win_key: false,
             next_id: 1,
             next_x: 20,
             next_y: 20,
@@ -148,30 +149,53 @@ impl OrbitalScheme {
         display.sync().unwrap();
     }
 
-    fn event(&mut self, event: Event){
-        if event.code == EVENT_KEY {
-            if event.c > 0 {
-                if event.b as u8 == event::K_F1 {
-                    let cursor_rect = self.cursor_rect();
-                    schedule(&mut self.redraws, cursor_rect);
-
-                    self.cursor_x = 0;
-                    self.cursor_y = 0;
-
-                    let cursor_rect = self.cursor_rect();
-                    schedule(&mut self.redraws, cursor_rect);
-                } else if event.b as u8 == event::K_F2 {
-                    let cursor_rect = self.cursor_rect();
-                    schedule(&mut self.redraws, cursor_rect);
-
-                    self.cursor_x = self.screen_rect().width();
-                    self.cursor_y = self.screen_rect().height();
-
-                    let cursor_rect = self.cursor_rect();
-                    schedule(&mut self.redraws, cursor_rect);
+    fn win_tab(&mut self) {
+        if 1 < self.order.len() {
+            //Redraw old focused window
+            if let Some(id) = self.order.pop_front() {
+                if let Some(mut window) = self.windows.get_mut(&id){
+                    schedule(&mut self.redraws, window.title_rect());
+                    schedule(&mut self.redraws, window.rect());
+                    window.event(FocusEvent {
+                        focused: false
+                    }.to_event());
+                }
+                self.order.push_back(id);
+            }
+            //Redraw new focused window
+            if let Some(id) = self.order.front() {
+                if let Some(mut window) = self.windows.get_mut(&id){
+                    schedule(&mut self.redraws, window.title_rect());
+                    schedule(&mut self.redraws, window.rect());
+                    window.event(FocusEvent {
+                        focused: true
+                    }.to_event());
                 }
             }
-            if let Some(id) = self.order.front() {
+        }
+    }
+
+    fn event(&mut self, event: Event){
+        if event.code == EVENT_KEY {
+            if event.b == 0x5B {
+                self.win_key = event.c > 0;
+            } else if self.win_key {
+                match event.b as u8 {
+                    orbclient::K_ESC => if event.c > 0 {
+                        if let Some(id) = self.order.front() {
+                            if let Some(mut window) = self.windows.get_mut(&id) {
+                                window.event(QuitEvent.to_event());
+                            }
+                        }
+                    },
+                    orbclient::K_TAB => if event.c > 0 {
+                        self.win_tab();
+                    },
+                    _ => if event.c > 0 {
+                        println!("WIN+{:X}", event.b);
+                    }
+                }
+            } else if let Some(id) = self.order.front() {
                 if let Some(mut window) = self.windows.get_mut(&id) {
                     window.event(event);
                 }
@@ -506,26 +530,18 @@ fn server_loop(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, so
     }
 }
 
-enum Status {
-    Starting,
-    Running,
-    Stopping
-}
-
 fn main() {
-    let mut args = env::args().skip(1);
+    // Daemonize
+    if unsafe { syscall::clone(0).unwrap() } == 0 {
+        let mut args = env::args().skip(1);
 
-    let display_path = args.next().expect("orbital: no display argument");
-    let login_cmd = args.next().expect("orbital: no login manager argument");
+        let display_path = args.next().expect("orbital: no display argument");
+        let login_cmd = args.next().expect("orbital: no login manager argument");
 
-    env::set_current_dir("file:").unwrap();
+        env::set_current_dir("file:").unwrap();
 
-    env::set_var("DISPLAY", &display_path);
+        env::set_var("DISPLAY", &display_path);
 
-    let status_mutex = Arc::new(Mutex::new(Status::Starting));
-
-    let status_daemon = status_mutex.clone();
-    thread::spawn(move || {
         match Socket::create(":orbital").map(|socket| Arc::new(socket)) {
             Ok(socket) => match Socket::open(&display_path).map(|display| Arc::new(display)) {
                 Ok(display) => {
@@ -546,7 +562,14 @@ fn main() {
 
                     let scheme = Arc::new(Mutex::new(OrbitalScheme::new(width, height, display_slice, &config)));
 
-                    *status_daemon.lock().unwrap() = Status::Running;
+                    let mut command = Command::new(&login_cmd);
+                    for arg in args {
+                        command.arg(&arg);
+                    }
+                    match command.spawn() {
+                        Ok(_child) => (),
+                        Err(err) => println!("orbital: failed to launch '{}': {}", login_cmd, err)
+                    }
 
                     let scheme_event = scheme.clone();
                     let display_event = display.clone();
@@ -566,24 +589,5 @@ fn main() {
             },
             Err(err) => println!("orbital: could not register orbital: {}", err)
         }
-
-        *status_daemon.lock().unwrap() = Status::Stopping;
-    });
-
-    'waiting: loop {
-        match *status_mutex.lock().unwrap() {
-            Status::Starting => (),
-            Status::Running => {
-                let mut command = Command::new(&login_cmd);
-                for arg in args {
-                    command.arg(&arg);
-                }
-                command.spawn().expect("orbital: failed to spawn login manager");
-                break 'waiting;
-            },
-            Status::Stopping => break 'waiting,
-        }
-
-        thread::sleep(Duration::new(0, 30000000));
     }
 }
