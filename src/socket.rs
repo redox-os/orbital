@@ -1,6 +1,6 @@
 use std::cell::UnsafeCell;
 use std::fs::File;
-use std::io::{Read, Write, Result, Seek, SeekFrom};
+use std::io::{Read, Write, Result};
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::slice;
@@ -36,16 +36,8 @@ impl Socket {
         self.receive(unsafe { slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut u8, buf.len() * mem::size_of::<T>()) }).map(|count| count/mem::size_of::<T>())
     }
 
-    pub unsafe fn seek(&self, from: SeekFrom) -> Result<u64> {
-        (*self.file.get()).seek(from)
-    }
-
     pub fn send(&self, buf: &[u8]) -> Result<usize> {
         unsafe { (*self.file.get()).write(buf) }
-    }
-
-    pub fn send_type<T: Copy>(&self, buf: &[T]) -> Result<usize> {
-        self.send(unsafe { slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len() * mem::size_of::<T>()) }).map(|count| count/mem::size_of::<T>())
     }
 
     pub fn sync(&self) -> Result<()> {

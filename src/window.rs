@@ -1,10 +1,12 @@
+use orbclient::{Color, Event};
 use std::cmp::{min, max};
 use std::collections::VecDeque;
 use std::mem::size_of;
 use std::{ptr, slice};
 
-use super::{Color, Event, Font, Image, ImageRef, Rect};
-use image::fast_copy;
+use font::Font;
+use image::{fast_copy, Image, ImageRef};
+use rect::Rect;
 
 use syscall::error::{Error, Result, EINVAL};
 

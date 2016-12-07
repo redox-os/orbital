@@ -1,5 +1,5 @@
-use super::Color;
-use super::Image;
+use orbclient::color::Color;
+use image::Image;
 
 static FONT: &'static [u8] = include_bytes!("../../../res/fonts/unifont.font");
 
