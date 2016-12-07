@@ -1,7 +1,9 @@
+use orbclient::color::Color;
+use orbimage;
 use std::{cmp, mem};
 use std::path::Path;
 
-use orbimage;
+use rect::Rect;
 
 #[cfg(target_arch = "x86_64")]
 #[inline(always)]
@@ -26,8 +28,6 @@ pub unsafe fn fast_set32(dst: *mut u32, src: u32, len: usize) {
         : "cc", "memory", "rdi", "rcx"
         : "intel", "volatile");
 }
-
-use super::{Color, Rect};
 
 pub struct ImageRoiRows<'a> {
     rect: Rect,
@@ -79,34 +79,6 @@ pub struct ImageRoi<'a> {
 }
 
 impl<'a> ImageRoi<'a> {
-    pub fn rect(&self) -> Rect {
-        self.rect
-    }
-
-    pub fn left(&self) -> i32 {
-        self.rect.left()
-    }
-
-    pub fn right(&self) -> i32 {
-        self.rect.right()
-    }
-
-    pub fn top(&self) -> i32 {
-        self.rect.top()
-    }
-
-    pub fn bottom(&self) -> i32 {
-        self.rect.bottom()
-    }
-
-    pub fn width(&self) -> i32 {
-        self.rect.width()
-    }
-
-    pub fn height(&self) -> i32 {
-        self.rect.height()
-    }
-
     pub fn rows(&'a self) -> ImageRoiRows<'a> {
         ImageRoiRows {
             rect: self.rect,
@@ -206,22 +178,6 @@ impl<'a> ImageRef<'a> {
         self.h
     }
 
-    pub fn data(&self) -> &[u32] {
-        self.data
-    }
-
-    pub fn data_mut(&mut self) -> &mut [u32] {
-        self.data
-    }
-
-    pub fn as_roi(&mut self) -> ImageRoi {
-        ImageRoi {
-            rect: Rect::new(0, 0, self.w, self.h),
-            w: self.w,
-            data: self.data
-        }
-    }
-
     pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
         ImageRoi {
             rect: *rect,
@@ -283,14 +239,6 @@ impl Image {
 
     pub fn data_mut(&mut self) -> &mut [u32] {
         &mut self.data
-    }
-
-    pub fn as_roi(&mut self) -> ImageRoi {
-        ImageRoi {
-            rect: Rect::new(0, 0, self.w, self.h),
-            w: self.w,
-            data: &mut self.data
-        }
     }
 
     pub fn roi(&mut self, rect: &Rect) -> ImageRoi {

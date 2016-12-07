@@ -68,24 +68,8 @@ impl Rect {
         && self.bottom() >= y
     }
 
-    pub fn contains_rect(&self, other: &Rect) -> bool {
-        self.left() <= other.left()
-        && self.right() >= other.right()
-        && self.top() <= other.top()
-        && self.bottom() >= other.bottom()
-    }
-
     pub fn is_empty(&self) -> bool {
         self.w == 0 || self.h == 0
-    }
-
-    pub fn intersects(&self, other: &Rect) -> bool {
-        ! (
-            self.left() > other.right() ||
-            self.right() < other.left() ||
-            self.top() > other.bottom() ||
-            self.bottom() < other.top()
-        )
     }
 
     pub fn intersection(&self, other: &Rect) -> Rect {
