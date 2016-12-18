@@ -1,7 +1,7 @@
 use orbclient::color::Color;
 use image::Image;
 
-static FONT: &'static [u8] = include_bytes!("../../../res/fonts/unifont.font");
+static FONT: &'static [u8] = include_bytes!("../res/unifont.font");
 
 pub struct Font;
 
