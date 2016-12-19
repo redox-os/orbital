@@ -1,4 +1,4 @@
-use orbclient::color::Color;
+use orbclient::{Color, Renderer};
 use orbimage;
 use std::{cmp, mem};
 use std::path::Path;
