@@ -96,7 +96,7 @@ impl Window {
         let self_rect = self.rect();
         let intersect = self_rect.intersection(&rect);
         if ! intersect.is_empty() {
-            image.roi(&intersect).blit(&self.image.roi(&intersect.offset(-self_rect.left(), -self_rect.top())));
+            image.roi(&intersect).blend(&self.image.roi(&intersect.offset(-self_rect.left(), -self_rect.top())));
         }
     }
 
