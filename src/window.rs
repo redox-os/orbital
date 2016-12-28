@@ -1,19 +1,15 @@
-use orbclient::{Color, Event};
+use orbclient::{Event, Renderer};
 use std::cmp::{min, max};
 use std::collections::VecDeque;
 use std::mem::size_of;
 use std::{ptr, slice};
 
-use font::Font;
 use image::{fast_copy, Image, ImageRef};
 use rect::Rect;
 
 use syscall::error::{Error, Result, EINVAL};
 
-const BAR_COLOR: Color = Color::rgb(40, 45, 57);
-const BAR_HIGHLIGHT_COLOR: Color = Color::rgb(80, 86, 102);
-const TEXT_COLOR: Color = Color::rgb(204, 210, 224);
-const TEXT_HIGHLIGHT_COLOR: Color = Color::rgb(235, 241, 255);
+use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 
 pub struct Window {
     pub x: i32,
@@ -70,14 +66,15 @@ impl Window {
                 image.roi(&title_intersect).set(BAR_COLOR);
             }
 
+            let text_color = if focused { TEXT_HIGHLIGHT_COLOR } else { TEXT_COLOR };
+
             let mut x = self.x + 2;
             for c in self.title.chars() {
                 if x < max(self.x + 2, self.x + self.width() - 10) {
-                    let mut font_image = Font::render(c, if focused { TEXT_HIGHLIGHT_COLOR } else { TEXT_COLOR });
-                    let image_rect = Rect::new(x, title_rect.top() + 1, font_image.width(), font_image.height());
+                    let image_rect = Rect::new(x, title_rect.top() + 1, 8, 16);
                     let image_intersect = rect.intersection(&image_rect);
                     if ! image_intersect.is_empty() {
-                        image.roi(&image_intersect).blend(&font_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+                        image.char(image_rect.left(), image_rect.top(), c, text_color);
                     }
                     x += 8;
                 } else {
@@ -87,11 +84,10 @@ impl Window {
 
             x = max(self.x + 2, self.x + self.width() - 10);
             if x + 10 <= self.x + self.width() {
-                let mut font_image = Font::render('X', if focused { TEXT_HIGHLIGHT_COLOR } else { TEXT_COLOR });
-                let image_rect = Rect::new(x, title_rect.top() + 1, font_image.width(), font_image.height());
+                let image_rect = Rect::new(x, title_rect.top() + 1, 8, 16);
                 let image_intersect = rect.intersection(&image_rect);
                 if ! image_intersect.is_empty() {
-                    image.roi(&image_intersect).blend(&font_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+                    image.char(image_rect.left(), image_rect.top(), 'X', text_color);
                 }
             }
         }

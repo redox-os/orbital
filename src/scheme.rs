@@ -48,7 +48,7 @@ pub struct OrbitalScheme {
 }
 
 impl OrbitalScheme {
-    pub fn new(width: i32, height: i32, data: &'static mut [u32], config: &Config) -> OrbitalScheme {
+    pub fn new(width: i32, height: i32, data: &'static mut [Color], config: &Config) -> OrbitalScheme {
         OrbitalScheme {
             image: ImageRef::from_data(width, height, data),
             background: Image::from_path(&config.background),

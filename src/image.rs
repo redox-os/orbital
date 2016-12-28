@@ -32,12 +32,12 @@ pub unsafe fn fast_set32(dst: *mut u32, src: u32, len: usize) {
 pub struct ImageRoiRows<'a> {
     rect: Rect,
     w: i32,
-    data: &'a [u32],
+    data: &'a [Color],
     i: i32,
 }
 
 impl<'a> Iterator for ImageRoiRows<'a> {
-    type Item = &'a [u32];
+    type Item = &'a [Color];
     fn next(&mut self) -> Option<Self::Item> {
         if self.i < self.rect.height() {
             let start = (self.rect.top() + self.i) * self.w + self.rect.left();
@@ -53,12 +53,12 @@ impl<'a> Iterator for ImageRoiRows<'a> {
 pub struct ImageRoiRowsMut<'a> {
     rect: Rect,
     w: i32,
-    data: &'a mut [u32],
+    data: &'a mut [Color],
     i: i32,
 }
 
 impl<'a> Iterator for ImageRoiRowsMut<'a> {
-    type Item = &'a mut [u32];
+    type Item = &'a mut [Color];
     fn next(&mut self) -> Option<Self::Item> {
         if self.i < self.rect.height() {
             let start = (self.rect.top() + self.i) * self.w + self.rect.left();
@@ -75,7 +75,7 @@ impl<'a> Iterator for ImageRoiRowsMut<'a> {
 pub struct ImageRoi<'a> {
     rect: Rect,
     w: i32,
-    data: &'a mut [u32]
+    data: &'a mut [Color]
 }
 
 impl<'a> ImageRoi<'a> {
@@ -100,21 +100,21 @@ impl<'a> ImageRoi<'a> {
     pub fn blend(&'a mut self, other: &ImageRoi) {
         for (mut self_row, other_row) in self.rows_mut().zip(other.rows()) {
             for(mut old, new) in self_row.iter_mut().zip(other_row.iter()) {
-                let alpha = (*new >> 24) & 0xFF;
+                let alpha = (new.data >> 24) & 0xFF;
                 if alpha >= 255 {
-                    *old = *new;
+                    old.data = new.data;
                 } else if alpha > 0 {
-                    let n_r = (((*new >> 16) & 0xFF) * alpha) >> 8;
-                    let n_g = (((*new >> 8) & 0xFF) * alpha) >> 8;
-                    let n_b = ((*new & 0xFF) * alpha) >> 8;
+                    let n_r = (((new.data >> 16) & 0xFF) * alpha) >> 8;
+                    let n_g = (((new.data >> 8) & 0xFF) * alpha) >> 8;
+                    let n_b = ((new.data & 0xFF) * alpha) >> 8;
 
                     let n_alpha = 255 - alpha;
 
-                    let o_r = (((*old >> 16) & 0xFF) * n_alpha) >> 8;
-                    let o_g = (((*old >> 8) & 0xFF) * n_alpha) >> 8;
-                    let o_b = ((*old & 0xFF) * n_alpha) >> 8;
+                    let o_r = (((old.data >> 16) & 0xFF) * n_alpha) >> 8;
+                    let o_g = (((old.data >> 8) & 0xFF) * n_alpha) >> 8;
+                    let o_b = ((old.data & 0xFF) * n_alpha) >> 8;
 
-                    *old = ((o_r << 16) | (o_g << 8) | o_b) + ((n_r << 16) | (n_g << 8) | n_b);
+                    old.data = ((o_r << 16) | (o_g << 8) | o_b) + ((n_r << 16) | (n_g << 8) | n_b);
                 }
             }
         }
@@ -144,11 +144,11 @@ impl<'a> ImageRoi<'a> {
 
             for mut self_row in self.rows_mut() {
                 for mut old in self_row.iter_mut() {
-                    let o_r = (((*old >> 16) & 0xFF) * n_alpha) >> 8;
-                    let o_g = (((*old >> 8) & 0xFF) * n_alpha) >> 8;
-                    let o_b = ((*old & 0xFF) * n_alpha) >> 8;
+                    let o_r = (((old.data >> 16) & 0xFF) * n_alpha) >> 8;
+                    let o_g = (((old.data >> 8) & 0xFF) * n_alpha) >> 8;
+                    let o_b = ((old.data & 0xFF) * n_alpha) >> 8;
 
-                    *old = ((o_r << 16) | (o_g << 8) | o_b) + ((n_r << 16) | (n_g << 8) | n_b);
+                    old.data = ((o_r << 16) | (o_g << 8) | o_b) + ((n_r << 16) | (n_g << 8) | n_b);
                 }
             }
         }
@@ -158,11 +158,11 @@ impl<'a> ImageRoi<'a> {
 pub struct ImageRef<'a> {
     w: i32,
     h: i32,
-    data: &'a mut [u32]
+    data: &'a mut [Color]
 }
 
 impl<'a> ImageRef<'a> {
-    pub fn from_data(width: i32, height: i32, data: &'a mut [u32]) -> ImageRef {
+    pub fn from_data(width: i32, height: i32, data: &'a mut [Color]) -> ImageRef {
         ImageRef {
             w: width,
             h: height,
@@ -187,10 +187,36 @@ impl<'a> ImageRef<'a> {
     }
 }
 
+impl<'a> Renderer for ImageRef<'a> {
+    /// Get the width of the image in pixels
+    fn width(&self) -> u32 {
+        self.w as u32
+    }
+
+    /// Get the height of the image in pixels
+    fn height(&self) -> u32 {
+        self.h as u32
+    }
+
+    /// Return a reference to a slice of colors making up the image
+    fn data(&self) -> &[Color] {
+        &self.data[..]
+    }
+
+    /// Return a mutable reference to a slice of colors making up the image
+    fn data_mut(&mut self) -> &mut [Color] {
+        &mut self.data[..]
+    }
+
+    fn sync(&mut self) -> bool {
+        true
+    }
+}
+
 pub struct Image {
     w: i32,
     h: i32,
-    data: Box<[u32]>
+    data: Box<[Color]>
 }
 
 impl Image {
@@ -199,10 +225,10 @@ impl Image {
     }
 
     pub fn from_color(width: i32, height: i32, color: Color) -> Image {
-        Image::from_data(width, height, vec![color.data; width as usize * height as usize].into_boxed_slice())
+        Image::from_data(width, height, vec![color; width as usize * height as usize].into_boxed_slice())
     }
 
-    pub fn from_data(width: i32, height: i32, data: Box<[u32]>) -> Image {
+    pub fn from_data(width: i32, height: i32, data: Box<[Color]>) -> Image {
         Image {
             w: width,
             h: height,
@@ -233,11 +259,11 @@ impl Image {
         self.h
     }
 
-    pub fn data(&self) -> &[u32] {
+    pub fn data(&self) -> &[Color] {
         &self.data
     }
 
-    pub fn data_mut(&mut self) -> &mut [u32] {
+    pub fn data_mut(&mut self) -> &mut [Color] {
         &mut self.data
     }
 

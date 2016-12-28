@@ -2,12 +2,11 @@
 #![feature(asm)]
 #![feature(const_fn)]
 
-extern crate core;
 extern crate orbclient;
 extern crate orbimage;
 extern crate syscall;
 
-use orbclient::event::Event;
+use orbclient::{Color, Event};
 use std::{env, mem, slice, str, thread};
 use std::os::unix::io::AsRawFd;
 use std::process::Command;
@@ -21,11 +20,11 @@ use scheme::OrbitalScheme;
 use socket::Socket;
 
 mod config;
-mod font;
 mod image;
 mod rect;
 mod scheme;
 mod socket;
+mod theme;
 mod window;
 
 fn event_loop(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, socket: Arc<Socket>){
@@ -159,7 +158,7 @@ fn main() {
                     println!("orbital: found display {}x{}", width, height);
 
                     let display_ptr = unsafe { syscall::fmap(display.as_raw_fd(), 0, (width * height * 4) as usize).unwrap() };
-                    let display_slice = unsafe { slice::from_raw_parts_mut(display_ptr as *mut u32, (width * height) as usize) };
+                    let display_slice = unsafe { slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize) };
                     println!("orbital: mapped display to {:X}", display_ptr);
 
                     let config = Config::from_path("/etc/orbital.conf");
