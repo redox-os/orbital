@@ -17,18 +17,6 @@ pub unsafe fn fast_copy(dst: *mut u8, src: *const u8, len: usize) {
         : "intel", "volatile");
 }
 
-#[cfg(target_arch = "x86_64")]
-#[inline(always)]
-#[cold]
-pub unsafe fn fast_set32(dst: *mut u32, src: u32, len: usize) {
-    asm!("cld
-        rep stosd"
-        :
-        : "{rdi}"(dst as usize), "{eax}"(src), "{rcx}"(len)
-        : "cc", "memory", "rdi", "rcx"
-        : "intel", "volatile");
-}
-
 pub struct ImageRoiRows<'a> {
     rect: Rect,
     w: i32,
@@ -124,33 +112,6 @@ impl<'a> ImageRoi<'a> {
         for (mut self_row, other_row) in self.rows_mut().zip(other.rows()) {
             let len = cmp::min(self_row.len(), other_row.len());
             unsafe { fast_copy(self_row.as_mut_ptr() as *mut u8, other_row.as_ptr() as *const u8, len * 4); }
-        }
-    }
-
-    pub fn set(&'a mut self, color: Color) {
-        let new = color.data;
-
-        let alpha = (new >> 24) & 0xFF;
-        if alpha >= 255 {
-            for mut self_row in self.rows_mut() {
-                unsafe { fast_set32(self_row.as_mut_ptr() as *mut u32, new, self_row.len()); }
-            }
-        } else if alpha > 0 {
-            let n_r = (((new >> 16) & 0xFF) * alpha) >> 8;
-            let n_g = (((new >> 8) & 0xFF) * alpha) >> 8;
-            let n_b = ((new & 0xFF) * alpha) >> 8;
-
-            let n_alpha = 255 - alpha;
-
-            for mut self_row in self.rows_mut() {
-                for mut old in self_row.iter_mut() {
-                    let o_r = (((old.data >> 16) & 0xFF) * n_alpha) >> 8;
-                    let o_g = (((old.data >> 8) & 0xFF) * n_alpha) >> 8;
-                    let o_b = ((old.data & 0xFF) * n_alpha) >> 8;
-
-                    old.data = ((o_r << 16) | (o_g << 8) | o_b) + ((n_r << 16) | (n_g << 8) | n_b);
-                }
-            }
         }
     }
 }

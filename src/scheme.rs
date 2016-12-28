@@ -1,4 +1,4 @@
-use orbclient::{self, Color, EVENT_KEY, EVENT_MOUSE, Event, FocusEvent, QuitEvent};
+use orbclient::{self, Color, EVENT_KEY, EVENT_MOUSE, Event, FocusEvent, QuitEvent, Renderer};
 use std::collections::{BTreeMap, VecDeque};
 use std::str;
 use syscall::data::Packet;
@@ -95,7 +95,9 @@ impl OrbitalScheme {
 
             if ! rect.is_empty() {
                 //TODO: only clear area not covered by background
-                self.image.roi(&rect).set(Color::rgb(75, 163, 253));
+                self.image.rect(rect.left(), rect.top(),
+                                rect.width() as u32, rect.height() as u32,
+                                Color::rgb(75, 163, 253));
 
                 let background_intersect = rect.intersection(&background_rect);
                 if ! background_intersect.is_empty(){

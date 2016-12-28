@@ -60,13 +60,12 @@ impl Window {
         let title_rect = self.title_rect();
         let title_intersect = rect.intersection(&title_rect);
         if ! title_intersect.is_empty() {
-            if focused {
-                image.roi(&title_intersect).set(BAR_HIGHLIGHT_COLOR);
-            } else {
-                image.roi(&title_intersect).set(BAR_COLOR);
-            }
-
+            let bar_color = if focused { BAR_HIGHLIGHT_COLOR } else { BAR_COLOR };
             let text_color = if focused { TEXT_HIGHLIGHT_COLOR } else { TEXT_COLOR };
+
+            image.rect(title_intersect.left(), title_intersect.top(),
+                       title_intersect.width() as u32, title_intersect.height() as u32,
+                       bar_color);
 
             let mut x = self.x + 2;
             for c in self.title.chars() {
