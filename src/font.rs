@@ -15,7 +15,7 @@ impl Font {
                 let row_data = FONT[font_i + row];
                 let row_i = row * 8;
                 for col in 0..8 {
-                    if (row_data >> (7 - col)) & 1 == 1 {
+                    if (row_data >> (8 - col)) & 1 == 1 {
                         data[row_i + col] = color.data;
                     }
                 }
