@@ -104,9 +104,7 @@ impl OrbitalScheme {
                     self.image.roi(&background_intersect).blit(&self.background.roi(&background_intersect.offset(-background_rect.left(), -background_rect.top())));
                 }
 
-                let mut i = self.order.len();
-                for id in self.order.iter().rev() {
-                    i -= 1;
+                for (i, id) in self.order.iter().rev().enumerate() {
                     if let Some(mut window) = self.windows.get_mut(&id) {
                         window.draw_title(&mut self.image, &rect, i == 0);
                         window.draw(&mut self.image, &rect);

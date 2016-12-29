@@ -236,3 +236,29 @@ impl Image {
         }
     }
 }
+
+impl Renderer for Image {
+    /// Get the width of the image in pixels
+    fn width(&self) -> u32 {
+        self.w as u32
+    }
+
+    /// Get the height of the image in pixels
+    fn height(&self) -> u32 {
+        self.h as u32
+    }
+
+    /// Return a reference to a slice of colors making up the image
+    fn data(&self) -> &[Color] {
+        &self.data[..]
+    }
+
+    /// Return a mutable reference to a slice of colors making up the image
+    fn data_mut(&mut self) -> &mut [Color] {
+        &mut self.data[..]
+    }
+
+    fn sync(&mut self) -> bool {
+        true
+    }
+}

@@ -1,4 +1,4 @@
-use orbclient::{Event, Renderer};
+use orbclient::{Color, Event, Renderer};
 use std::cmp::{min, max};
 use std::collections::VecDeque;
 use std::mem::size_of;
@@ -16,6 +16,7 @@ pub struct Window {
     pub y: i32,
     pub async: bool,
     image: Image,
+    char_image: Image,
     title: String,
     pub events: VecDeque<Event>,
 }
@@ -26,6 +27,7 @@ impl Window {
             x: x,
             y: y,
             image: Image::new(w, h),
+            char_image: Image::new(8, 16),
             title: title,
             async: async,
             events: VecDeque::new()
@@ -73,7 +75,9 @@ impl Window {
                     let image_rect = Rect::new(x, title_rect.top() + 1, 8, 16);
                     let image_intersect = rect.intersection(&image_rect);
                     if ! image_intersect.is_empty() {
-                        image.char(image_rect.left(), image_rect.top(), c, text_color);
+                        self.char_image.set(Color::rgba(0, 0, 0, 0));
+                        self.char_image.char(0, 0, c, text_color);
+                        image.roi(&image_intersect).blend(&self.char_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
                     }
                     x += 8;
                 } else {
@@ -86,7 +90,9 @@ impl Window {
                 let image_rect = Rect::new(x, title_rect.top() + 1, 8, 16);
                 let image_intersect = rect.intersection(&image_rect);
                 if ! image_intersect.is_empty() {
-                    image.char(image_rect.left(), image_rect.top(), 'X', text_color);
+                    self.char_image.set(Color::rgba(0, 0, 0, 0));
+                    self.char_image.char(0, 0, 'X', text_color);
+                    image.roi(&image_intersect).blend(&self.char_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
                 }
             }
         }
