@@ -161,7 +161,7 @@ fn main() {
                     let display_slice = unsafe { slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize) };
                     println!("orbital: mapped display to {:X}", display_ptr);
 
-                    let config = Config::from_path("/etc/orbital.conf");
+                    let config = Config::from_path("/ui/orbital.conf");
 
                     let scheme = Arc::new(Mutex::new(OrbitalScheme::new(width, height, display_slice, &config)));
 
