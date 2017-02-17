@@ -17,7 +17,7 @@ pub struct Window {
     pub async: bool,
     image: Image,
     char_image: Image,
-    title: String,
+    pub title: String,
     pub events: VecDeque<Event>,
 }
 
