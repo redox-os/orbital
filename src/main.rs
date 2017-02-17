@@ -4,6 +4,9 @@
 
 extern crate orbclient;
 extern crate orbimage;
+extern crate orbfont;
+#[macro_use]
+extern crate lazy_static;
 extern crate syscall;
 
 use orbclient::{Color, Event};
