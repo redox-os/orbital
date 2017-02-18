@@ -4,6 +4,7 @@
 
 extern crate orbclient;
 extern crate orbimage;
+extern crate orbfont;
 extern crate syscall;
 
 use orbclient::{Color, Event};

@@ -1,4 +1,6 @@
 use orbclient::{self, Color, EVENT_KEY, EVENT_MOUSE, Event, FocusEvent, QuitEvent, Renderer};
+use orbfont;
+
 use std::collections::{BTreeMap, VecDeque};
 use std::str;
 use syscall::data::Packet;
@@ -38,13 +40,15 @@ pub struct OrbitalScheme {
     drag_x: i32,
     drag_y: i32,
     win_key: bool,
+    win_tabbing: bool,
     next_id: isize,
     next_x: i32,
     next_y: i32,
     order: VecDeque<usize>,
     pub windows: BTreeMap<usize, Window>,
     redraws: Vec<Rect>,
-    pub todo: Vec<Packet>
+    pub todo: Vec<Packet>,
+    font: orbfont::Font
 }
 
 impl OrbitalScheme {
@@ -59,13 +63,18 @@ impl OrbitalScheme {
             drag_x: 0,
             drag_y: 0,
             win_key: false,
+            // Is the user currently switching windows with win-tab
+            // Set true when win-tab is pressed, set false when win is released.
+            // While it is true, redraw() calls draw_window_list()
+            win_tabbing: false,
             next_id: 1,
             next_x: 20,
             next_y: 20,
             order: VecDeque::new(),
             windows: BTreeMap::new(),
             redraws: vec![Rect::new(0, 0, width, height)],
-            todo: Vec::new()
+            todo: Vec::new(),
+            font: orbfont::Font::find(None, None, None).unwrap() 
         }
     }
 
@@ -118,6 +127,10 @@ impl OrbitalScheme {
             }
         }
 
+        if self.win_tabbing {
+            self.draw_window_list();
+        }
+
         display.sync().unwrap();
     }
 
@@ -125,7 +138,7 @@ impl OrbitalScheme {
         if 1 < self.order.len() {
             //Redraw old focused window
             if let Some(id) = self.order.pop_front() {
-                if let Some(mut window) = self.windows.get_mut(&id){
+                if let Some(mut window) = self.windows.get_mut(&id) {
                     schedule(&mut self.redraws, window.title_rect());
                     schedule(&mut self.redraws, window.rect());
                     window.event(FocusEvent {
@@ -147,10 +160,42 @@ impl OrbitalScheme {
         }
     }
 
+    /// Draws a list of currently open windows in the middle of the screen
+    fn draw_window_list(&mut self) {
+        use orbfont;
+        let mut rendered_text: Vec<orbfont::Text> = vec![];
+        for id in self.order.iter() {
+            if let Some(window) = self.windows.get(id) {
+                if window.title.is_empty() {
+                    rendered_text.push(self.font.render(&format!("[unnamed #{}]", id), 12.0));
+                } else {
+                    rendered_text.push(self.font.render(&format!("{}", &window.title), 12.0));
+                }
+            }
+        }
+        
+        let list_h = rendered_text.len() as i32 * 20 + 20;
+        let list_w = 400;
+        let target_rect = Rect::new(self.image.width()/2 - list_w/2, 
+                                    self.image.height()/2 - list_h/2,
+                                    list_w, list_h);
+        // Color copied over from orbtk's window background
+        let mut image = Image::from_color(list_w, list_h, Color::rgb(232, 232, 231));
+        for (i, text) in rendered_text.iter().enumerate() {
+            text.draw(&mut image, 5, i as i32 * 20 + 5, Color::rgb(0, 0, 0));
+        }
+        self.image.roi(&target_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
+        schedule(&mut self.redraws, target_rect);
+    }
+
     pub fn event(&mut self, event: Event){
         if event.code == EVENT_KEY {
-            if event.b == 0x5B {
+            if event.b == 0x38 {
                 self.win_key = event.c > 0;
+                // If the win key was released, stop drawing the win-tab window switcher
+                if !self.win_key {
+                    self.win_tabbing = false;
+                } 
             } else if self.win_key {
                 match event.b as u8 {
                     orbclient::K_ESC => if event.c > 0 {
@@ -161,6 +206,8 @@ impl OrbitalScheme {
                         }
                     },
                     orbclient::K_TAB => if event.c > 0 {
+                        // Start drawing the window switcher. It's drawn by redraw()
+                        self.win_tabbing = true;
                         self.win_tab();
                     },
                     _ => if event.c > 0 {
