@@ -13,10 +13,6 @@ use rect::Rect;
 use socket::Socket;
 use window::Window;
 
-lazy_static! {
-    static ref FONT: orbfont::Font = orbfont::Font::find(None, None, None).unwrap();
-}
-
 fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
     let mut push = true;
     for mut rect in redraws.iter_mut() {
@@ -51,7 +47,8 @@ pub struct OrbitalScheme {
     order: VecDeque<usize>,
     pub windows: BTreeMap<usize, Window>,
     redraws: Vec<Rect>,
-    pub todo: Vec<Packet>
+    pub todo: Vec<Packet>,
+    font: orbfont::Font
 }
 
 impl OrbitalScheme {
@@ -76,7 +73,8 @@ impl OrbitalScheme {
             order: VecDeque::new(),
             windows: BTreeMap::new(),
             redraws: vec![Rect::new(0, 0, width, height)],
-            todo: Vec::new()
+            todo: Vec::new(),
+            font: orbfont::Font::find(None, None, None).unwrap() 
         }
     }
 
@@ -169,9 +167,9 @@ impl OrbitalScheme {
         for id in self.order.iter() {
             if let Some(window) = self.windows.get(id) {
                 if window.title.is_empty() {
-                    rendered_text.push(FONT.render(&format!("[unnamed #{}]", id), 12.0));
+                    rendered_text.push(self.font.render(&format!("[unnamed #{}]", id), 12.0));
                 } else {
-                    rendered_text.push(FONT.render(&format!("{}", &window.title), 12.0));
+                    rendered_text.push(self.font.render(&format!("{}", &window.title), 12.0));
                 }
             }
         }
@@ -192,7 +190,7 @@ impl OrbitalScheme {
 
     pub fn event(&mut self, event: Event){
         if event.code == EVENT_KEY {
-            if event.b == 0x5B {
+            if event.b == 0x38 {
                 self.win_key = event.c > 0;
                 // If the win key was released, stop drawing the win-tab window switcher
                 if !self.win_key {
