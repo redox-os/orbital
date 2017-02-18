@@ -11,6 +11,7 @@ use config::Config;
 use image::{Image, ImageRef};
 use rect::Rect;
 use socket::Socket;
+use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 use window::Window;
 
 fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
@@ -74,7 +75,7 @@ impl OrbitalScheme {
             windows: BTreeMap::new(),
             redraws: vec![Rect::new(0, 0, width, height)],
             todo: Vec::new(),
-            font: orbfont::Font::find(None, None, None).unwrap() 
+            font: orbfont::Font::find(None, None, None).unwrap()
         }
     }
 
@@ -113,7 +114,7 @@ impl OrbitalScheme {
                     self.image.roi(&background_intersect).blit(&self.background.roi(&background_intersect.offset(-background_rect.left(), -background_rect.top())));
                 }
 
-                for (i, id) in self.order.iter().rev().enumerate() {
+                for (i, id) in self.order.iter().enumerate().rev() {
                     if let Some(mut window) = self.windows.get_mut(&id) {
                         window.draw_title(&mut self.image, &rect, i == 0);
                         window.draw(&mut self.image, &rect);
@@ -135,7 +136,7 @@ impl OrbitalScheme {
     }
 
     fn win_tab(&mut self) {
-        if 1 < self.order.len() {
+        if self.order.len() > 1 {
             //Redraw old focused window
             if let Some(id) = self.order.pop_front() {
                 if let Some(mut window) = self.windows.get_mut(&id) {
@@ -167,22 +168,27 @@ impl OrbitalScheme {
         for id in self.order.iter() {
             if let Some(window) = self.windows.get(id) {
                 if window.title.is_empty() {
-                    rendered_text.push(self.font.render(&format!("[unnamed #{}]", id), 12.0));
+                    rendered_text.push(self.font.render(&format!("[unnamed #{}]", id), 16.0));
                 } else {
-                    rendered_text.push(self.font.render(&format!("{}", &window.title), 12.0));
+                    rendered_text.push(self.font.render(&format!("{}", &window.title), 16.0));
                 }
             }
         }
-        
-        let list_h = rendered_text.len() as i32 * 20 + 20;
+
+        let list_h = rendered_text.len() as i32 * 20 + 4;
         let list_w = 400;
-        let target_rect = Rect::new(self.image.width()/2 - list_w/2, 
+        let target_rect = Rect::new(self.image.width()/2 - list_w/2,
                                     self.image.height()/2 - list_h/2,
                                     list_w, list_h);
         // Color copied over from orbtk's window background
-        let mut image = Image::from_color(list_w, list_h, Color::rgb(232, 232, 231));
+        let mut image = Image::from_color(list_w, list_h, BAR_COLOR);
         for (i, text) in rendered_text.iter().enumerate() {
-            text.draw(&mut image, 5, i as i32 * 20 + 5, Color::rgb(0, 0, 0));
+            if i == 0 {
+                image.rect(0, i as i32 * 20 + 2, list_w as u32, 20, BAR_HIGHLIGHT_COLOR);
+                text.draw(&mut image, 4, i as i32 * 20 + 4, TEXT_HIGHLIGHT_COLOR);
+            } else {
+                text.draw(&mut image, 4, i as i32 * 20 + 4, TEXT_COLOR);
+            }
         }
         self.image.roi(&target_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
         schedule(&mut self.redraws, target_rect);
@@ -195,7 +201,7 @@ impl OrbitalScheme {
                 // If the win key was released, stop drawing the win-tab window switcher
                 if !self.win_key {
                     self.win_tabbing = false;
-                } 
+                }
             } else if self.win_key {
                 match event.b as u8 {
                     orbclient::K_ESC => if event.c > 0 {
