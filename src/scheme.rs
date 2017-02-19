@@ -11,7 +11,7 @@ use config::Config;
 use image::{Image, ImageRef};
 use rect::Rect;
 use socket::Socket;
-use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
+use theme::{BACKGROUND_COLOR, BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 use window::Window;
 
 fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
@@ -107,7 +107,7 @@ impl OrbitalScheme {
                 //TODO: only clear area not covered by background
                 self.image.rect(rect.left(), rect.top(),
                                 rect.width() as u32, rect.height() as u32,
-                                Color::rgb(75, 163, 253));
+                                BACKGROUND_COLOR);
 
                 let background_intersect = rect.intersection(&background_rect);
                 if ! background_intersect.is_empty(){
