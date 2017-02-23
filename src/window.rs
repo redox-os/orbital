@@ -1,4 +1,5 @@
-use orbclient::{Color, Event, Renderer};
+use orbclient::{Event, Renderer};
+use orbfont::Font;
 use std::cmp::{min, max};
 use std::collections::VecDeque;
 use std::mem::size_of;
@@ -16,18 +17,28 @@ pub struct Window {
     pub y: i32,
     pub async: bool,
     image: Image,
-    char_image: Image,
+    title_image: Image,
+    title_image_unfocused: Image,
     pub title: String,
     pub events: VecDeque<Event>,
 }
 
 impl Window {
-    pub fn new(x: i32, y: i32, w: i32, h: i32, title: String, async: bool) -> Window {
+    pub fn new(x: i32, y: i32, w: i32, h: i32, title: String, async: bool, font: &Font) -> Window {
+        let title_render = font.render(&title, 16.0);
+
+        let mut title_image = Image::from_color(title_render.width() as i32, title_render.height() as i32, BAR_HIGHLIGHT_COLOR);
+        title_render.draw(&mut title_image, 0, 0, TEXT_HIGHLIGHT_COLOR);
+
+        let mut title_image_unfocused = Image::from_color(title_render.width() as i32, title_render.height() as i32, BAR_COLOR);
+        title_render.draw(&mut title_image_unfocused, 0, 0, TEXT_COLOR);
+
         Window {
             x: x,
             y: y,
             image: Image::new(w, h),
-            char_image: Image::new(8, 16),
+            title_image: title_image,
+            title_image_unfocused: title_image_unfocused,
             title: title,
             async: async,
             events: VecDeque::new()
@@ -50,49 +61,40 @@ impl Window {
         if self.title.is_empty() {
             Rect::default()
         } else {
-            Rect::new(self.x, self.y - 18, self.width(), 18)
+            Rect::new(self.x, self.y - 28, self.width(), 28)
         }
     }
 
     pub fn exit_contains(&self, x: i32, y: i32) -> bool {
-        ! self.title.is_empty() && x >= max(self.x, self.x + self.width() - 10)  && y >= self.y - 18 && x < self.x + self.width() && y < self.y
+        ! self.title.is_empty() && x >= max(self.x + 6, self.x + self.width() - 18)  && y >= self.y - 28 && x < self.x + self.width() && y < self.y
     }
 
-    pub fn draw_title(&mut self, image: &mut ImageRef, rect: &Rect, focused: bool) {
+    pub fn draw_title(&mut self, image: &mut ImageRef, rect: &Rect, focused: bool, window_close: &mut Image) {
         let title_rect = self.title_rect();
         let title_intersect = rect.intersection(&title_rect);
         if ! title_intersect.is_empty() {
             let bar_color = if focused { BAR_HIGHLIGHT_COLOR } else { BAR_COLOR };
-            let text_color = if focused { TEXT_HIGHLIGHT_COLOR } else { TEXT_COLOR };
 
             image.rect(title_intersect.left(), title_intersect.top(),
                        title_intersect.width() as u32, title_intersect.height() as u32,
                        bar_color);
 
-            let mut x = self.x + 2;
-            for c in self.title.chars() {
-                if x < max(self.x + 2, self.x + self.width() - 10) {
-                    let image_rect = Rect::new(x, title_rect.top() + 1, 8, 16);
-                    let image_intersect = rect.intersection(&image_rect);
-                    if ! image_intersect.is_empty() {
-                        self.char_image.set(Color::rgba(0, 0, 0, 0));
-                        self.char_image.char(0, 0, c, text_color);
-                        image.roi(&image_intersect).blend(&self.char_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
-                    }
-                    x += 8;
-                } else {
-                    break;
+            let mut x = self.x + 6;
+            if x < max(self.x + 2, self.x + self.width() - 18) {
+                let mut title_image = if focused { &mut self.title_image } else { &mut self.title_image_unfocused };
+                let image_rect = Rect::new(x, title_rect.top() + 6, title_image.width(), title_image.height());
+                let image_intersect = rect.intersection(&image_rect);
+                if ! image_intersect.is_empty() {
+                    image.roi(&image_intersect).blend(&title_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
                 }
             }
 
-            x = max(self.x + 2, self.x + self.width() - 10);
-            if x + 10 <= self.x + self.width() {
-                let image_rect = Rect::new(x, title_rect.top() + 1, 8, 16);
+            x = max(self.x + 6, self.x + self.width() - 18);
+            if x + 18 <= self.x + self.width() {
+                let image_rect = Rect::new(x, title_rect.top() + 7, window_close.width(), window_close.height());
                 let image_intersect = rect.intersection(&image_rect);
                 if ! image_intersect.is_empty() {
-                    self.char_image.set(Color::rgba(0, 0, 0, 0));
-                    self.char_image.char(0, 0, 'X', text_color);
-                    image.roi(&image_intersect).blend(&self.char_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+                    image.roi(&image_intersect).blend(&window_close.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
                 }
             }
         }

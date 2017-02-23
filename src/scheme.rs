@@ -35,6 +35,8 @@ pub struct OrbitalScheme {
     image: ImageRef<'static>,
     background: Image,
     cursor: Image,
+    window_close: Image,
+    window_close_unfocused: Image,
     cursor_x: i32,
     cursor_y: i32,
     dragging: bool,
@@ -58,6 +60,8 @@ impl OrbitalScheme {
             image: ImageRef::from_data(width, height, data),
             background: Image::from_path(&config.background),
             cursor: Image::from_path(&config.cursor),
+            window_close: Image::from_path(&config.window_close),
+            window_close_unfocused: Image::from_path(&config.window_close_unfocused),
             cursor_x: 0,
             cursor_y: 0,
             dragging: false,
@@ -69,8 +73,8 @@ impl OrbitalScheme {
             // While it is true, redraw() calls draw_window_list()
             win_tabbing: false,
             next_id: 1,
-            next_x: 20,
-            next_y: 20,
+            next_x: 4,
+            next_y: 32,
             order: VecDeque::new(),
             windows: BTreeMap::new(),
             redraws: vec![Rect::new(0, 0, width, height)],
@@ -116,7 +120,11 @@ impl OrbitalScheme {
 
                 for (i, id) in self.order.iter().enumerate().rev() {
                     if let Some(mut window) = self.windows.get_mut(&id) {
-                        window.draw_title(&mut self.image, &rect, i == 0);
+                        window.draw_title(&mut self.image, &rect, i == 0, if i == 0 {
+                            &mut self.window_close
+                        } else {
+                            &mut self.window_close_unfocused
+                        });
                         window.draw(&mut self.image, &rect);
                     }
                 }
@@ -370,7 +378,7 @@ impl SchemeMut for OrbitalScheme {
             }
         }
 
-        let window = Window::new(x, y, width, height, title, async);
+        let window = Window::new(x, y, width, height, title, async, &self.font);
         schedule(&mut self.redraws, window.title_rect());
         schedule(&mut self.redraws, window.rect());
         self.order.push_front(id);
