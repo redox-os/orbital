@@ -1,8 +1,9 @@
 use orbclient::{self, Color, EVENT_KEY, EVENT_MOUSE, Event, FocusEvent, QuitEvent, Renderer};
 use orbfont;
+use resize;
 
 use std::collections::{BTreeMap, VecDeque};
-use std::str;
+use std::{slice, str};
 use syscall::data::Packet;
 use syscall::error::{Error, Result, EBADF, EINVAL};
 use syscall::scheme::SchemeMut;
@@ -29,6 +30,88 @@ fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
     if push {
         redraws.push(request);
     }
+}
+
+enum ResizeMode {
+    /// Do not resize the image, just center it
+    Center,
+    /// Resize the image to the display size
+    Fill,
+    /// Resize the image - keeping its aspect ratio, and fit it to the display with blank space
+    Scale,
+    /// Resize the image - keeping its aspect ratio, and crop to remove all blank space
+    Zoom,
+}
+
+impl ResizeMode {
+    fn from_str(string: &str) -> ResizeMode {
+        match string {
+            "fill" => ResizeMode::Fill,
+            "scale" => ResizeMode::Scale,
+            "zoom" => ResizeMode::Zoom,
+            _ => ResizeMode::Center
+        }
+    }
+}
+
+fn resize_image(image: Image, mode: ResizeMode, display_width: i32, display_height: i32) -> Image {
+    let (width, height) = match mode {
+        ResizeMode::Center => {
+            return image;
+        },
+        ResizeMode::Fill => {
+            (display_width, display_height)
+        },
+        ResizeMode::Scale => {
+            let d_w = display_width as f64;
+            let d_h = display_height as f64;
+            let i_w = image.width() as f64;
+            let i_h = image.height() as f64;
+
+            let scale = if d_w / d_h > i_w / i_h {
+                d_h / i_h
+            } else {
+                d_w / i_w
+            };
+
+            ((i_w * scale) as i32, (i_h * scale) as i32)
+        },
+        ResizeMode::Zoom => {
+            let d_w = display_width as f64;
+            let d_h = display_height as f64;
+            let i_w = image.width() as f64;
+            let i_h = image.height() as f64;
+
+            let scale = if d_w / d_h < i_w / i_h {
+                d_h / i_h
+            } else {
+                d_w / i_w
+            };
+
+            ((i_w * scale) as i32, (i_h * scale) as i32)
+        }
+    };
+
+    if width == image.width() && height == image.height() {
+        return image;
+    }
+    
+    let src_color = image.data();
+    let mut dst_color = vec![Color::rgb(0, 0, 0); width as usize * height as usize].into_boxed_slice();
+
+    let src = unsafe {
+        slice::from_raw_parts(src_color.as_ptr() as *const u8, src_color.len() * 4)
+    };
+    let mut dst = unsafe {
+        slice::from_raw_parts_mut(dst_color.as_mut_ptr() as *mut u8, dst_color.len() * 4)
+    };
+
+    let mut resizer = resize::new(image.width() as usize, image.height() as usize,
+                                  width as usize, height as usize,
+                                  resize::Pixel::RGBA, resize::Type::Lanczos3);
+    resizer.resize(&src, &mut dst);
+
+    Image::from_data(width, height, dst_color)
 }
 
 pub struct OrbitalScheme {
@@ -58,7 +141,9 @@ impl OrbitalScheme {
     pub fn new(width: i32, height: i32, data: &'static mut [Color], config: &Config) -> OrbitalScheme {
         OrbitalScheme {
             image: ImageRef::from_data(width, height, data),
-            background: Image::from_path(&config.background),
+            background: resize_image(Image::from_path(&config.background),
+                                     ResizeMode::from_str(&config.background_mode),
+                                     width, height),
             cursor: Image::from_path(&config.cursor),
             window_close: Image::from_path(&config.window_close),
             window_close_unfocused: Image::from_path(&config.window_close_unfocused),

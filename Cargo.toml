@@ -11,4 +11,5 @@ authors = ["Jeremy Soller <jackpot51@gmail.com>"]
 orbclient = "0.2"
 orbimage = "0.1"
 orbfont = "0.1"
+resize = "0.2"
 redox_syscall = "0.1"

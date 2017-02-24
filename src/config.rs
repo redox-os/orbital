@@ -3,6 +3,7 @@ use std::io::Read;
 
 pub struct Config {
     pub background: String,
+    pub background_mode: String,
     pub cursor: String,
     pub window_close: String,
     pub window_close_unfocused: String,
@@ -26,6 +27,7 @@ impl Config {
     pub fn from_str(string: &str) -> Config {
         let mut config = Config {
             background: String::new(),
+            background_mode: String::new(),
             cursor: String::new(),
             window_close: String::new(),
             window_close_unfocused: String::new(),
@@ -35,6 +37,9 @@ impl Config {
             let line = line_original.trim();
             if line.starts_with("background=") {
                 config.background = line[11..].to_string();
+            }
+            if line.starts_with("background_mode=") {
+                config.background_mode = line[16..].to_string();
             }
             if line.starts_with("cursor=") {
                 config.cursor = line[7..].to_string();
