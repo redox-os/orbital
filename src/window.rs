@@ -157,8 +157,8 @@ impl Window {
         let mut new_image = Image::new(w, h);
         let new_rect = Rect::new(0, 0, w, h);
 
-        let self_rect = self.rect();
-        let intersect = self_rect.intersection(&new_rect);
+        let rect = Rect::new(0, 0, self.image.width(), self.image.height());
+        let intersect = new_rect.intersection(&rect);
         if ! intersect.is_empty() {
             self.image.roi(&intersect).blit(&new_image.roi(&intersect));
         }
