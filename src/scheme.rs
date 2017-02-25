@@ -95,7 +95,7 @@ fn resize_image(image: Image, mode: ResizeMode, display_width: i32, display_heig
     if width == image.width() && height == image.height() {
         return image;
     }
-    
+
     let src_color = image.data();
     let mut dst_color = vec![Color::rgb(0, 0, 0); width as usize * height as usize].into_boxed_slice();
 
@@ -164,7 +164,7 @@ impl OrbitalScheme {
             windows: BTreeMap::new(),
             redraws: vec![Rect::new(0, 0, width, height)],
             todo: Vec::new(),
-            font: orbfont::Font::find(None, None, None).unwrap()
+            font: orbfont::Font::find(Some("Sans"), None, None).unwrap()
         }
     }
 
