@@ -197,17 +197,17 @@ impl Image {
         }
     }
 
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Image {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Option<Image> {
         match orbimage::Image::from_path(path) {
             Ok(orb_image) => {
                 let width = orb_image.width();
                 let height = orb_image.height();
                 let data = orb_image.into_data();
-                Image::from_data(width as i32, height as i32, unsafe { mem::transmute(data) })
+                Some(Image::from_data(width as i32, height as i32, unsafe { mem::transmute(data) }))
             },
             Err(err) => {
                 println!("orbital Image::from_path: {}", err);
-                Image::new(0, 0)
+                None
             }
         }
     }

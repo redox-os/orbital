@@ -3,6 +3,7 @@ use orbfont;
 use resize;
 
 use std::collections::{BTreeMap, VecDeque};
+use std::path::Path;
 use std::{slice, str};
 use syscall::data::Packet;
 use syscall::error::{Error, Result, EBADF, EINVAL};
@@ -32,6 +33,7 @@ fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
     }
 }
 
+#[derive(Clone, Copy)]
 enum ResizeMode {
     /// Do not resize the image, just center it
     Center,
@@ -114,12 +116,45 @@ fn resize_image(image: Image, mode: ResizeMode, display_width: i32, display_heig
     Image::from_data(width, height, dst_color)
 }
 
+fn load_backgrounds(configs: &Vec<String>, mode: ResizeMode, display_width: i32, display_height: i32) -> Vec<Image> {
+    let mut paths = Vec::new();
+
+    for config in configs.iter() {
+        let path = Path::new(&config);
+        if path.is_dir() {
+            if let Ok(read_dir) = path.read_dir() {
+                for entry_res in read_dir {
+                    if let Ok(entry) = entry_res {
+                        paths.push(entry.path());
+                    }
+                }
+            }
+        } else {
+            paths.push(path.to_path_buf());
+        }
+    }
+
+    paths.sort();
+
+    let mut backgrounds = Vec::new();
+    for path in paths.iter() {
+        println!("orbital: loading {}", path.display());
+        if let Some(image) = Image::from_path(path) {
+            println!("orbital: resizing {}", path.display());
+            backgrounds.push(resize_image(image, mode, display_width, display_height));
+        }
+    }
+
+    backgrounds
+}
+
 pub struct OrbitalScheme {
     image: ImageRef<'static>,
-    background: Image,
-    cursor: Image,
+    backgrounds: Vec<Image>,
+    background_i: usize,
     window_close: Image,
     window_close_unfocused: Image,
+    cursor: Image,
     cursor_x: i32,
     cursor_y: i32,
     dragging: bool,
@@ -141,12 +176,13 @@ impl OrbitalScheme {
     pub fn new(width: i32, height: i32, data: &'static mut [Color], config: &Config) -> OrbitalScheme {
         OrbitalScheme {
             image: ImageRef::from_data(width, height, data),
-            background: resize_image(Image::from_path(&config.background),
+            backgrounds: load_backgrounds(&config.background,
                                      ResizeMode::from_str(&config.background_mode),
                                      width, height),
-            cursor: Image::from_path(&config.cursor),
-            window_close: Image::from_path(&config.window_close),
-            window_close_unfocused: Image::from_path(&config.window_close_unfocused),
+            background_i: 0,
+            window_close: Image::from_path(&config.window_close).unwrap_or(Image::new(0, 0)),
+            window_close_unfocused: Image::from_path(&config.window_close_unfocused).unwrap_or(Image::new(0, 0)),
+            cursor: Image::from_path(&config.cursor).unwrap_or(Image::new(0, 0)),
             cursor_x: 0,
             cursor_y: 0,
             dragging: false,
@@ -169,11 +205,15 @@ impl OrbitalScheme {
     }
 
     fn background_rect(&self) -> Rect {
-        let w = self.background.width();
-        let h = self.background.height();
-        let x = self.image.width()/2 - w/2;
-        let y = self.image.height()/2 - h/2;
-        Rect::new(x, y, w, h)
+        if let Some(background) = self.backgrounds.get(self.background_i) {
+            let w = background.width();
+            let h = background.height();
+            let x = self.image.width()/2 - w/2;
+            let y = self.image.height()/2 - h/2;
+            Rect::new(x, y, w, h)
+        } else {
+            Rect::default()
+        }
     }
 
     fn cursor_rect(&self) -> Rect {
@@ -200,7 +240,9 @@ impl OrbitalScheme {
 
                 let background_intersect = rect.intersection(&background_rect);
                 if ! background_intersect.is_empty(){
-                    self.image.roi(&background_intersect).blit(&self.background.roi(&background_intersect.offset(-background_rect.left(), -background_rect.top())));
+                    if let Some(mut background) = self.backgrounds.get_mut(self.background_i) {
+                        self.image.roi(&background_intersect).blit(&background.roi(&background_intersect.offset(-background_rect.left(), -background_rect.top())));
+                    }
                 }
 
                 for (i, id) in self.order.iter().enumerate().rev() {
@@ -308,6 +350,19 @@ impl OrbitalScheme {
                         // Start drawing the window switcher. It's drawn by redraw()
                         self.win_tabbing = true;
                         self.win_tab();
+                    },
+                    orbclient::K_BKSP => if event.c > 0 {
+                        // Switch backgrounds
+                        let bg_rect = self.background_rect();
+                        schedule(&mut self.redraws, bg_rect);
+
+                        self.background_i += 1;
+                        if self.background_i >= self.backgrounds.len() {
+                            self.background_i = 0;
+                        }
+
+                        let bg_rect = self.background_rect();
+                        schedule(&mut self.redraws, bg_rect);
                     },
                     _ => if event.c > 0 {
                         println!("WIN+{:X}", event.b);
