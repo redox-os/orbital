@@ -482,8 +482,8 @@ impl SchemeMut for OrbitalScheme {
 
     fn write(&mut self, id: usize, buf: &[u8]) -> Result<usize> {
         if let Some(mut window) = self.windows.get_mut(&id) {
-            schedule(&mut self.redraws, window.rect());
-            window.write(buf)
+            schedule(&mut self.redraws, window.title_rect());
+            window.write(buf, &self.font)
         } else {
             Err(Error::new(EBADF))
         }
@@ -498,7 +498,7 @@ impl SchemeMut for OrbitalScheme {
     }
 
     fn fmap(&mut self, id: usize, offset: usize, size: usize) -> Result<usize> {
-        if let Some(window) = self.windows.get(&id) {
+        if let Some(mut window) = self.windows.get_mut(&id) {
             window.map(offset, size)
         } else {
             Err(Error::new(EBADF))

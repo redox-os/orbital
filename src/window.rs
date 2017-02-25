@@ -1,11 +1,11 @@
 use orbclient::{Event, Renderer};
 use orbfont::Font;
-use std::cmp::{min, max};
+use std::cmp::max;
 use std::collections::VecDeque;
 use std::mem::size_of;
-use std::{ptr, slice};
+use std::{ptr, str};
 
-use image::{fast_copy, Image, ImageRef};
+use image::{Image, ImageRef};
 use rect::Rect;
 
 use syscall::error::{Error, Result, EINVAL};
@@ -25,24 +25,20 @@ pub struct Window {
 
 impl Window {
     pub fn new(x: i32, y: i32, w: i32, h: i32, title: String, async: bool, font: &Font) -> Window {
-        let title_render = font.render(&title, 16.0);
-
-        let mut title_image = Image::from_color(title_render.width() as i32, title_render.height() as i32, BAR_HIGHLIGHT_COLOR);
-        title_render.draw(&mut title_image, 0, 0, TEXT_HIGHLIGHT_COLOR);
-
-        let mut title_image_unfocused = Image::from_color(title_render.width() as i32, title_render.height() as i32, BAR_COLOR);
-        title_render.draw(&mut title_image_unfocused, 0, 0, TEXT_COLOR);
-
-        Window {
+        let mut window = Window {
             x: x,
             y: y,
             image: Image::new(w, h),
-            title_image: title_image,
-            title_image_unfocused: title_image_unfocused,
+            title_image: Image::new(0, 0),
+            title_image_unfocused: Image::new(0, 0),
             title: title,
             async: async,
             events: VecDeque::new()
-        }
+        };
+
+        window.render_title(font);
+
+        window
     }
 
     pub fn width(&self) -> i32 {
@@ -112,9 +108,9 @@ impl Window {
         self.events.push_back(event);
     }
 
-    pub fn map(&self, offset: usize, size: usize) -> Result<usize> {
+    pub fn map(&mut self, offset: usize, size: usize) -> Result<usize> {
         if offset + size <= self.image.data().len() * 4 {
-            Ok(self.image.data().as_ptr() as usize + offset)
+            Ok(self.image.data_mut().as_mut_ptr() as usize + offset)
         } else {
             Err(Error::new(EINVAL))
         }
@@ -137,16 +133,15 @@ impl Window {
         }
     }
 
-    pub fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        let old = self.image.data_mut();
-        let new = unsafe { slice::from_raw_parts(buf.as_ptr() as *const u32, buf.len() / 4) };
+    pub fn write(&mut self, buf: &[u8], font: &Font) -> Result<usize> {
+        if let Ok(title) = str::from_utf8(buf) {
+            self.title = title.to_string();
+            self.render_title(font);
 
-        let len = min(old.len(), new.len());
-        unsafe {
-            fast_copy(old.as_mut_ptr() as *mut u8, new.as_ptr() as *const u8, len * 4);
+            Ok(title.len())
+        } else {
+            Err(Error::new(EINVAL))
         }
-
-        Ok(len)
     }
 
     pub fn path(&self, buf: &mut [u8]) -> Result<usize> {
@@ -158,5 +153,15 @@ impl Window {
             i += 1;
         }
         Ok(i)
+    }
+
+    fn render_title(&mut self, font: &Font) {
+        let title_render = font.render(&self.title, 16.0);
+
+        self.title_image = Image::from_color(title_render.width() as i32, title_render.height() as i32, BAR_HIGHLIGHT_COLOR);
+        title_render.draw(&mut self.title_image, 0, 0, TEXT_HIGHLIGHT_COLOR);
+
+        self.title_image_unfocused = Image::from_color(title_render.width() as i32, title_render.height() as i32, BAR_COLOR);
+        title_render.draw(&mut self.title_image_unfocused, 0, 0, TEXT_COLOR);
     }
 }
