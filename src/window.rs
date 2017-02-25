@@ -1,6 +1,6 @@
 use orbclient::{Event, Renderer};
 use orbfont::Font;
-use std::cmp::max;
+use std::cmp::{min, max};
 use std::collections::VecDeque;
 use std::mem::size_of;
 use std::{ptr, str};
@@ -69,16 +69,15 @@ impl Window {
         let title_rect = self.title_rect();
         let title_intersect = rect.intersection(&title_rect);
         if ! title_intersect.is_empty() {
-            let bar_color = if focused { BAR_HIGHLIGHT_COLOR } else { BAR_COLOR };
-
             image.rect(title_intersect.left(), title_intersect.top(),
                        title_intersect.width() as u32, title_intersect.height() as u32,
-                       bar_color);
+                       if focused { BAR_HIGHLIGHT_COLOR } else { BAR_COLOR });
 
             let mut x = self.x + 6;
-            if x < max(self.x + 2, self.x + self.width() - 18) {
+            let w = max(self.x + 6, self.x + self.width() - 18) - x;
+            if w > 0 {
                 let mut title_image = if focused { &mut self.title_image } else { &mut self.title_image_unfocused };
-                let image_rect = Rect::new(x, title_rect.top() + 6, title_image.width(), title_image.height());
+                let image_rect = Rect::new(x, title_rect.top() + 6, min(w, title_image.width()), title_image.height());
                 let image_intersect = rect.intersection(&image_rect);
                 if ! image_intersect.is_empty() {
                     image.roi(&image_intersect).blend(&title_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
