@@ -537,8 +537,51 @@ impl SchemeMut for OrbitalScheme {
 
     fn write(&mut self, id: usize, buf: &[u8]) -> Result<usize> {
         if let Some(mut window) = self.windows.get_mut(&id) {
-            schedule(&mut self.redraws, window.title_rect());
-            window.write(buf, &self.font)
+            if let Ok(msg) = str::from_utf8(buf) {
+                let mut parts = msg.split(',');
+                match parts.next() {
+                    Some("P") => {
+                        schedule(&mut self.redraws, window.title_rect());
+                        schedule(&mut self.redraws, window.rect());
+
+                        let x = parts.next().unwrap_or("").parse::<i32>().unwrap_or(window.x);
+                        let y = parts.next().unwrap_or("").parse::<i32>().unwrap_or(window.y);
+
+                        window.x = x;
+                        window.y = y;
+
+                        schedule(&mut self.redraws, window.title_rect());
+                        schedule(&mut self.redraws, window.rect());
+
+                        Ok(buf.len())
+                    },
+                    Some("S") => {
+                        schedule(&mut self.redraws, window.title_rect());
+                        schedule(&mut self.redraws, window.rect());
+
+                        let w = parts.next().unwrap_or("").parse::<i32>().unwrap_or(window.width());
+                        let h = parts.next().unwrap_or("").parse::<i32>().unwrap_or(window.height());
+
+                        window.set_size(w, h);
+
+                        schedule(&mut self.redraws, window.title_rect());
+                        schedule(&mut self.redraws, window.rect());
+
+                        Ok(buf.len())
+                    },
+                    Some("T") => {
+                        window.title = parts.next().unwrap_or("").to_string();
+                        window.render_title(&self.font);
+
+                        schedule(&mut self.redraws, window.title_rect());
+
+                        Ok(buf.len())
+                    },
+                    _ => Err(Error::new(EINVAL))
+                }
+            } else {
+                Err(Error::new(EINVAL))
+            }
         } else {
             Err(Error::new(EBADF))
         }

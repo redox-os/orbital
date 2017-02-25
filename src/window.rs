@@ -132,17 +132,6 @@ impl Window {
         }
     }
 
-    pub fn write(&mut self, buf: &[u8], font: &Font) -> Result<usize> {
-        if let Ok(title) = str::from_utf8(buf) {
-            self.title = title.to_string();
-            self.render_title(font);
-
-            Ok(title.len())
-        } else {
-            Err(Error::new(EINVAL))
-        }
-    }
-
     pub fn path(&self, buf: &mut [u8]) -> Result<usize> {
         let mut i = 0;
         let path_str = format!("orbital:{}/{}/{}/{}/{}/{}", if self.async { "a" } else { "" }, self.x, self.y, self.width(), self.height(), self.title);
@@ -154,7 +143,7 @@ impl Window {
         Ok(i)
     }
 
-    fn render_title(&mut self, font: &Font) {
+    pub fn render_title(&mut self, font: &Font) {
         let title_render = font.render(&self.title, 16.0);
 
         self.title_image = Image::from_color(title_render.width() as i32, title_render.height() as i32, BAR_HIGHLIGHT_COLOR);
@@ -162,5 +151,18 @@ impl Window {
 
         self.title_image_unfocused = Image::from_color(title_render.width() as i32, title_render.height() as i32, BAR_COLOR);
         title_render.draw(&mut self.title_image_unfocused, 0, 0, TEXT_COLOR);
+    }
+
+    pub fn set_size(&mut self, w: i32, h: i32) {
+        let mut new_image = Image::new(w, h);
+        let new_rect = Rect::new(0, 0, w, h);
+
+        let self_rect = self.rect();
+        let intersect = self_rect.intersection(&new_rect);
+        if ! intersect.is_empty() {
+            self.image.roi(&intersect).blit(&new_image.roi(&intersect));
+        }
+
+        self.image = new_image;
     }
 }
