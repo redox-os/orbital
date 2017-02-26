@@ -1,8 +1,9 @@
-use orbclient::{self, Color, EVENT_KEY, EVENT_MOUSE, Event, FocusEvent, QuitEvent, Renderer};
+use orbclient::{self, Color, Event, EventOption, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, Renderer};
 use orbfont;
 use resize;
 
 use std::collections::{BTreeMap, VecDeque};
+use std::cmp::max;
 use std::path::Path;
 use std::{slice, str};
 use syscall::data::Packet;
@@ -272,6 +273,9 @@ impl OrbitalScheme {
 
     fn win_tab(&mut self) {
         if self.order.len() > 1 {
+            // Disable dragging
+            self.dragging = false;
+
             //Redraw old focused window
             if let Some(id) = self.order.pop_front() {
                 if let Some(mut window) = self.windows.get_mut(&id) {
@@ -329,75 +333,89 @@ impl OrbitalScheme {
         schedule(&mut self.redraws, target_rect);
     }
 
-    pub fn event(&mut self, event: Event){
-        if event.code == EVENT_KEY {
-            if event.b == 0x38 {
-                self.win_key = event.c > 0;
-                // If the win key was released, stop drawing the win-tab window switcher
-                if !self.win_key {
-                    self.win_tabbing = false;
-                }
-            } else if self.win_key {
-                match event.b as u8 {
-                    orbclient::K_ESC => if event.c > 0 {
-                        if let Some(id) = self.order.front() {
-                            if let Some(mut window) = self.windows.get_mut(&id) {
-                                window.event(QuitEvent.to_event());
+    pub fn event(&mut self, event_union: Event){
+        match event_union.to_option() {
+            EventOption::Key(event) => {
+                if event.scancode == 0x38 {
+                    self.win_key = event.pressed;
+                    // If the win key was released, stop drawing the win-tab window switcher
+                    if !self.win_key {
+                        self.win_tabbing = false;
+                    }
+                } else if self.win_key {
+                    match event.scancode {
+                        orbclient::K_ESC => if event.pressed {
+                            if let Some(id) = self.order.front() {
+                                if let Some(mut window) = self.windows.get_mut(&id) {
+                                    window.event(QuitEvent.to_event());
+                                }
                             }
-                        }
-                    },
-                    orbclient::K_TAB => if event.c > 0 {
-                        // Start drawing the window switcher. It's drawn by redraw()
-                        self.win_tabbing = true;
-                        self.win_tab();
-                    },
-                    orbclient::K_BKSP => if event.c > 0 {
-                        // Switch backgrounds
-                        let bg_rect = self.background_rect();
-                        schedule(&mut self.redraws, bg_rect);
+                        },
+                        orbclient::K_TAB => if event.pressed {
+                            // Start drawing the window switcher. It's drawn by redraw()
+                            self.win_tabbing = true;
+                            self.win_tab();
+                        },
+                        orbclient::K_BKSP => if event.pressed {
+                            // Switch backgrounds
+                            let bg_rect = self.background_rect();
+                            schedule(&mut self.redraws, bg_rect);
 
-                        self.background_i += 1;
-                        if self.background_i >= self.backgrounds.len() {
-                            self.background_i = 0;
-                        }
+                            self.background_i += 1;
+                            if self.background_i >= self.backgrounds.len() {
+                                self.background_i = 0;
+                            }
 
-                        let bg_rect = self.background_rect();
-                        schedule(&mut self.redraws, bg_rect);
-                    },
-                    _ => if event.c > 0 {
-                        println!("WIN+{:X}", event.b);
+                            let bg_rect = self.background_rect();
+                            schedule(&mut self.redraws, bg_rect);
+                        },
+                        _ => if event.pressed {
+                            println!("WIN+{:X}", event.scancode);
+                        }
+                    }
+                } else if let Some(id) = self.order.front() {
+                    if let Some(mut window) = self.windows.get_mut(&id) {
+                        window.event(event_union);
                     }
                 }
-            } else if let Some(id) = self.order.front() {
-                if let Some(mut window) = self.windows.get_mut(&id) {
-                    window.event(event);
+            },
+            EventOption::Mouse(event) => {
+                if event.x != self.cursor_x || event.y != self.cursor_y {
+                    let cursor_rect = self.cursor_rect();
+                    schedule(&mut self.redraws, cursor_rect);
+
+                    self.cursor_x = event.x;
+                    self.cursor_y = event.y;
+
+                    let cursor_rect = self.cursor_rect();
+                    schedule(&mut self.redraws, cursor_rect);
                 }
-            }
-        } else if event.code == EVENT_MOUSE {
-            if event.a as i32 != self.cursor_x || event.b as i32 != self.cursor_y {
-                let cursor_rect = self.cursor_rect();
-                schedule(&mut self.redraws, cursor_rect);
 
-                self.cursor_x = event.a as i32;
-                self.cursor_y = event.b as i32;
+                if self.dragging {
+                    if event.left_button {
+                        if let Some(id) = self.order.front() {
+                            if let Some(mut window) = self.windows.get_mut(&id) {
+                                if self.drag_x != self.cursor_x || self.drag_y != self.cursor_y {
+                                    schedule(&mut self.redraws, window.title_rect());
+                                    schedule(&mut self.redraws, window.rect());
 
-                let cursor_rect = self.cursor_rect();
-                schedule(&mut self.redraws, cursor_rect);
-            }
+                                    window.x += self.cursor_x - self.drag_x;
+                                    window.y += self.cursor_y - self.drag_y;
 
-            if self.dragging {
-                if event.c > 0 {
-                    if let Some(id) = self.order.front() {
-                        if let Some(mut window) = self.windows.get_mut(&id) {
-                            if self.drag_x != self.cursor_x || self.drag_y != self.cursor_y {
-                                schedule(&mut self.redraws, window.title_rect());
-                                schedule(&mut self.redraws, window.rect());
-                                window.x += self.cursor_x - self.drag_x;
-                                window.y += self.cursor_y - self.drag_y;
-                                self.drag_x = self.cursor_x;
-                                self.drag_y = self.cursor_y;
-                                schedule(&mut self.redraws, window.title_rect());
-                                schedule(&mut self.redraws, window.rect());
+                                    let event = MoveEvent {
+                                        x: window.x,
+                                        y: window.y
+                                    }.to_event();
+                                    window.event(event);
+
+                                    self.drag_x = self.cursor_x;
+                                    self.drag_y = self.cursor_y;
+
+                                    schedule(&mut self.redraws, window.title_rect());
+                                    schedule(&mut self.redraws, window.rect());
+                                }
+                            } else {
+                                self.dragging = false;
                             }
                         } else {
                             self.dragging = false;
@@ -406,62 +424,74 @@ impl OrbitalScheme {
                         self.dragging = false;
                     }
                 } else {
-                    self.dragging = false;
-                }
-            } else {
-                let mut focus = 0;
-                let mut i = 0;
-                for id in self.order.iter() {
-                    if let Some(mut window) = self.windows.get_mut(&id) {
-                        if window.rect().contains(event.a as i32, event.b as i32) {
-                            let mut window_event = event;
-                            window_event.a -= window.x as i64;
-                            window_event.b -= window.y as i64;
-                            window.event(window_event);
-                            if event.c > 0 {
-                                focus = i;
-                            }
-                            break;
-                        } else if window.title_rect().contains(event.a as i32, event.b as i32) {
-                            if event.c > 0 {
-                                focus = i;
-                                if window.exit_contains(event.a as i32, event.b as i32) {
-                                    window.event(QuitEvent.to_event());
-                                } else {
-                                    self.dragging = true;
-                                    self.drag_x = self.cursor_x;
-                                    self.drag_y = self.cursor_y;
+                    let mut focus = 0;
+                    let mut i = 0;
+                    for id in self.order.iter() {
+                        if let Some(mut window) = self.windows.get_mut(&id) {
+                            if self.win_key {
+                                if i == 0 && event.left_button {
+                                    let width = max(0, self.cursor_x - window.x);
+                                    let height = max(0, self.cursor_y - window.y);
+
+                                    if width != window.width() || height != window.height() {
+                                        let event = ResizeEvent {
+                                            width: width as u32,
+                                            height: height as u32
+                                        }.to_event();
+                                        window.event(event);
+                                    }
                                 }
+                            } else if window.rect().contains(event.x, event.y) {
+                                let mut window_event = event_union;
+                                window_event.a -= window.x as i64;
+                                window_event.b -= window.y as i64;
+                                window.event(window_event);
+                                if event.left_button || event.middle_button || event.right_button {
+                                    focus = i;
+                                }
+                                break;
+                            } else if window.title_rect().contains(event.x, event.y) {
+                                if event.left_button || event.middle_button || event.right_button  {
+                                    focus = i;
+                                    if window.exit_contains(event.x, event.y) {
+                                        window.event(QuitEvent.to_event());
+                                    } else {
+                                        self.dragging = true;
+                                        self.drag_x = self.cursor_x;
+                                        self.drag_y = self.cursor_y;
+                                    }
+                                }
+                                break;
                             }
-                            break;
+                        }
+                        i += 1;
+                    }
+                    if focus > 0 {
+                        //Redraw old focused window
+                        if let Some(id) = self.order.front() {
+                            if let Some(mut window) = self.windows.get_mut(&id){
+                                schedule(&mut self.redraws, window.title_rect());
+                                schedule(&mut self.redraws, window.rect());
+                                window.event(FocusEvent {
+                                    focused: false
+                                }.to_event());
+                            }
+                        }
+                        //Redraw new focused window
+                        if let Some(id) = self.order.remove(focus) {
+                            if let Some(mut window) = self.windows.get_mut(&id){
+                                schedule(&mut self.redraws, window.title_rect());
+                                schedule(&mut self.redraws, window.rect());
+                                window.event(FocusEvent {
+                                    focused: true
+                                }.to_event());
+                            }
+                            self.order.push_front(id);
                         }
                     }
-                    i += 1;
                 }
-                if focus > 0 {
-                    //Redraw old focused window
-                    if let Some(id) = self.order.front() {
-                        if let Some(mut window) = self.windows.get_mut(&id){
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
-                            window.event(FocusEvent {
-                                focused: false
-                            }.to_event());
-                        }
-                    }
-                    //Redraw new focused window
-                    if let Some(id) = self.order.remove(focus) {
-                        if let Some(mut window) = self.windows.get_mut(&id){
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
-                            window.event(FocusEvent {
-                                focused: true
-                            }.to_event());
-                        }
-                        self.order.push_front(id);
-                    }
-                }
-            }
+            },
+            event => println!("orbital: unexpected event: {:?}", event)
         }
     }
 }

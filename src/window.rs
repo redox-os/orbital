@@ -1,4 +1,4 @@
-use orbclient::{Event, Renderer};
+use orbclient::{Color, Event, Renderer};
 use orbfont::Font;
 use std::cmp::{min, max};
 use std::collections::VecDeque;
@@ -7,19 +7,19 @@ use std::{ptr, str};
 
 use image::{Image, ImageRef};
 use rect::Rect;
+use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 
 use syscall::error::{Error, Result, EINVAL};
 
-use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 
 pub struct Window {
     pub x: i32,
     pub y: i32,
     pub async: bool,
+    pub title: String,
     image: Image,
     title_image: Image,
     title_image_unfocused: Image,
-    pub title: String,
     pub events: VecDeque<Event>,
 }
 
@@ -28,11 +28,11 @@ impl Window {
         let mut window = Window {
             x: x,
             y: y,
+            async: async,
+            title: title,
             image: Image::new(w, h),
             title_image: Image::new(0, 0),
             title_image_unfocused: Image::new(0, 0),
-            title: title,
-            async: async,
             events: VecDeque::new()
         };
 
@@ -154,13 +154,13 @@ impl Window {
     }
 
     pub fn set_size(&mut self, w: i32, h: i32) {
-        let mut new_image = Image::new(w, h);
+        let mut new_image = Image::from_color(w, h, Color::rgba(0, 0, 0, 0));
         let new_rect = Rect::new(0, 0, w, h);
 
         let rect = Rect::new(0, 0, self.image.width(), self.image.height());
         let intersect = new_rect.intersection(&rect);
         if ! intersect.is_empty() {
-            self.image.roi(&intersect).blit(&new_image.roi(&intersect));
+            new_image.roi(&intersect).blit(&self.image.roi(&intersect));
         }
 
         self.image = new_image;
