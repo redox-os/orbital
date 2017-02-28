@@ -544,6 +544,13 @@ impl OrbitalScheme {
         match event_union.to_option() {
             EventOption::Key(event) => self.key_event(event),
             EventOption::Mouse(event) => self.mouse_event(event),
+            EventOption::Scroll(_) => {
+                if let Some(id) = self.order.front() {
+                    if let Some(mut window) = self.windows.get_mut(&id) {
+                        window.event(event_union);
+                    }
+                }
+            },
             event => println!("orbital: unexpected event: {:?}", event)
         }
     }
@@ -557,9 +564,12 @@ impl SchemeMut for OrbitalScheme {
         let flags = parts.next().unwrap_or("");
 
         let mut async = false;
+        let mut resizable = false;
         for flag in flags.chars() {
-            if flag == 'a' {
-                async = true;
+            match flag {
+                'a' => async = true,
+                'r' => resizable = true,
+                _ => ()
             }
         }
 
@@ -601,7 +611,7 @@ impl SchemeMut for OrbitalScheme {
             }
         }
 
-        let window = Window::new(x, y, width, height, title, async, &self.font);
+        let window = Window::new(x, y, width, height, title, async, resizable, &self.font);
         schedule(&mut self.redraws, window.title_rect());
         schedule(&mut self.redraws, window.rect());
         self.order.push_front(id);

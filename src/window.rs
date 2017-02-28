@@ -16,6 +16,7 @@ pub struct Window {
     pub x: i32,
     pub y: i32,
     pub async: bool,
+    pub resizable: bool,
     pub title: String,
     image: Image,
     title_image: Image,
@@ -24,11 +25,12 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn new(x: i32, y: i32, w: i32, h: i32, title: String, async: bool, font: &Font) -> Window {
+    pub fn new(x: i32, y: i32, w: i32, h: i32, title: String, async: bool, resizable: bool, font: &Font) -> Window {
         let mut window = Window {
             x: x,
             y: y,
             async: async,
+            resizable: resizable,
             title: title,
             image: Image::new(w, h),
             title_image: Image::new(0, 0),
@@ -62,18 +64,18 @@ impl Window {
     }
 
     pub fn right_border_rect(&self) -> Rect {
-        if self.title.is_empty() {
-            Rect::default()
-        } else {
+        if self.resizable {
             Rect::new(self.x + self.width(), self.y, 8, self.height())
+        } else {
+            Rect::default()
         }
     }
 
     pub fn bottom_border_rect(&self) -> Rect {
-        if self.title.is_empty() {
-            Rect::default()
-        } else {
+        if self.resizable {
             Rect::new(self.x, self.y + self.height(), self.width(), 8)
+        } else {
+            Rect::default()
         }
     }
 
@@ -150,7 +152,12 @@ impl Window {
 
     pub fn path(&self, buf: &mut [u8]) -> Result<usize> {
         let mut i = 0;
-        let path_str = format!("orbital:{}/{}/{}/{}/{}/{}", if self.async { "a" } else { "" }, self.x, self.y, self.width(), self.height(), self.title);
+        let path_str = format!(
+            "orbital:{}{}/{}/{}/{}/{}/{}",
+            if self.async { "a" } else { "" },
+            if self.resizable { "r" } else { "" },
+            self.x, self.y, self.width(), self.height(), self.title
+        );
         let path = path_str.as_bytes();
         while i < buf.len() && i < path.len() {
             buf[i] = path[i];

@@ -8,7 +8,7 @@ readme = "README.md"
 authors = ["Jeremy Soller <jackpot51@gmail.com>"]
 
 [dependencies]
-orbclient = "0.2"
+orbclient = "0.3"
 orbimage = "0.1"
 orbfont = "0.1"
 resize = "0.2"
