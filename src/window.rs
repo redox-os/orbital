@@ -61,6 +61,22 @@ impl Window {
         }
     }
 
+    pub fn right_border_rect(&self) -> Rect {
+        if self.title.is_empty() {
+            Rect::default()
+        } else {
+            Rect::new(self.x + self.width(), self.y, 8, self.height())
+        }
+    }
+
+    pub fn bottom_border_rect(&self) -> Rect {
+        if self.title.is_empty() {
+            Rect::default()
+        } else {
+            Rect::new(self.x, self.y + self.height(), self.width(), 8)
+        }
+    }
+
     pub fn exit_contains(&self, x: i32, y: i32) -> bool {
         ! self.title.is_empty() && x >= max(self.x + 6, self.x + self.width() - 18)  && y >= self.y - 28 && x < self.x + self.width() && y < self.y
     }

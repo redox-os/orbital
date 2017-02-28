@@ -1,9 +1,8 @@
-use orbclient::{self, Color, Event, EventOption, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, Renderer};
+use orbclient::{self, Color, Event, EventOption, KeyEvent, MouseEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, Renderer};
 use orbfont;
 use resize;
 
 use std::collections::{BTreeMap, VecDeque};
-use std::cmp::max;
 use std::path::Path;
 use std::{slice, str};
 use syscall::data::Packet;
@@ -35,7 +34,7 @@ fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
 }
 
 #[derive(Clone, Copy)]
-enum ResizeMode {
+enum BackgroundMode {
     /// Do not resize the image, just center it
     Center,
     /// Resize the image to the display size
@@ -46,26 +45,26 @@ enum ResizeMode {
     Zoom,
 }
 
-impl ResizeMode {
-    fn from_str(string: &str) -> ResizeMode {
+impl BackgroundMode {
+    fn from_str(string: &str) -> BackgroundMode {
         match string {
-            "fill" => ResizeMode::Fill,
-            "scale" => ResizeMode::Scale,
-            "zoom" => ResizeMode::Zoom,
-            _ => ResizeMode::Center
+            "fill" => BackgroundMode::Fill,
+            "scale" => BackgroundMode::Scale,
+            "zoom" => BackgroundMode::Zoom,
+            _ => BackgroundMode::Center
         }
     }
 }
 
-fn resize_image(image: Image, mode: ResizeMode, display_width: i32, display_height: i32) -> Image {
+fn resize_image(image: Image, mode: BackgroundMode, display_width: i32, display_height: i32) -> Image {
     let (width, height) = match mode {
-        ResizeMode::Center => {
+        BackgroundMode::Center => {
             return image;
         },
-        ResizeMode::Fill => {
+        BackgroundMode::Fill => {
             (display_width, display_height)
         },
-        ResizeMode::Scale => {
+        BackgroundMode::Scale => {
             let d_w = display_width as f64;
             let d_h = display_height as f64;
             let i_w = image.width() as f64;
@@ -79,7 +78,7 @@ fn resize_image(image: Image, mode: ResizeMode, display_width: i32, display_heig
 
             ((i_w * scale) as i32, (i_h * scale) as i32)
         },
-        ResizeMode::Zoom => {
+        BackgroundMode::Zoom => {
             let d_w = display_width as f64;
             let d_h = display_height as f64;
             let i_w = image.width() as f64;
@@ -117,7 +116,7 @@ fn resize_image(image: Image, mode: ResizeMode, display_width: i32, display_heig
     Image::from_data(width, height, dst_color)
 }
 
-fn load_backgrounds(configs: &Vec<String>, mode: ResizeMode, display_width: i32, display_height: i32) -> Vec<Image> {
+fn load_backgrounds(configs: &Vec<String>, mode: BackgroundMode, display_width: i32, display_height: i32) -> Vec<Image> {
     let mut paths = Vec::new();
 
     for config in configs.iter() {
@@ -149,6 +148,13 @@ fn load_backgrounds(configs: &Vec<String>, mode: ResizeMode, display_width: i32,
     backgrounds
 }
 
+enum DragMode {
+    None,
+    Title(usize, i32, i32),
+    RightBorder(usize, i32),
+    BottomBorder(usize, i32),
+}
+
 pub struct OrbitalScheme {
     image: ImageRef<'static>,
     backgrounds: Vec<Image>,
@@ -158,9 +164,10 @@ pub struct OrbitalScheme {
     cursor: Image,
     cursor_x: i32,
     cursor_y: i32,
-    dragging: bool,
-    drag_x: i32,
-    drag_y: i32,
+    cursor_left: bool,
+    cursor_middle: bool,
+    cursor_right: bool,
+    dragging: DragMode,
     win_key: bool,
     win_tabbing: bool,
     next_id: isize,
@@ -178,7 +185,7 @@ impl OrbitalScheme {
         OrbitalScheme {
             image: ImageRef::from_data(width, height, data),
             backgrounds: load_backgrounds(&config.background,
-                                     ResizeMode::from_str(&config.background_mode),
+                                     BackgroundMode::from_str(&config.background_mode),
                                      width, height),
             background_i: 0,
             window_close: Image::from_path(&config.window_close).unwrap_or(Image::new(0, 0)),
@@ -186,9 +193,10 @@ impl OrbitalScheme {
             cursor: Image::from_path(&config.cursor).unwrap_or(Image::new(0, 0)),
             cursor_x: 0,
             cursor_y: 0,
-            dragging: false,
-            drag_x: 0,
-            drag_y: 0,
+            cursor_left: false,
+            cursor_middle: false,
+            cursor_right: false,
+            dragging: DragMode::None,
             win_key: false,
             // Is the user currently switching windows with win-tab
             // Set true when win-tab is pressed, set false when win is released.
@@ -274,7 +282,7 @@ impl OrbitalScheme {
     fn win_tab(&mut self) {
         if self.order.len() > 1 {
             // Disable dragging
-            self.dragging = false;
+            self.dragging = DragMode::None;
 
             //Redraw old focused window
             if let Some(id) = self.order.pop_front() {
@@ -333,164 +341,209 @@ impl OrbitalScheme {
         schedule(&mut self.redraws, target_rect);
     }
 
-    pub fn event(&mut self, event_union: Event){
-        match event_union.to_option() {
-            EventOption::Key(event) => {
-                if event.scancode == 0x38 {
-                    self.win_key = event.pressed;
-                    // If the win key was released, stop drawing the win-tab window switcher
-                    if !self.win_key {
-                        self.win_tabbing = false;
-                    }
-                } else if self.win_key {
-                    match event.scancode {
-                        orbclient::K_ESC => if event.pressed {
-                            if let Some(id) = self.order.front() {
-                                if let Some(mut window) = self.windows.get_mut(&id) {
-                                    window.event(QuitEvent.to_event());
-                                }
-                            }
-                        },
-                        orbclient::K_TAB => if event.pressed {
-                            // Start drawing the window switcher. It's drawn by redraw()
-                            self.win_tabbing = true;
-                            self.win_tab();
-                        },
-                        orbclient::K_BKSP => if event.pressed {
-                            // Switch backgrounds
-                            let bg_rect = self.background_rect();
-                            schedule(&mut self.redraws, bg_rect);
-
-                            self.background_i += 1;
-                            if self.background_i >= self.backgrounds.len() {
-                                self.background_i = 0;
-                            }
-
-                            let bg_rect = self.background_rect();
-                            schedule(&mut self.redraws, bg_rect);
-                        },
-                        _ => if event.pressed {
-                            println!("WIN+{:X}", event.scancode);
+    fn key_event(&mut self, event: KeyEvent) {
+        if event.scancode == 0x38 {
+            self.win_key = event.pressed;
+            // If the win key was released, stop drawing the win-tab window switcher
+            if !self.win_key {
+                self.win_tabbing = false;
+            }
+        } else if self.win_key {
+            match event.scancode {
+                orbclient::K_ESC => if event.pressed {
+                    if let Some(id) = self.order.front() {
+                        if let Some(mut window) = self.windows.get_mut(&id) {
+                            window.event(QuitEvent.to_event());
                         }
                     }
-                } else if let Some(id) = self.order.front() {
+                },
+                orbclient::K_TAB => if event.pressed {
+                    // Start drawing the window switcher. It's drawn by redraw()
+                    self.win_tabbing = true;
+                    self.win_tab();
+                },
+                orbclient::K_BKSP => if event.pressed {
+                    // Switch backgrounds
+                    let bg_rect = self.background_rect();
+                    schedule(&mut self.redraws, bg_rect);
+
+                    self.background_i += 1;
+                    if self.background_i >= self.backgrounds.len() {
+                        self.background_i = 0;
+                    }
+
+                    let bg_rect = self.background_rect();
+                    schedule(&mut self.redraws, bg_rect);
+                },
+                _ => if event.pressed {
+                    println!("WIN+{:X}", event.scancode);
+                }
+            }
+        } else if let Some(id) = self.order.front() {
+            if let Some(mut window) = self.windows.get_mut(&id) {
+                window.event(event.to_event());
+            }
+        }
+    }
+
+    fn mouse_event(&mut self, event: MouseEvent) {
+        // Check for focus switch, dragging, and forward mouse events to applications
+        match self.dragging {
+            DragMode::None => {
+                let mut focus = 0;
+                let mut i = 0;
+                for &id in self.order.iter() {
                     if let Some(mut window) = self.windows.get_mut(&id) {
-                        window.event(event_union);
+                        if window.rect().contains(event.x, event.y) {
+                            let mut window_event = event.to_event();
+                            window_event.a -= window.x as i64;
+                            window_event.b -= window.y as i64;
+                            window.event(window_event);
+                            if event.left_button  && ! self.cursor_left
+                            || event.middle_button && ! self.cursor_middle
+                            || event.right_button && ! self.cursor_right {
+                                focus = i;
+                            }
+                            break;
+                        } else if window.title_rect().contains(event.x, event.y) {
+                            if event.left_button && ! self.cursor_left  {
+                                focus = i;
+                                if window.exit_contains(event.x, event.y) {
+                                    window.event(QuitEvent.to_event());
+                                } else {
+                                    self.dragging = DragMode::Title(id, event.x, event.y);
+                                }
+                            }
+                            break;
+                        } else if window.right_border_rect().contains(event.x, event.y) {
+                            //TODO: Change cursor to resize cursor
+                            if event.left_button && ! self.cursor_left  {
+                                focus = i;
+                                self.dragging = DragMode::RightBorder(id, event.x - (window.x + window.width()));
+                            }
+                            break;
+                        } else if window.bottom_border_rect().contains(event.x, event.y) {
+                            //TODO: Change cursor to resize cursor
+                            if event.left_button && ! self.cursor_left  {
+                                focus = i;
+                                self.dragging = DragMode::BottomBorder(id, event.y - (window.y + window.height()));
+                            }
+                            break;
+                        }
+                    }
+                    i += 1;
+                }
+                if focus > 0 {
+                    //Redraw old focused window
+                    if let Some(id) = self.order.front() {
+                        if let Some(mut window) = self.windows.get_mut(&id){
+                            schedule(&mut self.redraws, window.title_rect());
+                            schedule(&mut self.redraws, window.rect());
+                            window.event(FocusEvent {
+                                focused: false
+                            }.to_event());
+                        }
+                    }
+                    //Redraw new focused window
+                    if let Some(id) = self.order.remove(focus) {
+                        if let Some(mut window) = self.windows.get_mut(&id){
+                            schedule(&mut self.redraws, window.title_rect());
+                            schedule(&mut self.redraws, window.rect());
+                            window.event(FocusEvent {
+                                focused: true
+                            }.to_event());
+                        }
+                        self.order.push_front(id);
                     }
                 }
             },
-            EventOption::Mouse(event) => {
-                if event.x != self.cursor_x || event.y != self.cursor_y {
-                    let cursor_rect = self.cursor_rect();
-                    schedule(&mut self.redraws, cursor_rect);
+            DragMode::Title(window_id, drag_x, drag_y) => {
+                if event.left_button {
+                    if let Some(mut window) = self.windows.get_mut(&window_id) {
+                        if drag_x != event.x || drag_y != event.y {
+                            schedule(&mut self.redraws, window.title_rect());
+                            schedule(&mut self.redraws, window.rect());
 
-                    self.cursor_x = event.x;
-                    self.cursor_y = event.y;
+                            window.x += event.x - drag_x;
+                            window.y += event.y - drag_y;
 
-                    let cursor_rect = self.cursor_rect();
-                    schedule(&mut self.redraws, cursor_rect);
-                }
+                            let move_event = MoveEvent {
+                                x: window.x,
+                                y: window.y
+                            }.to_event();
+                            window.event(move_event);
 
-                if self.dragging {
-                    if event.left_button {
-                        if let Some(id) = self.order.front() {
-                            if let Some(mut window) = self.windows.get_mut(&id) {
-                                if self.drag_x != self.cursor_x || self.drag_y != self.cursor_y {
-                                    schedule(&mut self.redraws, window.title_rect());
-                                    schedule(&mut self.redraws, window.rect());
+                            self.dragging = DragMode::Title(window_id, event.x, event.y);
 
-                                    window.x += self.cursor_x - self.drag_x;
-                                    window.y += self.cursor_y - self.drag_y;
-
-                                    let event = MoveEvent {
-                                        x: window.x,
-                                        y: window.y
-                                    }.to_event();
-                                    window.event(event);
-
-                                    self.drag_x = self.cursor_x;
-                                    self.drag_y = self.cursor_y;
-
-                                    schedule(&mut self.redraws, window.title_rect());
-                                    schedule(&mut self.redraws, window.rect());
-                                }
-                            } else {
-                                self.dragging = false;
-                            }
-                        } else {
-                            self.dragging = false;
+                            schedule(&mut self.redraws, window.title_rect());
+                            schedule(&mut self.redraws, window.rect());
                         }
                     } else {
-                        self.dragging = false;
+                        self.dragging = DragMode::None;
                     }
                 } else {
-                    let mut focus = 0;
-                    let mut i = 0;
-                    for id in self.order.iter() {
-                        if let Some(mut window) = self.windows.get_mut(&id) {
-                            if self.win_key {
-                                if i == 0 && event.left_button {
-                                    let width = max(0, self.cursor_x - window.x);
-                                    let height = max(0, self.cursor_y - window.y);
-
-                                    if width != window.width() || height != window.height() {
-                                        let event = ResizeEvent {
-                                            width: width as u32,
-                                            height: height as u32
-                                        }.to_event();
-                                        window.event(event);
-                                    }
-                                }
-                            } else if window.rect().contains(event.x, event.y) {
-                                let mut window_event = event_union;
-                                window_event.a -= window.x as i64;
-                                window_event.b -= window.y as i64;
-                                window.event(window_event);
-                                if event.left_button || event.middle_button || event.right_button {
-                                    focus = i;
-                                }
-                                break;
-                            } else if window.title_rect().contains(event.x, event.y) {
-                                if event.left_button || event.middle_button || event.right_button  {
-                                    focus = i;
-                                    if window.exit_contains(event.x, event.y) {
-                                        window.event(QuitEvent.to_event());
-                                    } else {
-                                        self.dragging = true;
-                                        self.drag_x = self.cursor_x;
-                                        self.drag_y = self.cursor_y;
-                                    }
-                                }
-                                break;
-                            }
-                        }
-                        i += 1;
-                    }
-                    if focus > 0 {
-                        //Redraw old focused window
-                        if let Some(id) = self.order.front() {
-                            if let Some(mut window) = self.windows.get_mut(&id){
-                                schedule(&mut self.redraws, window.title_rect());
-                                schedule(&mut self.redraws, window.rect());
-                                window.event(FocusEvent {
-                                    focused: false
-                                }.to_event());
-                            }
-                        }
-                        //Redraw new focused window
-                        if let Some(id) = self.order.remove(focus) {
-                            if let Some(mut window) = self.windows.get_mut(&id){
-                                schedule(&mut self.redraws, window.title_rect());
-                                schedule(&mut self.redraws, window.rect());
-                                window.event(FocusEvent {
-                                    focused: true
-                                }.to_event());
-                            }
-                            self.order.push_front(id);
-                        }
-                    }
+                    self.dragging = DragMode::None;
                 }
             },
+            DragMode::RightBorder(window_id, off_x) => {
+                if event.left_button {
+                    if let Some(mut window) = self.windows.get_mut(&window_id) {
+                        let w = event.x - off_x - window.x;
+                        if w > 0 && w != window.width()  {
+                            let resize_event = ResizeEvent {
+                                width: w as u32,
+                                height: window.height() as u32
+                            }.to_event();
+                            window.event(resize_event);
+                        }
+                    } else {
+                        self.dragging = DragMode::None;
+                    }
+                } else {
+                    self.dragging = DragMode::None;
+                }
+            },
+            DragMode::BottomBorder(window_id, off_y) => {
+                if event.left_button {
+                    if let Some(mut window) = self.windows.get_mut(&window_id) {
+                        let h = event.y - off_y - window.y;
+                        if h > 0 && h != window.height()  {
+                            let resize_event = ResizeEvent {
+                                width: window.width() as u32,
+                                height: h as u32
+                            }.to_event();
+                            window.event(resize_event);
+                        }
+                    } else {
+                        self.dragging = DragMode::None;
+                    }
+                } else {
+                    self.dragging = DragMode::None;
+                }
+            }
+        }
+
+        // Update saved mouse information
+        if event.x != self.cursor_x || event.y != self.cursor_y {
+            let cursor_rect = self.cursor_rect();
+            schedule(&mut self.redraws, cursor_rect);
+
+            self.cursor_x = event.x;
+            self.cursor_y = event.y;
+
+            let cursor_rect = self.cursor_rect();
+            schedule(&mut self.redraws, cursor_rect);
+        }
+
+        self.cursor_left = event.left_button;
+        self.cursor_middle = event.middle_button;
+        self.cursor_right = event.right_button;
+    }
+
+    pub fn event(&mut self, event_union: Event){
+        match event_union.to_option() {
+            EventOption::Key(event) => self.key_event(event),
+            EventOption::Mouse(event) => self.mouse_event(event),
             event => println!("orbital: unexpected event: {:?}", event)
         }
     }
