@@ -153,6 +153,7 @@ enum DragMode {
     Title(usize, i32, i32),
     RightBorder(usize, i32),
     BottomBorder(usize, i32),
+    BottomRightBorder(usize, i32, i32),
 }
 
 pub struct OrbitalScheme {
@@ -221,7 +222,7 @@ impl OrbitalScheme {
             let y = self.image.height()/2 - h/2;
             Rect::new(x, y, w, h)
         } else {
-            Rect::default()
+            Rect::new(-1, -1, 0, 0)
         }
     }
 
@@ -429,6 +430,13 @@ impl OrbitalScheme {
                                 self.dragging = DragMode::BottomBorder(id, event.y - (window.y + window.height()));
                             }
                             break;
+                        } else if window.bottom_right_border_rect().contains(event.x, event.y) {
+                            //TODO: Change cursor to resize cursor
+                            if event.left_button && ! self.cursor_left  {
+                                focus = i;
+                                self.dragging = DragMode::BottomRightBorder(id, event.x - (window.x + window.width()), event.y - (window.y + window.height()));
+                            }
+                            break;
                         }
                     }
                     i += 1;
@@ -510,6 +518,25 @@ impl OrbitalScheme {
                         if h > 0 && h != window.height()  {
                             let resize_event = ResizeEvent {
                                 width: window.width() as u32,
+                                height: h as u32
+                            }.to_event();
+                            window.event(resize_event);
+                        }
+                    } else {
+                        self.dragging = DragMode::None;
+                    }
+                } else {
+                    self.dragging = DragMode::None;
+                }
+            },
+            DragMode::BottomRightBorder(window_id, off_x, off_y) => {
+                if event.left_button {
+                    if let Some(mut window) = self.windows.get_mut(&window_id) {
+                        let w = event.x - off_x - window.x;
+                        let h = event.y - off_y - window.y;
+                        if w > 0 && h > 0 && w != window.width() && h != window.height()  {
+                            let resize_event = ResizeEvent {
+                                width: w as u32,
                                 height: h as u32
                             }.to_event();
                             window.event(resize_event);

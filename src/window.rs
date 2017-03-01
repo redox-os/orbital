@@ -57,7 +57,7 @@ impl Window {
 
     pub fn title_rect(&self) -> Rect {
         if self.title.is_empty() {
-            Rect::default()
+            Rect::new(-1, -1, 0, 0)
         } else {
             Rect::new(self.x, self.y - 28, self.width(), 28)
         }
@@ -67,7 +67,7 @@ impl Window {
         if self.resizable {
             Rect::new(self.x + self.width(), self.y, 8, self.height())
         } else {
-            Rect::default()
+            Rect::new(-1, -1, 0, 0)
         }
     }
 
@@ -75,7 +75,15 @@ impl Window {
         if self.resizable {
             Rect::new(self.x, self.y + self.height(), self.width(), 8)
         } else {
-            Rect::default()
+            Rect::new(-1, -1, 0, 0)
+        }
+    }
+
+    pub fn bottom_right_border_rect(&self) -> Rect {
+        if self.resizable {
+            Rect::new(self.x + self.width(), self.y + self.height(), 8, 8)
+        } else {
+            Rect::new(-1, -1, 0, 0)
         }
     }
 
