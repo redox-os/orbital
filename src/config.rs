@@ -5,6 +5,9 @@ pub struct Config {
     pub background: Vec<String>,
     pub background_mode: String,
     pub cursor: String,
+    pub bottom_right_corner: String,
+    pub bottom_side: String,
+    pub right_side: String,
     pub window_close: String,
     pub window_close_unfocused: String,
 }
@@ -29,6 +32,9 @@ impl Config {
             background: Vec::new(),
             background_mode: String::new(),
             cursor: String::new(),
+            bottom_right_corner: String::new(),
+            bottom_side: String::new(),
+            right_side: String::new(),
             window_close: String::new(),
             window_close_unfocused: String::new(),
         };
@@ -43,6 +49,15 @@ impl Config {
             }
             if line.starts_with("cursor=") {
                 config.cursor = line[7..].to_string();
+            }
+            if line.starts_with("bottom_right_corner=") {
+                config.bottom_right_corner = line[20..].to_string();
+            }
+            if line.starts_with("bottom_side=") {
+                config.bottom_side = line[12..].to_string();
+            }
+            if line.starts_with("right_side=") {
+                config.right_side = line[11..].to_string();
             }
             if line.starts_with("window_close=") {
                 config.window_close = line[13..].to_string();

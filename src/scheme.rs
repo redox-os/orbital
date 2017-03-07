@@ -148,6 +148,14 @@ fn load_backgrounds(configs: &Vec<String>, mode: BackgroundMode, display_width: 
     backgrounds
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+enum CursorKind {
+    LeftPtr,
+    BottomRightCorner,
+    BottomSide,
+    RightSide,
+}
+
 enum DragMode {
     None,
     Title(usize, i32, i32),
@@ -162,7 +170,8 @@ pub struct OrbitalScheme {
     background_i: usize,
     window_close: Image,
     window_close_unfocused: Image,
-    cursor: Image,
+    cursors: BTreeMap<CursorKind, Image>,
+    cursor_i: CursorKind,
     cursor_x: i32,
     cursor_y: i32,
     cursor_left: bool,
@@ -183,6 +192,12 @@ pub struct OrbitalScheme {
 
 impl OrbitalScheme {
     pub fn new(width: i32, height: i32, data: &'static mut [Color], config: &Config) -> OrbitalScheme {
+        let mut cursors = BTreeMap::new();
+        cursors.insert(CursorKind::LeftPtr, Image::from_path(&config.cursor).unwrap_or(Image::new(0, 0)));
+        cursors.insert(CursorKind::BottomRightCorner, Image::from_path(&config.bottom_right_corner).unwrap_or(Image::new(0, 0)));
+        cursors.insert(CursorKind::BottomSide, Image::from_path(&config.bottom_side).unwrap_or(Image::new(0, 0)));
+        cursors.insert(CursorKind::RightSide, Image::from_path(&config.right_side).unwrap_or(Image::new(0, 0)));
+
         OrbitalScheme {
             image: ImageRef::from_data(width, height, data),
             backgrounds: load_backgrounds(&config.background,
@@ -191,7 +206,8 @@ impl OrbitalScheme {
             background_i: 0,
             window_close: Image::from_path(&config.window_close).unwrap_or(Image::new(0, 0)),
             window_close_unfocused: Image::from_path(&config.window_close_unfocused).unwrap_or(Image::new(0, 0)),
-            cursor: Image::from_path(&config.cursor).unwrap_or(Image::new(0, 0)),
+            cursors: cursors,
+            cursor_i: CursorKind::LeftPtr,
             cursor_x: 0,
             cursor_y: 0,
             cursor_left: false,
@@ -227,7 +243,14 @@ impl OrbitalScheme {
     }
 
     fn cursor_rect(&self) -> Rect {
-        Rect::new(self.cursor_x, self.cursor_y, self.cursor.width(), self.cursor.height())
+        let cursor = &self.cursors[&self.cursor_i];
+        let (off_x, off_y) = match self.cursor_i {
+            CursorKind::LeftPtr => (0, 0),
+            CursorKind::BottomRightCorner => (-cursor.width(), -cursor.height()),
+            CursorKind::BottomSide => (-cursor.width()/2, -cursor.height()),
+            CursorKind::RightSide => (-cursor.width(), -cursor.height()/2),
+        };
+        Rect::new(self.cursor_x + off_x, self.cursor_y + off_y, cursor.width(), cursor.height())
     }
 
     fn screen_rect(&self) -> Rect {
@@ -268,7 +291,9 @@ impl OrbitalScheme {
 
                 let cursor_intersect = rect.intersection(&cursor_rect);
                 if ! cursor_intersect.is_empty() {
-                    self.image.roi(&cursor_intersect).blend(&self.cursor.roi(&cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())));
+                    if let Some(cursor) = self.cursors.get_mut(&self.cursor_i) {
+                        self.image.roi(&cursor_intersect).blend(&cursor.roi(&cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())));
+                    }
                 }
             }
         }
@@ -388,6 +413,8 @@ impl OrbitalScheme {
     }
 
     fn mouse_event(&mut self, event: MouseEvent) {
+        let mut new_cursor = CursorKind::LeftPtr;
+
         // Check for focus switch, dragging, and forward mouse events to applications
         match self.dragging {
             DragMode::None => {
@@ -417,21 +444,21 @@ impl OrbitalScheme {
                             }
                             break;
                         } else if window.right_border_rect().contains(event.x, event.y) {
-                            //TODO: Change cursor to resize cursor
+                            new_cursor = CursorKind::RightSide;
                             if event.left_button && ! self.cursor_left  {
                                 focus = i;
                                 self.dragging = DragMode::RightBorder(id, event.x - (window.x + window.width()));
                             }
                             break;
                         } else if window.bottom_border_rect().contains(event.x, event.y) {
-                            //TODO: Change cursor to resize cursor
+                            new_cursor = CursorKind::BottomSide;
                             if event.left_button && ! self.cursor_left  {
                                 focus = i;
                                 self.dragging = DragMode::BottomBorder(id, event.y - (window.y + window.height()));
                             }
                             break;
                         } else if window.bottom_right_border_rect().contains(event.x, event.y) {
-                            //TODO: Change cursor to resize cursor
+                            new_cursor = CursorKind::BottomRightCorner;
                             if event.left_button && ! self.cursor_left  {
                                 focus = i;
                                 self.dragging = DragMode::BottomRightBorder(id, event.x - (window.x + window.width()), event.y - (window.y + window.height()));
@@ -496,6 +523,7 @@ impl OrbitalScheme {
             DragMode::RightBorder(window_id, off_x) => {
                 if event.left_button {
                     if let Some(mut window) = self.windows.get_mut(&window_id) {
+                        new_cursor = CursorKind::RightSide;
                         let w = event.x - off_x - window.x;
                         if w > 0 && w != window.width()  {
                             let resize_event = ResizeEvent {
@@ -514,6 +542,7 @@ impl OrbitalScheme {
             DragMode::BottomBorder(window_id, off_y) => {
                 if event.left_button {
                     if let Some(mut window) = self.windows.get_mut(&window_id) {
+                        new_cursor = CursorKind::BottomSide;
                         let h = event.y - off_y - window.y;
                         if h > 0 && h != window.height()  {
                             let resize_event = ResizeEvent {
@@ -532,6 +561,7 @@ impl OrbitalScheme {
             DragMode::BottomRightBorder(window_id, off_x, off_y) => {
                 if event.left_button {
                     if let Some(mut window) = self.windows.get_mut(&window_id) {
+                        new_cursor = CursorKind::BottomRightCorner;
                         let w = event.x - off_x - window.x;
                         let h = event.y - off_y - window.y;
                         if w > 0 && h > 0 && w != window.width() && h != window.height()  {
@@ -548,6 +578,16 @@ impl OrbitalScheme {
                     self.dragging = DragMode::None;
                 }
             }
+        }
+
+        if new_cursor != self.cursor_i {
+            let cursor_rect = self.cursor_rect();
+            schedule(&mut self.redraws, cursor_rect);
+
+            self.cursor_i = new_cursor;
+
+            let cursor_rect = self.cursor_rect();
+            schedule(&mut self.redraws, cursor_rect);
         }
 
         // Update saved mouse information
