@@ -87,11 +87,15 @@ impl Window {
         }
     }
 
-    pub fn exit_contains(&self, x: i32, y: i32) -> bool {
+    pub fn max_contains(&self, x: i32, y: i32) -> bool {
+        ! self.title.is_empty() && x >= max(self.x + 6, self.x + self.width() - 36)  && y >= self.y - 28 && x < self.x + self.width() - 18 && y < self.y
+    }
+
+    pub fn close_contains(&self, x: i32, y: i32) -> bool {
         ! self.title.is_empty() && x >= max(self.x + 6, self.x + self.width() - 18)  && y >= self.y - 28 && x < self.x + self.width() && y < self.y
     }
 
-    pub fn draw_title(&mut self, image: &mut ImageRef, rect: &Rect, focused: bool, window_close: &mut Image) {
+    pub fn draw_title(&mut self, image: &mut ImageRef, rect: &Rect, focused: bool, window_max: &mut Image, window_close: &mut Image) {
         let title_rect = self.title_rect();
         let title_intersect = rect.intersection(&title_rect);
         if ! title_intersect.is_empty() {
@@ -107,6 +111,17 @@ impl Window {
                 let image_intersect = rect.intersection(&image_rect);
                 if ! image_intersect.is_empty() {
                     image.roi(&image_intersect).blend(&title_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+                }
+            }
+
+            if self.resizable {
+                x = max(self.x + 6, self.x + self.width() - 36);
+                if x + 36 <= self.x + self.width() {
+                    let image_rect = Rect::new(x, title_rect.top() + 7, window_max.width(), window_max.height());
+                    let image_intersect = rect.intersection(&image_rect);
+                    if ! image_intersect.is_empty() {
+                        image.roi(&image_intersect).blend(&window_max.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+                    }
                 }
             }
 

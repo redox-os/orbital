@@ -168,6 +168,8 @@ pub struct OrbitalScheme {
     image: ImageRef<'static>,
     backgrounds: Vec<Image>,
     background_i: usize,
+    window_max: Image,
+    window_max_unfocused: Image,
     window_close: Image,
     window_close_unfocused: Image,
     cursors: BTreeMap<CursorKind, Image>,
@@ -204,6 +206,8 @@ impl OrbitalScheme {
                                      BackgroundMode::from_str(&config.background_mode),
                                      width, height),
             background_i: 0,
+            window_max: Image::from_path(&config.window_max).unwrap_or(Image::new(0, 0)),
+            window_max_unfocused: Image::from_path(&config.window_max_unfocused).unwrap_or(Image::new(0, 0)),
             window_close: Image::from_path(&config.window_close).unwrap_or(Image::new(0, 0)),
             window_close_unfocused: Image::from_path(&config.window_close_unfocused).unwrap_or(Image::new(0, 0)),
             cursors: cursors,
@@ -281,6 +285,10 @@ impl OrbitalScheme {
                 for (i, id) in self.order.iter().enumerate().rev() {
                     if let Some(mut window) = self.windows.get_mut(&id) {
                         window.draw_title(&mut self.image, &rect, i == 0, if i == 0 {
+                            &mut self.window_max
+                        } else {
+                            &mut self.window_max_unfocused
+                        }, if i == 0 {
                             &mut self.window_close
                         } else {
                             &mut self.window_close_unfocused
@@ -401,6 +409,31 @@ impl OrbitalScheme {
                     let bg_rect = self.background_rect();
                     schedule(&mut self.redraws, bg_rect);
                 },
+                orbclient::K_UP | orbclient::K_DOWN | orbclient::K_LEFT | orbclient::K_RIGHT => if event.pressed {
+                    if let Some(id) = self.order.front() {
+                        if let Some(mut window) = self.windows.get_mut(&id) {
+                            schedule(&mut self.redraws, window.title_rect());
+                            schedule(&mut self.redraws, window.rect());
+
+                            match event.scancode {
+                                orbclient::K_LEFT => window.x -= 1,
+                                orbclient::K_RIGHT => window.x += 1,
+                                orbclient::K_UP => window.y -= 1,
+                                orbclient::K_DOWN => window.y += 1,
+                                _ => ()
+                            }
+
+                            let move_event = MoveEvent {
+                                x: window.x,
+                                y: window.y
+                            }.to_event();
+                            window.event(move_event);
+
+                            schedule(&mut self.redraws, window.title_rect());
+                            schedule(&mut self.redraws, window.rect());
+                        }
+                    }
+                },
                 _ => if event.pressed {
                     println!("WIN+{:X}", event.scancode);
                 }
@@ -423,20 +456,49 @@ impl OrbitalScheme {
                 for &id in self.order.iter() {
                     if let Some(mut window) = self.windows.get_mut(&id) {
                         if window.rect().contains(event.x, event.y) {
-                            let mut window_event = event.to_event();
-                            window_event.a -= window.x as i64;
-                            window_event.b -= window.y as i64;
-                            window.event(window_event);
-                            if event.left_button  && ! self.cursor_left
-                            || event.middle_button && ! self.cursor_middle
-                            || event.right_button && ! self.cursor_right {
-                                focus = i;
+                            if self.win_key {
+                                if event.left_button && ! self.cursor_left {
+                                    focus = i;
+                                    self.dragging = DragMode::Title(id, event.x, event.y);
+                                }
+                            } else {
+                                let mut window_event = event.to_event();
+                                window_event.a -= window.x as i64;
+                                window_event.b -= window.y as i64;
+                                window.event(window_event);
+                                if event.left_button  && ! self.cursor_left
+                                || event.middle_button && ! self.cursor_middle
+                                || event.right_button && ! self.cursor_right {
+                                    focus = i;
+                                }
                             }
                             break;
                         } else if window.title_rect().contains(event.x, event.y) {
+                            //TODO: Trigger max and exit on release
                             if event.left_button && ! self.cursor_left  {
                                 focus = i;
-                                if window.exit_contains(event.x, event.y) {
+                                if window.max_contains(event.x, event.y) {
+                                    schedule(&mut self.redraws, window.title_rect());
+                                    schedule(&mut self.redraws, window.rect());
+
+                                    window.x = 0;
+                                    window.y = window.title_rect().height();
+
+                                    let move_event = MoveEvent {
+                                        x: window.x,
+                                        y: window.y
+                                    }.to_event();
+                                    window.event(move_event);
+
+                                    schedule(&mut self.redraws, window.title_rect());
+                                    schedule(&mut self.redraws, window.rect());
+
+                                    let resize_event = ResizeEvent {
+                                        width: self.image.width() as u32,
+                                        height: (self.image.height() - window.y) as u32,
+                                    }.to_event();
+                                    window.event(resize_event);
+                                } else if window.close_contains(event.x, event.y) {
                                     window.event(QuitEvent.to_event());
                                 } else {
                                     self.dragging = DragMode::Title(id, event.x, event.y);
@@ -499,6 +561,7 @@ impl OrbitalScheme {
                             schedule(&mut self.redraws, window.title_rect());
                             schedule(&mut self.redraws, window.rect());
 
+                            //TODO: Min and max
                             window.x += event.x - drag_x;
                             window.y += event.y - drag_y;
 
@@ -564,7 +627,7 @@ impl OrbitalScheme {
                         new_cursor = CursorKind::BottomRightCorner;
                         let w = event.x - off_x - window.x;
                         let h = event.y - off_y - window.y;
-                        if w > 0 && h > 0 && w != window.width() && h != window.height()  {
+                        if w > 0 && h > 0 && (w != window.width() || h != window.height())  {
                             let resize_event = ResizeEvent {
                                 width: w as u32,
                                 height: h as u32

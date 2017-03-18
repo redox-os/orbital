@@ -8,6 +8,8 @@ pub struct Config {
     pub bottom_right_corner: String,
     pub bottom_side: String,
     pub right_side: String,
+    pub window_max: String,
+    pub window_max_unfocused: String,
     pub window_close: String,
     pub window_close_unfocused: String,
 }
@@ -35,6 +37,8 @@ impl Config {
             bottom_right_corner: String::new(),
             bottom_side: String::new(),
             right_side: String::new(),
+            window_max: String::new(),
+            window_max_unfocused: String::new(),
             window_close: String::new(),
             window_close_unfocused: String::new(),
         };
@@ -58,6 +62,12 @@ impl Config {
             }
             if line.starts_with("right_side=") {
                 config.right_side = line[11..].to_string();
+            }
+            if line.starts_with("window_max=") {
+                config.window_max = line[11..].to_string();
+            }
+            if line.starts_with("window_max_unfocused=") {
+                config.window_max_unfocused = line[21..].to_string();
             }
             if line.starts_with("window_close=") {
                 config.window_close = line[13..].to_string();
