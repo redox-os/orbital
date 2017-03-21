@@ -1,4 +1,4 @@
-use orbclient::{self, Color, Event, EventOption, KeyEvent, MouseEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, Renderer};
+use orbclient::{self, Color, Event, EventOption, KeyEvent, MouseEvent, ButtonEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, Renderer};
 use orbfont;
 use resize;
 
@@ -451,33 +451,155 @@ impl OrbitalScheme {
         // Check for focus switch, dragging, and forward mouse events to applications
         match self.dragging {
             DragMode::None => {
-                let mut focus = 0;
-                let mut i = 0;
                 for &id in self.order.iter() {
                     if let Some(mut window) = self.windows.get_mut(&id) {
                         if window.rect().contains(event.x, event.y) {
-                            if self.win_key {
-                                if event.left_button && ! self.cursor_left {
-                                    focus = i;
-                                    self.dragging = DragMode::Title(id, event.x, event.y);
-                                }
-                            } else {
+                            if ! self.win_key {
                                 let mut window_event = event.to_event();
                                 window_event.a -= window.x as i64;
                                 window_event.b -= window.y as i64;
                                 window.event(window_event);
-                                if event.left_button  && ! self.cursor_left
-                                || event.middle_button && ! self.cursor_middle
-                                || event.right_button && ! self.cursor_right {
+                            }
+                            break;
+                        } else if window.title_rect().contains(event.x, event.y) {
+                            break;
+                        } else if window.right_border_rect().contains(event.x, event.y) {
+                            new_cursor = CursorKind::RightSide;
+                            break;
+                        } else if window.bottom_border_rect().contains(event.x, event.y) {
+                            new_cursor = CursorKind::BottomSide;
+                            break;
+                        } else if window.bottom_right_border_rect().contains(event.x, event.y) {
+                            new_cursor = CursorKind::BottomRightCorner;
+                            break;
+                        }
+                    }
+                }
+            },
+            DragMode::Title(window_id, drag_x, drag_y) => {
+                if let Some(mut window) = self.windows.get_mut(&window_id) {
+                    if drag_x != event.x || drag_y != event.y {
+                        schedule(&mut self.redraws, window.title_rect());
+                        schedule(&mut self.redraws, window.rect());
+
+                        //TODO: Min and max
+                        window.x += event.x - drag_x;
+                        window.y += event.y - drag_y;
+
+                        let move_event = MoveEvent {
+                            x: window.x,
+                            y: window.y
+                        }.to_event();
+                        window.event(move_event);
+
+                        self.dragging = DragMode::Title(window_id, event.x, event.y);
+
+                        schedule(&mut self.redraws, window.title_rect());
+                        schedule(&mut self.redraws, window.rect());
+                    }
+                } else {
+                    self.dragging = DragMode::None;
+                }
+            },
+            DragMode::RightBorder(window_id, off_x) => {
+                if let Some(mut window) = self.windows.get_mut(&window_id) {
+                    new_cursor = CursorKind::RightSide;
+                    let w = event.x - off_x - window.x;
+                    if w > 0 && w != window.width()  {
+                        let resize_event = ResizeEvent {
+                            width: w as u32,
+                            height: window.height() as u32
+                        }.to_event();
+                        window.event(resize_event);
+                    }
+                } else {
+                    self.dragging = DragMode::None;
+                }
+            },
+            DragMode::BottomBorder(window_id, off_y) => {
+                if let Some(mut window) = self.windows.get_mut(&window_id) {
+                    new_cursor = CursorKind::BottomSide;
+                    let h = event.y - off_y - window.y;
+                    if h > 0 && h != window.height()  {
+                        let resize_event = ResizeEvent {
+                            width: window.width() as u32,
+                            height: h as u32
+                        }.to_event();
+                        window.event(resize_event);
+                    }
+                } else {
+                    self.dragging = DragMode::None;
+                }
+            },
+            DragMode::BottomRightBorder(window_id, off_x, off_y) => {
+                if let Some(mut window) = self.windows.get_mut(&window_id) {
+                    new_cursor = CursorKind::BottomRightCorner;
+                    let w = event.x - off_x - window.x;
+                    let h = event.y - off_y - window.y;
+                    if w > 0 && h > 0 && (w != window.width() || h != window.height())  {
+                        let resize_event = ResizeEvent {
+                            width: w as u32,
+                            height: h as u32
+                        }.to_event();
+                        window.event(resize_event);
+                    }
+                } else {
+                    self.dragging = DragMode::None;
+                }
+            }
+        }
+
+        if new_cursor != self.cursor_i {
+            let cursor_rect = self.cursor_rect();
+            schedule(&mut self.redraws, cursor_rect);
+
+            self.cursor_i = new_cursor;
+
+            let cursor_rect = self.cursor_rect();
+            schedule(&mut self.redraws, cursor_rect);
+        }
+
+        // Update saved mouse information
+        if event.x != self.cursor_x || event.y != self.cursor_y {
+            let cursor_rect = self.cursor_rect();
+            schedule(&mut self.redraws, cursor_rect);
+
+            self.cursor_x = event.x;
+            self.cursor_y = event.y;
+
+            let cursor_rect = self.cursor_rect();
+            schedule(&mut self.redraws, cursor_rect);
+        }
+    }
+
+    fn button_event(&mut self, event: ButtonEvent) {
+        // Check for focus switch, dragging, and forward mouse events to applications
+        match self.dragging {
+            DragMode::None => {
+                let mut focus = 0;
+                let mut i = 0;
+                for &id in self.order.iter() {
+                    if let Some(mut window) = self.windows.get_mut(&id) {
+                        if window.rect().contains(self.cursor_x, self.cursor_y) {
+                            if self.win_key {
+                                if event.left && ! self.cursor_left {
+                                    focus = i;
+                                    self.dragging = DragMode::Title(id, self.cursor_x, self.cursor_y);
+                                }
+                            } else {
+                                window.event(event.to_event());
+                                if event.left  && ! self.cursor_left
+                                || event.middle && ! self.cursor_middle
+                                || event.right && ! self.cursor_right {
                                     focus = i;
                                 }
                             }
                             break;
-                        } else if window.title_rect().contains(event.x, event.y) {
+                        } else if window.title_rect().contains(self.cursor_x, self.cursor_y) {
                             //TODO: Trigger max and exit on release
-                            if event.left_button && ! self.cursor_left  {
+                            if event.left && ! self.cursor_left  {
                                 focus = i;
-                                if window.max_contains(event.x, event.y) {
+                                if window.max_contains(self.cursor_x, self.cursor_y) {
                                     schedule(&mut self.redraws, window.title_rect());
                                     schedule(&mut self.redraws, window.rect());
 
@@ -498,32 +620,29 @@ impl OrbitalScheme {
                                         height: (self.image.height() - window.y) as u32,
                                     }.to_event();
                                     window.event(resize_event);
-                                } else if window.close_contains(event.x, event.y) {
+                                } else if window.close_contains(self.cursor_x, self.cursor_y) {
                                     window.event(QuitEvent.to_event());
                                 } else {
-                                    self.dragging = DragMode::Title(id, event.x, event.y);
+                                    self.dragging = DragMode::Title(id, self.cursor_x, self.cursor_y);
                                 }
                             }
                             break;
-                        } else if window.right_border_rect().contains(event.x, event.y) {
-                            new_cursor = CursorKind::RightSide;
-                            if event.left_button && ! self.cursor_left  {
+                        } else if window.right_border_rect().contains(self.cursor_x, self.cursor_y) {
+                            if event.left && ! self.cursor_left  {
                                 focus = i;
-                                self.dragging = DragMode::RightBorder(id, event.x - (window.x + window.width()));
+                                self.dragging = DragMode::RightBorder(id, self.cursor_x - (window.x + window.width()));
                             }
                             break;
-                        } else if window.bottom_border_rect().contains(event.x, event.y) {
-                            new_cursor = CursorKind::BottomSide;
-                            if event.left_button && ! self.cursor_left  {
+                        } else if window.bottom_border_rect().contains(self.cursor_x, self.cursor_y) {
+                            if event.left && ! self.cursor_left  {
                                 focus = i;
-                                self.dragging = DragMode::BottomBorder(id, event.y - (window.y + window.height()));
+                                self.dragging = DragMode::BottomBorder(id, self.cursor_y - (window.y + window.height()));
                             }
                             break;
-                        } else if window.bottom_right_border_rect().contains(event.x, event.y) {
-                            new_cursor = CursorKind::BottomRightCorner;
-                            if event.left_button && ! self.cursor_left  {
+                        } else if window.bottom_right_border_rect().contains(self.cursor_x, self.cursor_y) {
+                            if event.left && ! self.cursor_left  {
                                 focus = i;
-                                self.dragging = DragMode::BottomRightBorder(id, event.x - (window.x + window.width()), event.y - (window.y + window.height()));
+                                self.dragging = DragMode::BottomRightBorder(id, self.cursor_x - (window.x + window.width()), self.cursor_y - (window.y + window.height()));
                             }
                             break;
                         }
@@ -554,126 +673,21 @@ impl OrbitalScheme {
                     }
                 }
             },
-            DragMode::Title(window_id, drag_x, drag_y) => {
-                if event.left_button {
-                    if let Some(mut window) = self.windows.get_mut(&window_id) {
-                        if drag_x != event.x || drag_y != event.y {
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
-
-                            //TODO: Min and max
-                            window.x += event.x - drag_x;
-                            window.y += event.y - drag_y;
-
-                            let move_event = MoveEvent {
-                                x: window.x,
-                                y: window.y
-                            }.to_event();
-                            window.event(move_event);
-
-                            self.dragging = DragMode::Title(window_id, event.x, event.y);
-
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
-                        }
-                    } else {
-                        self.dragging = DragMode::None;
-                    }
-                } else {
-                    self.dragging = DragMode::None;
-                }
-            },
-            DragMode::RightBorder(window_id, off_x) => {
-                if event.left_button {
-                    if let Some(mut window) = self.windows.get_mut(&window_id) {
-                        new_cursor = CursorKind::RightSide;
-                        let w = event.x - off_x - window.x;
-                        if w > 0 && w != window.width()  {
-                            let resize_event = ResizeEvent {
-                                width: w as u32,
-                                height: window.height() as u32
-                            }.to_event();
-                            window.event(resize_event);
-                        }
-                    } else {
-                        self.dragging = DragMode::None;
-                    }
-                } else {
-                    self.dragging = DragMode::None;
-                }
-            },
-            DragMode::BottomBorder(window_id, off_y) => {
-                if event.left_button {
-                    if let Some(mut window) = self.windows.get_mut(&window_id) {
-                        new_cursor = CursorKind::BottomSide;
-                        let h = event.y - off_y - window.y;
-                        if h > 0 && h != window.height()  {
-                            let resize_event = ResizeEvent {
-                                width: window.width() as u32,
-                                height: h as u32
-                            }.to_event();
-                            window.event(resize_event);
-                        }
-                    } else {
-                        self.dragging = DragMode::None;
-                    }
-                } else {
-                    self.dragging = DragMode::None;
-                }
-            },
-            DragMode::BottomRightBorder(window_id, off_x, off_y) => {
-                if event.left_button {
-                    if let Some(mut window) = self.windows.get_mut(&window_id) {
-                        new_cursor = CursorKind::BottomRightCorner;
-                        let w = event.x - off_x - window.x;
-                        let h = event.y - off_y - window.y;
-                        if w > 0 && h > 0 && (w != window.width() || h != window.height())  {
-                            let resize_event = ResizeEvent {
-                                width: w as u32,
-                                height: h as u32
-                            }.to_event();
-                            window.event(resize_event);
-                        }
-                    } else {
-                        self.dragging = DragMode::None;
-                    }
-                } else {
-                    self.dragging = DragMode::None;
-                }
+            _ => if ! event.left {
+                self.dragging = DragMode::None;
             }
         }
 
-        if new_cursor != self.cursor_i {
-            let cursor_rect = self.cursor_rect();
-            schedule(&mut self.redraws, cursor_rect);
-
-            self.cursor_i = new_cursor;
-
-            let cursor_rect = self.cursor_rect();
-            schedule(&mut self.redraws, cursor_rect);
-        }
-
-        // Update saved mouse information
-        if event.x != self.cursor_x || event.y != self.cursor_y {
-            let cursor_rect = self.cursor_rect();
-            schedule(&mut self.redraws, cursor_rect);
-
-            self.cursor_x = event.x;
-            self.cursor_y = event.y;
-
-            let cursor_rect = self.cursor_rect();
-            schedule(&mut self.redraws, cursor_rect);
-        }
-
-        self.cursor_left = event.left_button;
-        self.cursor_middle = event.middle_button;
-        self.cursor_right = event.right_button;
+        self.cursor_left = event.left;
+        self.cursor_middle = event.middle;
+        self.cursor_right = event.right;
     }
 
     pub fn event(&mut self, event_union: Event){
         match event_union.to_option() {
             EventOption::Key(event) => self.key_event(event),
             EventOption::Mouse(event) => self.mouse_event(event),
+            EventOption::Button(event) => self.button_event(event),
             EventOption::Scroll(_) => {
                 if let Some(id) = self.order.front() {
                     if let Some(mut window) = self.windows.get_mut(&id) {
