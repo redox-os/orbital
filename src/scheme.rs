@@ -2,9 +2,9 @@ use orbclient::{self, Color, Event, EventOption, KeyEvent, MouseEvent, ButtonEve
 use orbfont;
 use resize;
 
+use std::{cmp, slice, str};
 use std::collections::{BTreeMap, VecDeque};
 use std::path::Path;
-use std::{slice, str};
 use syscall::data::Packet;
 use syscall::error::{Error, Result, EBADF, EINVAL};
 use syscall::scheme::SchemeMut;
@@ -183,8 +183,6 @@ pub struct OrbitalScheme {
     win_key: bool,
     win_tabbing: bool,
     next_id: isize,
-    next_x: i32,
-    next_y: i32,
     order: VecDeque<usize>,
     pub windows: BTreeMap<usize, Window>,
     redraws: Vec<Rect>,
@@ -224,8 +222,6 @@ impl OrbitalScheme {
             // While it is true, redraw() calls draw_window_list()
             win_tabbing: false,
             next_id: 1,
-            next_x: 4,
-            next_y: 32,
             order: VecDeque::new(),
             windows: BTreeMap::new(),
             redraws: vec![Rect::new(0, 0, width, height)],
@@ -600,11 +596,22 @@ impl OrbitalScheme {
                             if event.left && ! self.cursor_left  {
                                 focus = i;
                                 if window.max_contains(self.cursor_x, self.cursor_y) {
+                                    let max_restore_opt = window.max_restore.take();
+
+                                    if max_restore_opt.is_none() {
+                                        window.max_restore = Some(window.rect());
+                                    }
+
                                     schedule(&mut self.redraws, window.title_rect());
                                     schedule(&mut self.redraws, window.rect());
 
-                                    window.x = 0;
-                                    window.y = window.title_rect().height();
+                                    if let Some(max_restore) = max_restore_opt {
+                                        window.x = max_restore.left();
+                                        window.y = max_restore.top();
+                                    } else {
+                                        window.x = 0;
+                                        window.y = window.title_rect().height();
+                                    }
 
                                     let move_event = MoveEvent {
                                         x: window.x,
@@ -615,9 +622,15 @@ impl OrbitalScheme {
                                     schedule(&mut self.redraws, window.title_rect());
                                     schedule(&mut self.redraws, window.rect());
 
+                                    let (width, height) = if let Some(max_restore) = max_restore_opt {
+                                        (max_restore.width(), max_restore.height())
+                                    } else {
+                                        (self.image.width(), self.image.height() - window.y)
+                                    };
+
                                     let resize_event = ResizeEvent {
-                                        width: self.image.width() as u32,
-                                        height: (self.image.height() - window.y) as u32,
+                                        width: width as u32,
+                                        height: height as u32,
                                     }.to_event();
                                     window.event(resize_event);
                                 } else if window.close_contains(self.cursor_x, self.cursor_y) {
@@ -735,17 +748,9 @@ impl SchemeMut for OrbitalScheme {
         }
 
         if x < 0 && y < 0 {
-            x = self.next_x;
-            y = self.next_y;
-
-            self.next_x += 20;
-            if self.next_x + 20 >= self.image.width() {
-                self.next_x = 20;
-            }
-            self.next_y += 20;
-            if self.next_y + 20 >= self.image.height() {
-                self.next_y = 20;
-            }
+            // Automatic placement
+            x = cmp::max(0, (self.image.width() - width)/2);
+            y = cmp::max(28, (self.image.height() - height)/2);
         }
 
         if let Some(id) = self.order.front() {
