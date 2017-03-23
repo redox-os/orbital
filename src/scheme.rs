@@ -1,6 +1,7 @@
-use orbclient::{self, Color, Event, EventOption, KeyEvent, MouseEvent, ButtonEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, Renderer};
+use orbclient::{self, Color, Event, EventOption, KeyEvent, MouseEvent, ButtonEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, ScreenEvent, Renderer};
 use orbfont;
 use resize;
+use syscall;
 
 use std::{cmp, slice, str};
 use std::collections::{BTreeMap, VecDeque};
@@ -56,10 +57,10 @@ impl BackgroundMode {
     }
 }
 
-fn resize_image(image: Image, mode: BackgroundMode, display_width: i32, display_height: i32) -> Image {
+fn resize_image(image: &Image, mode: BackgroundMode, display_width: i32, display_height: i32) -> Image {
     let (width, height) = match mode {
         BackgroundMode::Center => {
-            return image;
+            return image.clone();
         },
         BackgroundMode::Fill => {
             (display_width, display_height)
@@ -95,7 +96,7 @@ fn resize_image(image: Image, mode: BackgroundMode, display_width: i32, display_
     };
 
     if width == image.width() && height == image.height() {
-        return image;
+        return image.clone();
     }
 
     let src_color = image.data();
@@ -116,7 +117,7 @@ fn resize_image(image: Image, mode: BackgroundMode, display_width: i32, display_
     Image::from_data(width, height, dst_color)
 }
 
-fn load_backgrounds(configs: &Vec<String>, mode: BackgroundMode, display_width: i32, display_height: i32) -> Vec<Image> {
+fn load_backgrounds(configs: &Vec<String>) -> Vec<Image> {
     let mut paths = Vec::new();
 
     for config in configs.iter() {
@@ -136,16 +137,37 @@ fn load_backgrounds(configs: &Vec<String>, mode: BackgroundMode, display_width: 
 
     paths.sort();
 
-    let mut backgrounds = Vec::new();
+    let mut background_originals = Vec::new();
+
     for path in paths.iter() {
         println!("orbital: loading {}", path.display());
         if let Some(image) = Image::from_path(path) {
-            println!("orbital: resizing {}", path.display());
-            backgrounds.push(resize_image(image, mode, display_width, display_height));
+            background_originals.push(image);
         }
     }
 
+    background_originals
+}
+
+fn resize_backgrounds(background_originals: &Vec<Image>, mode: BackgroundMode, display_width: i32, display_height: i32) -> Vec<Image> {
+    let mut backgrounds = Vec::new();
+
+    for (i, image) in background_originals.iter().enumerate() {
+        println!("orbital: resizing {}", i);
+        backgrounds.push(resize_image(image, mode, display_width, display_height));
+    }
+
     backgrounds
+}
+
+unsafe fn display_fd_map(width: i32, height: i32, display_fd: usize) -> ImageRef<'static> {
+    let display_ptr = syscall::fmap(display_fd, 0, (width * height * 4) as usize).unwrap();
+    let display_slice = slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize);
+    ImageRef::from_data(width, height, display_slice)
+}
+
+unsafe fn display_fd_unmap(image: &mut ImageRef) {
+    let _ = syscall::funmap(image.data().as_ptr() as usize);
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
@@ -165,9 +187,12 @@ enum DragMode {
 }
 
 pub struct OrbitalScheme {
+    display_fd: usize,
     image: ImageRef<'static>,
+    background_originals: Vec<Image>,
     backgrounds: Vec<Image>,
     background_i: usize,
+    background_mode: BackgroundMode,
     window_max: Image,
     window_max_unfocused: Image,
     window_close: Image,
@@ -191,19 +216,24 @@ pub struct OrbitalScheme {
 }
 
 impl OrbitalScheme {
-    pub fn new(width: i32, height: i32, data: &'static mut [Color], config: &Config) -> OrbitalScheme {
+    pub fn new(width: i32, height: i32, display_fd: usize, config: &Config) -> OrbitalScheme {
         let mut cursors = BTreeMap::new();
         cursors.insert(CursorKind::LeftPtr, Image::from_path(&config.cursor).unwrap_or(Image::new(0, 0)));
         cursors.insert(CursorKind::BottomRightCorner, Image::from_path(&config.bottom_right_corner).unwrap_or(Image::new(0, 0)));
         cursors.insert(CursorKind::BottomSide, Image::from_path(&config.bottom_side).unwrap_or(Image::new(0, 0)));
         cursors.insert(CursorKind::RightSide, Image::from_path(&config.right_side).unwrap_or(Image::new(0, 0)));
 
+        let background_originals = load_backgrounds(&config.background);
+        let background_mode = BackgroundMode::from_str(&config.background_mode);
+        let backgrounds = resize_backgrounds(&background_originals, background_mode, width, height);
+
         OrbitalScheme {
-            image: ImageRef::from_data(width, height, data),
-            backgrounds: load_backgrounds(&config.background,
-                                     BackgroundMode::from_str(&config.background_mode),
-                                     width, height),
+            display_fd: display_fd,
+            image: unsafe { display_fd_map(width, height, display_fd) },
+            background_originals: background_originals,
+            backgrounds: backgrounds,
             background_i: 0,
+            background_mode: background_mode,
             window_max: Image::from_path(&config.window_max).unwrap_or(Image::new(0, 0)),
             window_max_unfocused: Image::from_path(&config.window_max_unfocused).unwrap_or(Image::new(0, 0)),
             window_close: Image::from_path(&config.window_close).unwrap_or(Image::new(0, 0)),
@@ -696,6 +726,26 @@ impl OrbitalScheme {
         self.cursor_right = event.right;
     }
 
+    fn resize_event(&mut self, event: ResizeEvent) {
+        unsafe {
+            display_fd_unmap(&mut self.image);
+            self.image = display_fd_map(event.width as i32, event.height as i32, self.display_fd);
+        }
+
+        self.backgrounds = resize_backgrounds(&self.background_originals, self.background_mode, self.image.width(), self.image.height());
+
+        let screen_rect = self.screen_rect();
+        schedule(&mut self.redraws, screen_rect);
+
+        let screen_event = ScreenEvent {
+            width: self.image.width() as u32,
+            height: self.image.height() as u32,
+        }.to_event();
+        for (_window_id, window) in self.windows.iter_mut() {
+            window.event(screen_event);
+        }
+    }
+
     pub fn event(&mut self, event_union: Event){
         match event_union.to_option() {
             EventOption::Key(event) => self.key_event(event),
@@ -708,6 +758,7 @@ impl OrbitalScheme {
                     }
                 }
             },
+            EventOption::Resize(event) => self.resize_event(event),
             event => println!("orbital: unexpected event: {:?}", event)
         }
     }
@@ -879,5 +930,11 @@ impl SchemeMut for OrbitalScheme {
         } else {
             Err(Error::new(EBADF))
         }
+    }
+}
+
+impl Drop for OrbitalScheme {
+    fn drop(&mut self){
+        unsafe { display_fd_unmap(&mut self.image); }
     }
 }
