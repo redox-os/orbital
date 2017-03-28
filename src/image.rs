@@ -174,6 +174,7 @@ impl<'a> Renderer for ImageRef<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct Image {
     w: i32,
     h: i32,

@@ -8,8 +8,8 @@ extern crate orbfont;
 extern crate resize;
 extern crate syscall;
 
-use orbclient::{Color, Event};
-use std::{env, mem, slice, str, thread};
+use orbclient::Event;
+use std::{env, mem, str, thread};
 use std::os::unix::io::AsRawFd;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -150,22 +150,22 @@ fn main() {
         match Socket::create(":orbital").map(|socket| Arc::new(socket)) {
             Ok(socket) => match Socket::open(&display_path).map(|display| Arc::new(display)) {
                 Ok(display) => {
-                    let mut buf: [u8; 4096] = [0; 4096];
-                    let count = syscall::fpath(display.as_raw_fd() as usize, &mut buf).unwrap();
-                    let path = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
-                    let res = path.split(":").nth(1).unwrap_or("");
-                    let width = res.split("/").nth(1).unwrap_or("").parse::<i32>().unwrap_or(0);
-                    let height = res.split("/").nth(2).unwrap_or("").parse::<i32>().unwrap_or(0);
+                    let width;
+                    let height;
+                    {
+                        let mut buf: [u8; 4096] = [0; 4096];
+                        let count = syscall::fpath(display.as_raw_fd() as usize, &mut buf).unwrap();
+                        let path = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
+                        let res = path.split(":").nth(1).unwrap_or("");
+                        width = res.split("/").nth(1).unwrap_or("").parse::<i32>().unwrap_or(0);
+                        height = res.split("/").nth(2).unwrap_or("").parse::<i32>().unwrap_or(0);
+                    }
 
                     println!("orbital: found display {}x{}", width, height);
 
-                    let display_ptr = unsafe { syscall::fmap(display.as_raw_fd(), 0, (width * height * 4) as usize).unwrap() };
-                    let display_slice = unsafe { slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize) };
-                    println!("orbital: mapped display to {:X}", display_ptr);
-
                     let config = Config::from_path("/ui/orbital.conf");
 
-                    let scheme = Arc::new(Mutex::new(OrbitalScheme::new(width, height, display_slice, &config)));
+                    let scheme = Arc::new(Mutex::new(OrbitalScheme::new(width, height, display.as_raw_fd(), &config)));
 
                     let mut command = Command::new(&login_cmd);
                     for arg in args {
@@ -187,8 +187,6 @@ fn main() {
                     server_loop(scheme, display, socket);
 
                     let _ = event_thread.join();
-
-                    unsafe { let _ = syscall::funmap(display_ptr); }
                 },
                 Err(err) => println!("orbital: no display found: {}", err)
             },
