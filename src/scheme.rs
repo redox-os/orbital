@@ -662,7 +662,7 @@ impl OrbitalScheme {
                                         height: height as u32,
                                     }.to_event();
                                     window.event(resize_event);
-                                } else if (window.close_contains(self.cursor_x, self.cursor_y)) && (window.exit) {
+                                } else if (window.close_contains(self.cursor_x, self.cursor_y)) && (!window.unclosable) {
                                     window.event(QuitEvent.to_event());
                                 } else {
                                     self.dragging = DragMode::Title(id, self.cursor_x, self.cursor_y);
@@ -772,12 +772,12 @@ impl SchemeMut for OrbitalScheme {
 
         let mut async = false;
         let mut resizable = false;
-        let mut exit = true;
+        let mut unclosable= false;
         for flag in flags.chars() {
             match flag {
                 'a' => async = true,
                 'r' => resizable = true,
-                'e' => exit = false,
+                'u' => unclosable = true,
                 _ => ()
             }
         }
@@ -812,7 +812,7 @@ impl SchemeMut for OrbitalScheme {
             }
         }
 
-        let window = Window::new(x, y, width, height, title, async, resizable, exit, &self.font);
+        let window = Window::new(x, y, width, height, title, async, resizable, unclosable, &self.font);
         schedule(&mut self.redraws, window.title_rect());
         schedule(&mut self.redraws, window.rect());
         self.order.push_front(id);
