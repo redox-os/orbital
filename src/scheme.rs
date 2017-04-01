@@ -625,7 +625,7 @@ impl OrbitalScheme {
                             //TODO: Trigger max and exit on release
                             if event.left && ! self.cursor_left  {
                                 focus = i;
-                                if window.max_contains(self.cursor_x, self.cursor_y) {
+                                if (window.max_contains(self.cursor_x, self.cursor_y)) && (window.resizable) {
                                     let max_restore_opt = window.max_restore.take();
 
                                     if max_restore_opt.is_none() {
@@ -657,13 +657,12 @@ impl OrbitalScheme {
                                     } else {
                                         (self.image.width(), self.image.height() - window.y)
                                     };
-
                                     let resize_event = ResizeEvent {
                                         width: width as u32,
                                         height: height as u32,
                                     }.to_event();
                                     window.event(resize_event);
-                                } else if window.close_contains(self.cursor_x, self.cursor_y) {
+                                } else if (window.close_contains(self.cursor_x, self.cursor_y)) && (!window.unclosable) {
                                     window.event(QuitEvent.to_event());
                                 } else {
                                     self.dragging = DragMode::Title(id, self.cursor_x, self.cursor_y);
@@ -773,10 +772,12 @@ impl SchemeMut for OrbitalScheme {
 
         let mut async = false;
         let mut resizable = false;
+        let mut unclosable= false;
         for flag in flags.chars() {
             match flag {
                 'a' => async = true,
                 'r' => resizable = true,
+                'u' => unclosable = true,
                 _ => ()
             }
         }
@@ -811,7 +812,7 @@ impl SchemeMut for OrbitalScheme {
             }
         }
 
-        let window = Window::new(x, y, width, height, title, async, resizable, &self.font);
+        let window = Window::new(x, y, width, height, title, async, resizable, unclosable, &self.font);
         schedule(&mut self.redraws, window.title_rect());
         schedule(&mut self.redraws, window.rect());
         self.order.push_front(id);

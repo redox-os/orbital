@@ -17,6 +17,7 @@ pub struct Window {
     pub y: i32,
     pub async: bool,
     pub resizable: bool,
+    pub unclosable: bool,
     pub title: String,
     pub max_restore: Option<Rect>,
     image: Image,
@@ -26,12 +27,13 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn new(x: i32, y: i32, w: i32, h: i32, title: String, async: bool, resizable: bool, font: &Font) -> Window {
+    pub fn new(x: i32, y: i32, w: i32, h: i32, title: String, async: bool, resizable: bool, unclosable: bool, font: &Font) -> Window {
         let mut window = Window {
             x: x,
             y: y,
             async: async,
             resizable: resizable,
+            unclosable: unclosable,
             title: title,
             max_restore: None,
             image: Image::new(w, h),
@@ -127,12 +129,14 @@ impl Window {
                 }
             }
 
-            x = max(self.x + 6, self.x + self.width() - 18);
-            if x + 18 <= self.x + self.width() {
-                let image_rect = Rect::new(x, title_rect.top() + 7, window_close.width(), window_close.height());
-                let image_intersect = rect.intersection(&image_rect);
-                if ! image_intersect.is_empty() {
-                    image.roi(&image_intersect).blend(&window_close.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+            if !self.unclosable {
+                x = max(self.x + 6, self.x + self.width() - 18);
+                if x + 18 <= self.x + self.width() {
+                    let image_rect = Rect::new(x, title_rect.top() + 7, window_close.width(), window_close.height());
+                    let image_intersect = rect.intersection(&image_rect);
+                    if ! image_intersect.is_empty() {
+                        image.roi(&image_intersect).blend(&window_close.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+                    }
                 }
             }
         }
@@ -178,9 +182,10 @@ impl Window {
     pub fn path(&self, buf: &mut [u8]) -> Result<usize> {
         let mut i = 0;
         let path_str = format!(
-            "orbital:{}{}/{}/{}/{}/{}/{}",
+            "orbital:{}{}{}/{}/{}/{}/{}/{}",
             if self.async { "a" } else { "" },
             if self.resizable { "r" } else { "" },
+            if self.unclosable { "u" } else { "" },
             self.x, self.y, self.width(), self.height(), self.title
         );
         let path = path_str.as_bytes();
