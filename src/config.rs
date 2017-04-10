@@ -1,6 +1,9 @@
 use std::fs::File;
 use std::io::Read;
+use toml;
 
+#[derive(Default, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub background: Vec<String>,
     pub background_mode: String,
@@ -26,57 +29,12 @@ impl Config {
             Err(err) => println!("orbital: failed to open config '{}': {}", path, err)
         }
 
-        Config::from_str(&string)
-    }
-
-    pub fn from_str(string: &str) -> Config {
-        let mut config = Config {
-            background: Vec::new(),
-            background_mode: String::new(),
-            cursor: String::new(),
-            bottom_right_corner: String::new(),
-            bottom_side: String::new(),
-            right_side: String::new(),
-            window_max: String::new(),
-            window_max_unfocused: String::new(),
-            window_close: String::new(),
-            window_close_unfocused: String::new(),
-        };
-
-        for line_original in string.lines() {
-            let line = line_original.trim();
-            if line.starts_with("background=") {
-                config.background.push(line[11..].to_string());
-            }
-            if line.starts_with("background_mode=") {
-                config.background_mode = line[16..].to_string();
-            }
-            if line.starts_with("cursor=") {
-                config.cursor = line[7..].to_string();
-            }
-            if line.starts_with("bottom_right_corner=") {
-                config.bottom_right_corner = line[20..].to_string();
-            }
-            if line.starts_with("bottom_side=") {
-                config.bottom_side = line[12..].to_string();
-            }
-            if line.starts_with("right_side=") {
-                config.right_side = line[11..].to_string();
-            }
-            if line.starts_with("window_max=") {
-                config.window_max = line[11..].to_string();
-            }
-            if line.starts_with("window_max_unfocused=") {
-                config.window_max_unfocused = line[21..].to_string();
-            }
-            if line.starts_with("window_close=") {
-                config.window_close = line[13..].to_string();
-            }
-            if line.starts_with("window_close_unfocused=") {
-                config.window_close_unfocused = line[23..].to_string();
+        match toml::from_str(&string) {
+            Ok(config) => config,
+            Err(err) => {
+                println!("orbital: failed to parse config '{}': {}", path, err);
+                Config::default()
             }
         }
-
-        config
     }
 }
