@@ -9,7 +9,10 @@ authors = ["Jeremy Soller <jackpot51@gmail.com>"]
 
 [dependencies]
 orbclient = "0.3"
-orbimage = "0.1"
 orbfont = "0.1"
-resize = "0.2"
+orbimage = "0.1"
 redox_syscall = "0.1"
+resize = "0.2"
+serde = "0.9"
+serde_derive = "0.9"
+toml = "0.3"

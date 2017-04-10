@@ -6,7 +6,10 @@ extern crate orbclient;
 extern crate orbimage;
 extern crate orbfont;
 extern crate resize;
+#[macro_use]
+extern crate serde_derive;
 extern crate syscall;
+extern crate toml;
 
 use orbclient::Event;
 use std::{env, mem, str, thread};
@@ -163,7 +166,7 @@ fn main() {
 
                     println!("orbital: found display {}x{}", width, height);
 
-                    let config = Config::from_path("/ui/orbital.conf");
+                    let config = Config::from_path("/ui/orbital.toml");
 
                     let scheme = Arc::new(Mutex::new(OrbitalScheme::new(width, height, display.as_raw_fd(), &config)));
 
