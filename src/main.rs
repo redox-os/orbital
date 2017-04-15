@@ -14,6 +14,7 @@ extern crate toml;
 use orbclient::Event;
 use std::{env, mem, str, thread};
 use std::os::unix::io::AsRawFd;
+use std::os::unix::process::CommandExt;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use syscall::data::Packet;
@@ -153,11 +154,14 @@ fn main() {
         match Socket::create(":orbital").map(|socket| Arc::new(socket)) {
             Ok(socket) => match Socket::open(&display_path).map(|display| Arc::new(display)) {
                 Ok(display) => {
+                    let socket_fd = socket.as_raw_fd();
+                    let display_fd = display.as_raw_fd();
+
                     let width;
                     let height;
                     {
                         let mut buf: [u8; 4096] = [0; 4096];
-                        let count = syscall::fpath(display.as_raw_fd() as usize, &mut buf).unwrap();
+                        let count = syscall::fpath(display_fd, &mut buf).unwrap();
                         let path = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
                         let res = path.split(":").nth(1).unwrap_or("");
                         width = res.split("/").nth(1).unwrap_or("").parse::<i32>().unwrap_or(0);
@@ -168,12 +172,17 @@ fn main() {
 
                     let config = Config::from_path("/ui/orbital.toml");
 
-                    let scheme = Arc::new(Mutex::new(OrbitalScheme::new(width, height, display.as_raw_fd(), &config)));
+                    let scheme = Arc::new(Mutex::new(OrbitalScheme::new(width, height, display_fd, &config)));
 
                     let mut command = Command::new(&login_cmd);
                     for arg in args {
                         command.arg(&arg);
                     }
+                    command.before_exec(move || {
+                        let _ = syscall::close(display_fd);
+                        let _ = syscall::close(socket_fd);
+                        Ok(())
+                    });
                     match command.spawn() {
                         Ok(_child) => (),
                         Err(err) => println!("orbital: failed to launch '{}': {}", login_cmd, err)
