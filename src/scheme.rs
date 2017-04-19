@@ -777,8 +777,6 @@ impl OrbitalScheme {
     }
 
     pub fn display_event(&mut self) -> io::Result<()> {
-        println!("Read display");
-
         loop {
             let mut events = [Event::new(); 16];
 
@@ -831,15 +829,12 @@ impl OrbitalScheme {
             }
         }
 
-        println!("Redraw");
         self.redraw();
 
         Ok(())
     }
 
     pub fn scheme_event(&mut self) -> io::Result<()> {
-        println!("Read scheme");
-
         loop {
             let mut packets = [Packet::default(); 16];
 
@@ -884,7 +879,6 @@ impl OrbitalScheme {
             }
         }
 
-        println!("Redraw");
         self.redraw();
 
         Ok(())
