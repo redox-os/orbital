@@ -3,19 +3,29 @@ use orbfont;
 use resize;
 use syscall;
 
-use std::{cmp, slice, str};
+use std::{cmp, io, mem, slice, str};
 use std::collections::{BTreeMap, VecDeque};
+use std::fs::File;
+use std::io::{Read, Write};
+use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use syscall::data::Packet;
 use syscall::error::{Error, Result, EBADF, EINVAL};
+use syscall::number::SYS_READ;
 use syscall::scheme::SchemeMut;
 
 use config::Config;
 use image::{Image, ImageRef};
 use rect::Rect;
-use socket::Socket;
 use theme::{BACKGROUND_COLOR, BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 use window::Window;
+
+pub fn read_type<R: Read, T: Copy>(r: &mut R, buf: &mut [T]) -> io::Result<usize> {
+    r.read(unsafe { slice::from_raw_parts_mut(
+        buf.as_mut_ptr() as *mut u8,
+        buf.len() * mem::size_of::<T>())
+    }).map(|count| count/mem::size_of::<T>())
+}
 
 fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
     let mut push = true;
@@ -187,7 +197,8 @@ enum DragMode {
 }
 
 pub struct OrbitalScheme {
-    display_fd: usize,
+    socket: File,
+    display: File,
     image: ImageRef<'static>,
     background_originals: Vec<Image>,
     backgrounds: Vec<Image>,
@@ -216,7 +227,9 @@ pub struct OrbitalScheme {
 }
 
 impl OrbitalScheme {
-    pub fn new(width: i32, height: i32, display_fd: usize, config: &Config) -> OrbitalScheme {
+    pub fn new(width: i32, height: i32, socket: File, display: File, config: &Config) -> OrbitalScheme {
+        let display_fd = display.as_raw_fd();
+
         let mut cursors = BTreeMap::new();
         cursors.insert(CursorKind::LeftPtr, Image::from_path(&config.cursor).unwrap_or(Image::new(0, 0)));
         cursors.insert(CursorKind::BottomRightCorner, Image::from_path(&config.bottom_right_corner).unwrap_or(Image::new(0, 0)));
@@ -228,7 +241,8 @@ impl OrbitalScheme {
         let backgrounds = resize_backgrounds(&background_originals, background_mode, width, height);
 
         OrbitalScheme {
-            display_fd: display_fd,
+            socket: socket,
+            display: display,
             image: unsafe { display_fd_map(width, height, display_fd) },
             background_originals: background_originals,
             backgrounds: backgrounds,
@@ -287,7 +301,7 @@ impl OrbitalScheme {
         Rect::new(0, 0, self.image.width(), self.image.height())
     }
 
-    pub fn redraw(&mut self, display: &Socket){
+    pub fn redraw(&mut self){
         let screen_rect = self.screen_rect();
         let background_rect = self.background_rect();
         let cursor_rect = self.cursor_rect();
@@ -336,7 +350,7 @@ impl OrbitalScheme {
             self.draw_window_list();
         }
 
-        display.sync().unwrap();
+        self.display.sync_all().unwrap();
     }
 
     fn win_tab(&mut self) {
@@ -728,7 +742,7 @@ impl OrbitalScheme {
     fn resize_event(&mut self, event: ResizeEvent) {
         unsafe {
             display_fd_unmap(&mut self.image);
-            self.image = display_fd_map(event.width as i32, event.height as i32, self.display_fd);
+            self.image = display_fd_map(event.width as i32, event.height as i32, self.display.as_raw_fd());
         }
 
         self.backgrounds = resize_backgrounds(&self.background_originals, self.background_mode, self.image.width(), self.image.height());
@@ -760,6 +774,120 @@ impl OrbitalScheme {
             EventOption::Resize(event) => self.resize_event(event),
             event => println!("orbital: unexpected event: {:?}", event)
         }
+    }
+
+    pub fn display_event(&mut self) -> io::Result<()> {
+        println!("Read display");
+
+        loop {
+            let mut events = [Event::new(); 16];
+
+            let count = read_type(&mut self.display, &mut events)?;
+            if count == 0 {
+                break;
+            }
+
+            for &event in events[.. count].iter() {
+                self.event(event);
+            }
+
+            let mut i = 0;
+            while i < self.todo.len() {
+                let mut packet = self.todo[i].clone();
+
+                let delay = if packet.a == SYS_READ {
+                    if let Some(window) = self.windows.get(&packet.b) {
+                        window.async == false
+                    } else {
+                        true
+                    }
+                } else {
+                    false
+                };
+
+                self.handle(&mut packet);
+
+                if delay && packet.a == 0 {
+                    i += 1;
+                }else{
+                    self.todo.remove(i);
+                    self.socket.write(&packet)?;
+                }
+            }
+
+            for (id, window) in self.windows.iter() {
+                if ! window.events.is_empty() {
+                    self.socket.write(&Packet {
+                        id: 0,
+                        pid: 0,
+                        uid: 0,
+                        gid: 0,
+                        a: syscall::number::SYS_FEVENT,
+                        b: *id,
+                        c: syscall::flag::EVENT_READ,
+                        d: window.events.len() * mem::size_of::<Event>()
+                    })?;
+                }
+            }
+        }
+
+        println!("Redraw");
+        self.redraw();
+
+        Ok(())
+    }
+
+    pub fn scheme_event(&mut self) -> io::Result<()> {
+        println!("Read scheme");
+
+        loop {
+            let mut packets = [Packet::default(); 16];
+
+            let count = read_type(&mut self.socket, &mut packets)?;
+            if count == 0 {
+                break;
+            }
+
+            for mut packet in packets[.. count].iter_mut() {
+                let delay = if packet.a == SYS_READ {
+                    if let Some(window) = self.windows.get(&packet.b) {
+                        window.async == false
+                    } else {
+                        true
+                    }
+                } else {
+                    false
+                };
+
+                self.handle(packet);
+
+                if delay && packet.a == 0 {
+                    self.todo.push(*packet);
+                } else {
+                    self.socket.write(&packet)?;
+                }
+            }
+
+            for (id, window) in self.windows.iter() {
+                if ! window.events.is_empty() {
+                    self.socket.write(&Packet {
+                        id: 0,
+                        pid: 0,
+                        uid: 0,
+                        gid: 0,
+                        a: syscall::number::SYS_FEVENT,
+                        b: *id,
+                        c: syscall::flag::EVENT_READ,
+                        d: window.events.len() * mem::size_of::<Event>()
+                    })?;
+                }
+            }
+        }
+
+        println!("Redraw");
+        self.redraw();
+
+        Ok(())
     }
 }
 

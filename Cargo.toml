@@ -11,6 +11,7 @@ authors = ["Jeremy Soller <jackpot51@gmail.com>"]
 orbclient = "0.3"
 orbfont = "0.1"
 orbimage = "0.1"
+redox_event = { git = "https://github.com/redox-os/event.git" }
 redox_syscall = "0.1"
 resize = "0.2"
 serde = "0.9"

@@ -2,6 +2,7 @@
 #![feature(asm)]
 #![feature(const_fn)]
 
+extern crate event;
 extern crate orbclient;
 extern crate orbimage;
 extern crate orbfont;
@@ -11,133 +12,25 @@ extern crate serde_derive;
 extern crate syscall;
 extern crate toml;
 
-use orbclient::Event;
-use std::{env, mem, str, thread};
-use std::os::unix::io::AsRawFd;
-use std::os::unix::process::CommandExt;
+use event::EventQueue;
+use std::{env, str};
+use std::cell::RefCell;
+use std::fs::File;
+use std::io::{Error, Result};
+use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::process::Command;
-use std::sync::{Arc, Mutex};
-use syscall::data::Packet;
-use syscall::number::SYS_READ;
-use syscall::scheme::SchemeMut;
+use std::rc::Rc;
+use syscall::flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR};
 
 use config::Config;
 use scheme::OrbitalScheme;
-use socket::Socket;
 
 mod config;
 mod image;
 mod rect;
 mod scheme;
-mod socket;
 mod theme;
 mod window;
-
-fn event_loop(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, socket: Arc<Socket>){
-    loop {
-        {
-            let mut scheme = scheme_mutex.lock().unwrap();
-            scheme.redraw(&display);
-        }
-
-        let mut events = [Event::new(); 128];
-        let count = display.receive_type(&mut events).unwrap();
-        {
-            let mut scheme = scheme_mutex.lock().unwrap();
-            for &event in events[.. count].iter() {
-                scheme.event(event);
-            }
-
-            let mut i = 0;
-            while i < scheme.todo.len() {
-                let mut packet = scheme.todo[i].clone();
-
-                let delay = if packet.a == SYS_READ {
-                    if let Some(window) = scheme.windows.get(&packet.b) {
-                        window.async == false
-                    } else {
-                        true
-                    }
-                } else {
-                    false
-                };
-
-                scheme.handle(&mut packet);
-
-                if delay && packet.a == 0 {
-                    i += 1;
-                }else{
-                    scheme.todo.remove(i);
-                    socket.send(&packet).unwrap();
-                }
-            }
-
-            for (id, window) in scheme.windows.iter() {
-                if ! window.events.is_empty() {
-                    socket.send(&Packet {
-                        id: 0,
-                        pid: 0,
-                        uid: 0,
-                        gid: 0,
-                        a: syscall::number::SYS_FEVENT,
-                        b: *id,
-                        c: syscall::flag::EVENT_READ,
-                        d: window.events.len() * mem::size_of::<Event>()
-                    }).unwrap();
-                }
-            }
-        }
-    }
-}
-
-fn server_loop(scheme_mutex: Arc<Mutex<OrbitalScheme>>, display: Arc<Socket>, socket: Arc<Socket>){
-    loop {
-        {
-            let mut scheme = scheme_mutex.lock().unwrap();
-            scheme.redraw(&display);
-        }
-
-        let mut packets = [Packet::default(); 128];
-        let count = socket.receive_type(&mut packets).unwrap();
-        {
-            let mut scheme = scheme_mutex.lock().unwrap();
-            for mut packet in packets[.. count].iter_mut() {
-                let delay = if packet.a == SYS_READ {
-                    if let Some(window) = scheme.windows.get(&packet.b) {
-                        window.async == false
-                    } else {
-                        true
-                    }
-                } else {
-                    false
-                };
-
-                scheme.handle(packet);
-
-                if delay && packet.a == 0 {
-                    scheme.todo.push(*packet);
-                } else {
-                    socket.send(&packet).unwrap();
-                }
-            }
-
-            for (id, window) in scheme.windows.iter() {
-                if ! window.events.is_empty() {
-                    socket.send(&Packet {
-                        id: 0,
-                        pid: 0,
-                        uid: 0,
-                        gid: 0,
-                        a: syscall::number::SYS_FEVENT,
-                        b: *id,
-                        c: syscall::flag::EVENT_READ,
-                        d: window.events.len() * mem::size_of::<Event>()
-                    }).unwrap();
-                }
-            }
-        }
-    }
-}
 
 fn main() {
     // Daemonize
@@ -151,8 +44,16 @@ fn main() {
 
         env::set_var("DISPLAY", &display_path);
 
-        match Socket::create(":orbital").map(|socket| Arc::new(socket)) {
-            Ok(socket) => match Socket::open(&display_path).map(|display| Arc::new(display)) {
+        let socket_res = syscall::open(":orbital", O_CREAT | O_CLOEXEC | O_NONBLOCK | O_RDWR)
+                                .map(|socket| unsafe { File::from_raw_fd(socket) })
+                                .map_err(|err| Error::from_raw_os_error(err.errno));
+
+        let display_res = syscall::open(&display_path, O_CLOEXEC | O_NONBLOCK | O_RDWR)
+                                .map(|socket| unsafe { File::from_raw_fd(socket) })
+                                .map_err(|err| Error::from_raw_os_error(err.errno));
+
+        match socket_res {
+            Ok(socket) => match display_res {
                 Ok(display) => {
                     let socket_fd = socket.as_raw_fd();
                     let display_fd = display.as_raw_fd();
@@ -172,33 +73,33 @@ fn main() {
 
                     let config = Config::from_path("/ui/orbital.toml");
 
-                    let scheme = Arc::new(Mutex::new(OrbitalScheme::new(width, height, display_fd, &config)));
+                    let scheme = Rc::new(RefCell::new(OrbitalScheme::new(width, height, socket, display, &config)));
+
+                    let mut event_queue = EventQueue::<()>::new().expect("orbital: failed to create event queue");
 
                     let mut command = Command::new(&login_cmd);
                     for arg in args {
                         command.arg(&arg);
                     }
-                    command.before_exec(move || {
-                        let _ = syscall::close(display_fd);
-                        let _ = syscall::close(socket_fd);
-                        Ok(())
-                    });
                     match command.spawn() {
                         Ok(_child) => (),
                         Err(err) => println!("orbital: failed to launch '{}': {}", login_cmd, err)
                     }
 
-                    let scheme_event = scheme.clone();
-                    let display_event = display.clone();
-                    let socket_event = socket.clone();
+                    let scheme_display = scheme.clone();
+                    event_queue.add(display_fd, move |_| -> Result<Option<()>> {
+                        scheme_display.borrow_mut().display_event()?;
+                        Ok(None)
+                    }).expect("orbital: failed to poll display");
 
-                    let event_thread = thread::spawn(move || {
-                        event_loop(scheme_event, display_event, socket_event);
-                    });
+                    event_queue.add(socket_fd, move |_| -> Result<Option<()>> {
+                        scheme.borrow_mut().scheme_event()?;
+                        Ok(None)
+                    }).expect("orbital: failed to poll scheme");
 
-                    server_loop(scheme, display, socket);
+                    event_queue.trigger_all(0).expect("orbital: failed to trigger event queue");
 
-                    let _ = event_thread.join();
+                    event_queue.run().expect("orbital: failed to run event queue");
                 },
                 Err(err) => println!("orbital: no display found: {}", err)
             },
