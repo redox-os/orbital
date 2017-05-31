@@ -1,6 +1,5 @@
 use orbclient::{self, Color, Event, EventOption, KeyEvent, MouseEvent, ButtonEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, ScreenEvent, Renderer};
 use orbfont;
-use resize;
 use syscall;
 
 use std::{cmp, io, mem, slice, str};
@@ -8,7 +7,6 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
-use std::path::Path;
 use syscall::data::Packet;
 use syscall::error::{Error, Result, EBADF, EINVAL};
 use syscall::number::SYS_READ;
@@ -18,7 +16,7 @@ use config::Config;
 use image::{Image, ImageRef};
 use rect::Rect;
 use theme::{BACKGROUND_COLOR, BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
-use window::Window;
+use window::{Window, WindowZOrder};
 
 pub fn read_type<R: Read, T: Copy>(r: &mut R, buf: &mut [T]) -> io::Result<usize> {
     r.read(unsafe { slice::from_raw_parts_mut(
@@ -44,132 +42,6 @@ fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
     }
 }
 
-#[derive(Clone, Copy)]
-enum BackgroundMode {
-    /// Do not resize the image, just center it
-    Center,
-    /// Resize the image to the display size
-    Fill,
-    /// Resize the image - keeping its aspect ratio, and fit it to the display with blank space
-    Scale,
-    /// Resize the image - keeping its aspect ratio, and crop to remove all blank space
-    Zoom,
-}
-
-impl BackgroundMode {
-    fn from_str(string: &str) -> BackgroundMode {
-        match string {
-            "fill" => BackgroundMode::Fill,
-            "scale" => BackgroundMode::Scale,
-            "zoom" => BackgroundMode::Zoom,
-            _ => BackgroundMode::Center
-        }
-    }
-}
-
-fn resize_image(image: &Image, mode: BackgroundMode, display_width: i32, display_height: i32) -> Image {
-    let (width, height) = match mode {
-        BackgroundMode::Center => {
-            return image.clone();
-        },
-        BackgroundMode::Fill => {
-            (display_width, display_height)
-        },
-        BackgroundMode::Scale => {
-            let d_w = display_width as f64;
-            let d_h = display_height as f64;
-            let i_w = image.width() as f64;
-            let i_h = image.height() as f64;
-
-            let scale = if d_w / d_h > i_w / i_h {
-                d_h / i_h
-            } else {
-                d_w / i_w
-            };
-
-            ((i_w * scale) as i32, (i_h * scale) as i32)
-        },
-        BackgroundMode::Zoom => {
-            let d_w = display_width as f64;
-            let d_h = display_height as f64;
-            let i_w = image.width() as f64;
-            let i_h = image.height() as f64;
-
-            let scale = if d_w / d_h < i_w / i_h {
-                d_h / i_h
-            } else {
-                d_w / i_w
-            };
-
-            ((i_w * scale) as i32, (i_h * scale) as i32)
-        }
-    };
-
-    if width == image.width() && height == image.height() {
-        return image.clone();
-    }
-
-    let src_color = image.data();
-    let mut dst_color = vec![Color::rgb(0, 0, 0); width as usize * height as usize].into_boxed_slice();
-
-    let src = unsafe {
-        slice::from_raw_parts(src_color.as_ptr() as *const u8, src_color.len() * 4)
-    };
-    let mut dst = unsafe {
-        slice::from_raw_parts_mut(dst_color.as_mut_ptr() as *mut u8, dst_color.len() * 4)
-    };
-
-    let mut resizer = resize::new(image.width() as usize, image.height() as usize,
-                                  width as usize, height as usize,
-                                  resize::Pixel::RGBA, resize::Type::Lanczos3);
-    resizer.resize(&src, &mut dst);
-
-    Image::from_data(width, height, dst_color)
-}
-
-fn load_backgrounds(configs: &Vec<String>) -> Vec<Image> {
-    let mut paths = Vec::new();
-
-    for config in configs.iter() {
-        let path = Path::new(&config);
-        if path.is_dir() {
-            if let Ok(read_dir) = path.read_dir() {
-                for entry_res in read_dir {
-                    if let Ok(entry) = entry_res {
-                        paths.push(entry.path());
-                    }
-                }
-            }
-        } else {
-            paths.push(path.to_path_buf());
-        }
-    }
-
-    paths.sort();
-
-    let mut background_originals = Vec::new();
-
-    for path in paths.iter() {
-        println!("orbital: loading {}", path.display());
-        if let Some(image) = Image::from_path(path) {
-            background_originals.push(image);
-        }
-    }
-
-    background_originals
-}
-
-fn resize_backgrounds(background_originals: &Vec<Image>, mode: BackgroundMode, display_width: i32, display_height: i32) -> Vec<Image> {
-    let mut backgrounds = Vec::new();
-
-    for (i, image) in background_originals.iter().enumerate() {
-        println!("orbital: resizing {}", i);
-        backgrounds.push(resize_image(image, mode, display_width, display_height));
-    }
-
-    backgrounds
-}
-
 unsafe fn display_fd_map(width: i32, height: i32, display_fd: usize) -> ImageRef<'static> {
     let display_ptr = syscall::fmap(display_fd, 0, (width * height * 4) as usize).unwrap();
     let display_slice = slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize);
@@ -183,16 +55,20 @@ unsafe fn display_fd_unmap(image: &mut ImageRef) {
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 enum CursorKind {
     LeftPtr,
+    BottomLeftCorner,
     BottomRightCorner,
     BottomSide,
+    LeftSide,
     RightSide,
 }
 
 enum DragMode {
     None,
     Title(usize, i32, i32),
+    LeftBorder(usize, i32, i32),
     RightBorder(usize, i32),
     BottomBorder(usize, i32),
+    BottomLeftBorder(usize, i32, i32, i32),
     BottomRightBorder(usize, i32, i32),
 }
 
@@ -200,10 +76,6 @@ pub struct OrbitalScheme {
     socket: File,
     display: File,
     image: ImageRef<'static>,
-    background_originals: Vec<Image>,
-    backgrounds: Vec<Image>,
-    background_i: usize,
-    background_mode: BackgroundMode,
     window_max: Image,
     window_max_unfocused: Image,
     window_close: Image,
@@ -232,22 +104,16 @@ impl OrbitalScheme {
 
         let mut cursors = BTreeMap::new();
         cursors.insert(CursorKind::LeftPtr, Image::from_path(&config.cursor).unwrap_or(Image::new(0, 0)));
+        cursors.insert(CursorKind::BottomLeftCorner, Image::from_path(&config.bottom_left_corner).unwrap_or(Image::new(0, 0)));
         cursors.insert(CursorKind::BottomRightCorner, Image::from_path(&config.bottom_right_corner).unwrap_or(Image::new(0, 0)));
         cursors.insert(CursorKind::BottomSide, Image::from_path(&config.bottom_side).unwrap_or(Image::new(0, 0)));
+        cursors.insert(CursorKind::LeftSide, Image::from_path(&config.left_side).unwrap_or(Image::new(0, 0)));
         cursors.insert(CursorKind::RightSide, Image::from_path(&config.right_side).unwrap_or(Image::new(0, 0)));
-
-        let background_originals = load_backgrounds(&config.background);
-        let background_mode = BackgroundMode::from_str(&config.background_mode);
-        let backgrounds = resize_backgrounds(&background_originals, background_mode, width, height);
 
         OrbitalScheme {
             socket: socket,
             display: display,
             image: unsafe { display_fd_map(width, height, display_fd) },
-            background_originals: background_originals,
-            backgrounds: backgrounds,
-            background_i: 0,
-            background_mode: background_mode,
             window_max: Image::from_path(&config.window_max).unwrap_or(Image::new(0, 0)),
             window_max_unfocused: Image::from_path(&config.window_max_unfocused).unwrap_or(Image::new(0, 0)),
             window_close: Image::from_path(&config.window_close).unwrap_or(Image::new(0, 0)),
@@ -274,24 +140,14 @@ impl OrbitalScheme {
         }
     }
 
-    fn background_rect(&self) -> Rect {
-        if let Some(background) = self.backgrounds.get(self.background_i) {
-            let w = background.width();
-            let h = background.height();
-            let x = self.image.width()/2 - w/2;
-            let y = self.image.height()/2 - h/2;
-            Rect::new(x, y, w, h)
-        } else {
-            Rect::new(-1, -1, 0, 0)
-        }
-    }
-
     fn cursor_rect(&self) -> Rect {
         let cursor = &self.cursors[&self.cursor_i];
         let (off_x, off_y) = match self.cursor_i {
             CursorKind::LeftPtr => (0, 0),
+            CursorKind::BottomLeftCorner => (0, -cursor.height()),
             CursorKind::BottomRightCorner => (-cursor.width(), -cursor.height()),
             CursorKind::BottomSide => (-cursor.width()/2, -cursor.height()),
+            CursorKind::LeftSide => (0, -cursor.height()/2),
             CursorKind::RightSide => (-cursor.width(), -cursor.height()/2),
         };
         Rect::new(self.cursor_x + off_x, self.cursor_y + off_y, cursor.width(), cursor.height())
@@ -303,24 +159,15 @@ impl OrbitalScheme {
 
     pub fn redraw(&mut self){
         let screen_rect = self.screen_rect();
-        let background_rect = self.background_rect();
         let cursor_rect = self.cursor_rect();
 
         for mut rect in self.redraws.drain(..) {
             rect = rect.intersection(&screen_rect);
 
             if ! rect.is_empty() {
-                //TODO: only clear area not covered by background
                 self.image.rect(rect.left(), rect.top(),
                                 rect.width() as u32, rect.height() as u32,
                                 BACKGROUND_COLOR);
-
-                let background_intersect = rect.intersection(&background_rect);
-                if ! background_intersect.is_empty(){
-                    if let Some(mut background) = self.backgrounds.get_mut(self.background_i) {
-                        self.image.roi(&background_intersect).blit(&background.roi(&background_intersect.offset(-background_rect.left(), -background_rect.top())));
-                    }
-                }
 
                 for (i, id) in self.order.iter().enumerate().rev() {
                     if let Some(mut window) = self.windows.get_mut(&id) {
@@ -436,19 +283,6 @@ impl OrbitalScheme {
                     self.win_tabbing = true;
                     self.win_tab();
                 },
-                orbclient::K_BKSP => if event.pressed {
-                    // Switch backgrounds
-                    let bg_rect = self.background_rect();
-                    schedule(&mut self.redraws, bg_rect);
-
-                    self.background_i += 1;
-                    if self.background_i >= self.backgrounds.len() {
-                        self.background_i = 0;
-                    }
-
-                    let bg_rect = self.background_rect();
-                    schedule(&mut self.redraws, bg_rect);
-                },
                 orbclient::K_UP | orbclient::K_DOWN | orbclient::K_LEFT | orbclient::K_RIGHT => if event.pressed {
                     if let Some(id) = self.order.front() {
                         if let Some(mut window) = self.windows.get_mut(&id) {
@@ -503,11 +337,17 @@ impl OrbitalScheme {
                             break;
                         } else if window.title_rect().contains(event.x, event.y) {
                             break;
+                        } else if window.left_border_rect().contains(event.x, event.y) {
+                            new_cursor = CursorKind::LeftSide;
+                            break;
                         } else if window.right_border_rect().contains(event.x, event.y) {
                             new_cursor = CursorKind::RightSide;
                             break;
                         } else if window.bottom_border_rect().contains(event.x, event.y) {
                             new_cursor = CursorKind::BottomSide;
+                            break;
+                        } else if window.bottom_left_border_rect().contains(event.x, event.y) {
+                            new_cursor = CursorKind::BottomLeftCorner;
                             break;
                         } else if window.bottom_right_border_rect().contains(event.x, event.y) {
                             new_cursor = CursorKind::BottomRightCorner;
@@ -541,6 +381,41 @@ impl OrbitalScheme {
                     self.dragging = DragMode::None;
                 }
             },
+            DragMode::LeftBorder(window_id, off_x, right_x) => {
+                if let Some(mut window) = self.windows.get_mut(&window_id) {
+                    new_cursor = CursorKind::LeftSide;
+
+                    let x = event.x - off_x;
+                    let w = right_x - x;
+
+                    if w > 0 {
+                        if x != window.x {
+                            schedule(&mut self.redraws, window.title_rect());
+                            schedule(&mut self.redraws, window.rect());
+
+                            window.x = x;
+                            let move_event = MoveEvent {
+                                x: x,
+                                y: window.y
+                            }.to_event();
+                            window.event(move_event);
+
+                            schedule(&mut self.redraws, window.title_rect());
+                            schedule(&mut self.redraws, window.rect());
+                        }
+
+                        if w != window.width()  {
+                            let resize_event = ResizeEvent {
+                                width: w as u32,
+                                height: window.height() as u32
+                            }.to_event();
+                            window.event(resize_event);
+                        }
+                    }
+                } else {
+                    self.dragging = DragMode::None;
+                }
+            },
             DragMode::RightBorder(window_id, off_x) => {
                 if let Some(mut window) = self.windows.get_mut(&window_id) {
                     new_cursor = CursorKind::RightSide;
@@ -566,6 +441,42 @@ impl OrbitalScheme {
                             height: h as u32
                         }.to_event();
                         window.event(resize_event);
+                    }
+                } else {
+                    self.dragging = DragMode::None;
+                }
+            },
+            DragMode::BottomLeftBorder(window_id, off_x, off_y, right_x) => {
+                if let Some(mut window) = self.windows.get_mut(&window_id) {
+                    new_cursor = CursorKind::BottomLeftCorner;
+
+                    let x = event.x - off_x;
+                    let h = event.y - off_y - window.y;
+                    let w = right_x - x;
+
+                    if w > 0 && h > 0 {
+                        if x != window.x {
+                            schedule(&mut self.redraws, window.title_rect());
+                            schedule(&mut self.redraws, window.rect());
+
+                            window.x = x;
+                            let move_event = MoveEvent {
+                                x: x,
+                                y: window.y
+                            }.to_event();
+                            window.event(move_event);
+
+                            schedule(&mut self.redraws, window.title_rect());
+                            schedule(&mut self.redraws, window.rect());
+                        }
+
+                        if w != window.width() || h != window.height() {
+                            let resize_event = ResizeEvent {
+                                width: w as u32,
+                                height: h as u32
+                            }.to_event();
+                            window.event(resize_event);
+                        }
                     }
                 } else {
                     self.dragging = DragMode::None;
@@ -683,6 +594,12 @@ impl OrbitalScheme {
                                 }
                             }
                             break;
+                        } else if window.left_border_rect().contains(self.cursor_x, self.cursor_y) {
+                            if event.left && ! self.cursor_left  {
+                                focus = i;
+                                self.dragging = DragMode::LeftBorder(id, self.cursor_x - window.x, window.x + window.width());
+                            }
+                            break;
                         } else if window.right_border_rect().contains(self.cursor_x, self.cursor_y) {
                             if event.left && ! self.cursor_left  {
                                 focus = i;
@@ -695,6 +612,12 @@ impl OrbitalScheme {
                                 self.dragging = DragMode::BottomBorder(id, self.cursor_y - (window.y + window.height()));
                             }
                             break;
+                        } else if window.bottom_left_border_rect().contains(self.cursor_x, self.cursor_y) {
+                            if event.left && ! self.cursor_left  {
+                                focus = i;
+                                self.dragging = DragMode::BottomLeftBorder(id, self.cursor_x - window.x, self.cursor_y - (window.y + window.height()), window.x + window.width());
+                            }
+                            break;
                         } else if window.bottom_right_border_rect().contains(self.cursor_x, self.cursor_y) {
                             if event.left && ! self.cursor_left  {
                                 focus = i;
@@ -705,8 +628,9 @@ impl OrbitalScheme {
                     }
                     i += 1;
                 }
+
                 if focus > 0 {
-                    //Redraw old focused window
+                    // Redraw old focused window
                     if let Some(id) = self.order.front() {
                         if let Some(mut window) = self.windows.get_mut(&id){
                             schedule(&mut self.redraws, window.title_rect());
@@ -716,8 +640,25 @@ impl OrbitalScheme {
                             }.to_event());
                         }
                     }
-                    //Redraw new focused window
+
+                    // Reorder windows
                     if let Some(id) = self.order.remove(focus) {
+                        if let Some(window) = self.windows.get(&id){
+                            match window.zorder {
+                                WindowZOrder::Front | WindowZOrder::Normal => {
+                                    // Transfer focus if a front or normal window
+                                    self.order.push_front(id);
+                                },
+                                WindowZOrder::Back => {
+                                    // Return to original position if a background window
+                                    self.order.insert(focus, id);
+                                }
+                            }
+                        }
+                    }
+
+                    // Redraw new focused window
+                    if let Some(id) = self.order.front() {
                         if let Some(mut window) = self.windows.get_mut(&id){
                             schedule(&mut self.redraws, window.title_rect());
                             schedule(&mut self.redraws, window.rect());
@@ -725,7 +666,6 @@ impl OrbitalScheme {
                                 focused: true
                             }.to_event());
                         }
-                        self.order.push_front(id);
                     }
                 }
             },
@@ -744,8 +684,6 @@ impl OrbitalScheme {
             display_fd_unmap(&mut self.image);
             self.image = display_fd_map(event.width as i32, event.height as i32, self.display.as_raw_fd());
         }
-
-        self.backgrounds = resize_backgrounds(&self.background_originals, self.background_mode, self.image.width(), self.image.height());
 
         let screen_rect = self.screen_rect();
         schedule(&mut self.redraws, screen_rect);
@@ -892,18 +830,6 @@ impl SchemeMut for OrbitalScheme {
 
         let flags = parts.next().unwrap_or("");
 
-        let mut async = false;
-        let mut resizable = false;
-        let mut unclosable= false;
-        for flag in flags.chars() {
-            match flag {
-                'a' => async = true,
-                'r' => resizable = true,
-                'u' => unclosable = true,
-                _ => ()
-            }
-        }
-
         let mut x = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
         let mut y = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
         let width = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
@@ -934,10 +860,34 @@ impl SchemeMut for OrbitalScheme {
             }
         }
 
-        let window = Window::new(x, y, width, height, title, async, resizable, unclosable, &self.font);
+        let mut window = Window::new(x, y, width, height);
+
+        for flag in flags.chars() {
+            match flag {
+                'a' => window.async = true,
+                'b' => window.zorder = WindowZOrder::Back,
+                'f' => window.zorder = WindowZOrder::Front,
+                'r' => window.resizable = true,
+                'u' => window.unclosable = true,
+                _ => ()
+            }
+        }
+
+        window.title = title;
+        window.render_title(&self.font);
+
         schedule(&mut self.redraws, window.title_rect());
         schedule(&mut self.redraws, window.rect());
-        self.order.push_front(id);
+
+        match window.zorder {
+            WindowZOrder::Front | WindowZOrder::Normal => {
+                self.order.push_front(id);
+            },
+            WindowZOrder::Back => {
+                self.order.push_back(id);
+            }
+        }
+
         self.windows.insert(id, window);
 
         Ok(id)

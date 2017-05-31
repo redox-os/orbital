@@ -6,7 +6,6 @@ extern crate event;
 extern crate orbclient;
 extern crate orbimage;
 extern crate orbfont;
-extern crate resize;
 #[macro_use]
 extern crate serde_derive;
 extern crate syscall;

@@ -11,14 +11,20 @@ use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 
 use syscall::error::{Error, Result, EINVAL};
 
+pub enum WindowZOrder {
+    Normal,
+    Back,
+    Front,
+}
 
 pub struct Window {
     pub x: i32,
     pub y: i32,
+    pub title: String,
     pub async: bool,
     pub resizable: bool,
     pub unclosable: bool,
-    pub title: String,
+    pub zorder: WindowZOrder,
     pub max_restore: Option<Rect>,
     image: Image,
     title_image: Image,
@@ -27,24 +33,21 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn new(x: i32, y: i32, w: i32, h: i32, title: String, async: bool, resizable: bool, unclosable: bool, font: &Font) -> Window {
-        let mut window = Window {
+    pub fn new(x: i32, y: i32, w: i32, h: i32) -> Window {
+        Window {
             x: x,
             y: y,
-            async: async,
-            resizable: resizable,
-            unclosable: unclosable,
-            title: title,
+            title: String::new(),
+            async: false,
+            resizable: false,
+            unclosable: false,
+            zorder: WindowZOrder::Normal,
             max_restore: None,
             image: Image::new(w, h),
             title_image: Image::new(0, 0),
             title_image_unfocused: Image::new(0, 0),
             events: VecDeque::new()
-        };
-
-        window.render_title(font);
-
-        window
+        }
     }
 
     pub fn width(&self) -> i32 {
@@ -67,14 +70,6 @@ impl Window {
         }
     }
 
-    pub fn right_border_rect(&self) -> Rect {
-        if self.resizable {
-            Rect::new(self.x + self.width(), self.y, 8, self.height())
-        } else {
-            Rect::new(-1, -1, 0, 0)
-        }
-    }
-
     pub fn bottom_border_rect(&self) -> Rect {
         if self.resizable {
             Rect::new(self.x, self.y + self.height(), self.width(), 8)
@@ -83,9 +78,33 @@ impl Window {
         }
     }
 
+    pub fn bottom_left_border_rect(&self) -> Rect {
+        if self.resizable {
+            Rect::new(self.x - 8, self.y + self.height(), 8, 8)
+        } else {
+            Rect::new(-1, -1, 0, 0)
+        }
+    }
+
     pub fn bottom_right_border_rect(&self) -> Rect {
         if self.resizable {
             Rect::new(self.x + self.width(), self.y + self.height(), 8, 8)
+        } else {
+            Rect::new(-1, -1, 0, 0)
+        }
+    }
+
+    pub fn left_border_rect(&self) -> Rect {
+        if self.resizable {
+            Rect::new(self.x - 8, self.y, 8, self.height())
+        } else {
+            Rect::new(-1, -1, 0, 0)
+        }
+    }
+
+    pub fn right_border_rect(&self) -> Rect {
+        if self.resizable {
+            Rect::new(self.x + self.width(), self.y, 8, self.height())
         } else {
             Rect::new(-1, -1, 0, 0)
         }

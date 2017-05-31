@@ -13,7 +13,6 @@ orbfont = "0.1"
 orbimage = "0.1"
 redox_event = { git = "https://github.com/redox-os/event.git" }
 redox_syscall = "0.1"
-resize = "0.2"
 serde = "0.9"
 serde_derive = "0.9"
 toml = "0.3"
