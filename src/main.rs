@@ -17,6 +17,7 @@ use std::cell::RefCell;
 use std::fs::File;
 use std::io::{Error, Result};
 use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::path::PathBuf;
 use std::process::Command;
 use std::rc::Rc;
 use syscall::flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR};
@@ -42,6 +43,14 @@ fn main() {
         env::set_current_dir("file:").unwrap();
 
         env::set_var("DISPLAY", &display_path);
+
+        {
+            let path = env::var("PATH").unwrap_or(String::new());
+            let mut paths = env::split_paths(&path).collect::<Vec<_>>();
+            paths.push(PathBuf::from("/ui/bin"));
+            let new_path = env::join_paths(paths).unwrap();
+            env::set_var("PATH", new_path);
+        }
 
         let socket_res = syscall::open(":orbital", O_CREAT | O_CLOEXEC | O_NONBLOCK | O_RDWR)
                                 .map(|socket| unsafe { File::from_raw_fd(socket) })
