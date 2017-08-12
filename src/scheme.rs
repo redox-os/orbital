@@ -170,7 +170,7 @@ impl OrbitalScheme {
                                 BACKGROUND_COLOR);
 
                 for (i, id) in self.order.iter().enumerate().rev() {
-                    if let Some(mut window) = self.windows.get_mut(&id) {
+                    if let Some(window) = self.windows.get_mut(&id) {
                         window.draw_title(&mut self.image, &rect, i == 0, if i == 0 {
                             &mut self.window_max
                         } else {
@@ -207,7 +207,7 @@ impl OrbitalScheme {
 
             //Redraw old focused window
             if let Some(id) = self.order.pop_front() {
-                if let Some(mut window) = self.windows.get_mut(&id) {
+                if let Some(window) = self.windows.get_mut(&id) {
                     schedule(&mut self.redraws, window.title_rect());
                     schedule(&mut self.redraws, window.rect());
                     window.event(FocusEvent {
@@ -218,7 +218,7 @@ impl OrbitalScheme {
             }
             //Redraw new focused window
             if let Some(id) = self.order.front() {
-                if let Some(mut window) = self.windows.get_mut(&id){
+                if let Some(window) = self.windows.get_mut(&id){
                     schedule(&mut self.redraws, window.title_rect());
                     schedule(&mut self.redraws, window.rect());
                     window.event(FocusEvent {
@@ -273,7 +273,7 @@ impl OrbitalScheme {
             match event.scancode {
                 orbclient::K_ESC => if event.pressed {
                     if let Some(id) = self.order.front() {
-                        if let Some(mut window) = self.windows.get_mut(&id) {
+                        if let Some(window) = self.windows.get_mut(&id) {
                             window.event(QuitEvent.to_event());
                         }
                     }
@@ -285,7 +285,7 @@ impl OrbitalScheme {
                 },
                 orbclient::K_UP | orbclient::K_DOWN | orbclient::K_LEFT | orbclient::K_RIGHT => if event.pressed {
                     if let Some(id) = self.order.front() {
-                        if let Some(mut window) = self.windows.get_mut(&id) {
+                        if let Some(window) = self.windows.get_mut(&id) {
                             schedule(&mut self.redraws, window.title_rect());
                             schedule(&mut self.redraws, window.rect());
 
@@ -313,7 +313,7 @@ impl OrbitalScheme {
                 }
             }
         } else if let Some(id) = self.order.front() {
-            if let Some(mut window) = self.windows.get_mut(&id) {
+            if let Some(window) = self.windows.get_mut(&id) {
                 window.event(event.to_event());
             }
         }
@@ -326,7 +326,7 @@ impl OrbitalScheme {
         match self.dragging {
             DragMode::None => {
                 for &id in self.order.iter() {
-                    if let Some(mut window) = self.windows.get_mut(&id) {
+                    if let Some(window) = self.windows.get_mut(&id) {
                         if window.rect().contains(event.x, event.y) {
                             if ! self.win_key {
                                 let mut window_event = event.to_event();
@@ -357,7 +357,7 @@ impl OrbitalScheme {
                 }
             },
             DragMode::Title(window_id, drag_x, drag_y) => {
-                if let Some(mut window) = self.windows.get_mut(&window_id) {
+                if let Some(window) = self.windows.get_mut(&window_id) {
                     if drag_x != event.x || drag_y != event.y {
                         schedule(&mut self.redraws, window.title_rect());
                         schedule(&mut self.redraws, window.rect());
@@ -382,7 +382,7 @@ impl OrbitalScheme {
                 }
             },
             DragMode::LeftBorder(window_id, off_x, right_x) => {
-                if let Some(mut window) = self.windows.get_mut(&window_id) {
+                if let Some(window) = self.windows.get_mut(&window_id) {
                     new_cursor = CursorKind::LeftSide;
 
                     let x = event.x - off_x;
@@ -417,7 +417,7 @@ impl OrbitalScheme {
                 }
             },
             DragMode::RightBorder(window_id, off_x) => {
-                if let Some(mut window) = self.windows.get_mut(&window_id) {
+                if let Some(window) = self.windows.get_mut(&window_id) {
                     new_cursor = CursorKind::RightSide;
                     let w = event.x - off_x - window.x;
                     if w > 0 && w != window.width()  {
@@ -432,7 +432,7 @@ impl OrbitalScheme {
                 }
             },
             DragMode::BottomBorder(window_id, off_y) => {
-                if let Some(mut window) = self.windows.get_mut(&window_id) {
+                if let Some(window) = self.windows.get_mut(&window_id) {
                     new_cursor = CursorKind::BottomSide;
                     let h = event.y - off_y - window.y;
                     if h > 0 && h != window.height()  {
@@ -447,7 +447,7 @@ impl OrbitalScheme {
                 }
             },
             DragMode::BottomLeftBorder(window_id, off_x, off_y, right_x) => {
-                if let Some(mut window) = self.windows.get_mut(&window_id) {
+                if let Some(window) = self.windows.get_mut(&window_id) {
                     new_cursor = CursorKind::BottomLeftCorner;
 
                     let x = event.x - off_x;
@@ -483,7 +483,7 @@ impl OrbitalScheme {
                 }
             },
             DragMode::BottomRightBorder(window_id, off_x, off_y) => {
-                if let Some(mut window) = self.windows.get_mut(&window_id) {
+                if let Some(window) = self.windows.get_mut(&window_id) {
                     new_cursor = CursorKind::BottomRightCorner;
                     let w = event.x - off_x - window.x;
                     let h = event.y - off_y - window.y;
@@ -530,7 +530,7 @@ impl OrbitalScheme {
                 let mut focus = 0;
                 let mut i = 0;
                 for &id in self.order.iter() {
-                    if let Some(mut window) = self.windows.get_mut(&id) {
+                    if let Some(window) = self.windows.get_mut(&id) {
                         if window.rect().contains(self.cursor_x, self.cursor_y) {
                             if self.win_key {
                                 if event.left && ! self.cursor_left {
@@ -632,7 +632,7 @@ impl OrbitalScheme {
                 if focus > 0 {
                     // Redraw old focused window
                     if let Some(id) = self.order.front() {
-                        if let Some(mut window) = self.windows.get_mut(&id){
+                        if let Some(window) = self.windows.get_mut(&id){
                             schedule(&mut self.redraws, window.title_rect());
                             schedule(&mut self.redraws, window.rect());
                             window.event(FocusEvent {
@@ -659,7 +659,7 @@ impl OrbitalScheme {
 
                     // Redraw new focused window
                     if let Some(id) = self.order.front() {
-                        if let Some(mut window) = self.windows.get_mut(&id){
+                        if let Some(window) = self.windows.get_mut(&id){
                             schedule(&mut self.redraws, window.title_rect());
                             schedule(&mut self.redraws, window.rect());
                             window.event(FocusEvent {
@@ -704,7 +704,7 @@ impl OrbitalScheme {
             EventOption::Button(event) => self.button_event(event),
             EventOption::Scroll(_) => {
                 if let Some(id) = self.order.front() {
-                    if let Some(mut window) = self.windows.get_mut(&id) {
+                    if let Some(window) = self.windows.get_mut(&id) {
                         window.event(event_union);
                     }
                 }
@@ -781,7 +781,7 @@ impl OrbitalScheme {
                 break;
             }
 
-            for mut packet in packets[.. count].iter_mut() {
+            for packet in packets[.. count].iter_mut() {
                 let delay = if packet.a == SYS_READ {
                     if let Some(window) = self.windows.get(&packet.b) {
                         window.async == false
@@ -894,7 +894,7 @@ impl SchemeMut for OrbitalScheme {
     }
 
     fn read(&mut self, id: usize, buf: &mut [u8]) -> Result<usize> {
-        if let Some(mut window) = self.windows.get_mut(&id) {
+        if let Some(window) = self.windows.get_mut(&id) {
             window.read(buf)
         } else {
             Err(Error::new(EBADF))
@@ -902,7 +902,7 @@ impl SchemeMut for OrbitalScheme {
     }
 
     fn write(&mut self, id: usize, buf: &[u8]) -> Result<usize> {
-        if let Some(mut window) = self.windows.get_mut(&id) {
+        if let Some(window) = self.windows.get_mut(&id) {
             if let Ok(msg) = str::from_utf8(buf) {
                 let mut parts = msg.split(',');
                 match parts.next() {
@@ -962,7 +962,7 @@ impl SchemeMut for OrbitalScheme {
     }
 
     fn fmap(&mut self, id: usize, offset: usize, size: usize) -> Result<usize> {
-        if let Some(mut window) = self.windows.get_mut(&id) {
+        if let Some(window) = self.windows.get_mut(&id) {
             window.map(offset, size)
         } else {
             Err(Error::new(EBADF))

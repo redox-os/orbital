@@ -86,8 +86,8 @@ impl<'a> ImageRoi<'a> {
     }
 
     pub fn blend(&'a mut self, other: &ImageRoi) {
-        for (mut self_row, other_row) in self.rows_mut().zip(other.rows()) {
-            for(mut old, new) in self_row.iter_mut().zip(other_row.iter()) {
+        for (self_row, other_row) in self.rows_mut().zip(other.rows()) {
+            for (old, new) in self_row.iter_mut().zip(other_row.iter()) {
                 let alpha = (new.data >> 24) & 0xFF;
                 if alpha >= 255 {
                     old.data = new.data;
@@ -109,7 +109,7 @@ impl<'a> ImageRoi<'a> {
     }
 
     pub fn blit(&'a mut self, other: &ImageRoi) {
-        for (mut self_row, other_row) in self.rows_mut().zip(other.rows()) {
+        for (self_row, other_row) in self.rows_mut().zip(other.rows()) {
             let len = cmp::min(self_row.len(), other_row.len());
             unsafe { fast_copy(self_row.as_mut_ptr() as *mut u8, other_row.as_ptr() as *const u8, len * 4); }
         }
