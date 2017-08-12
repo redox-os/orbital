@@ -129,7 +129,7 @@ impl Window {
             let mut x = self.x + 6;
             let w = max(self.x + 6, self.x + self.width() - 18) - x;
             if w > 0 {
-                let mut title_image = if focused { &mut self.title_image } else { &mut self.title_image_unfocused };
+                let title_image = if focused { &mut self.title_image } else { &mut self.title_image_unfocused };
                 let image_rect = Rect::new(x, title_rect.top() + 6, min(w, title_image.width()), title_image.height());
                 let image_intersect = rect.intersection(&image_rect);
                 if ! image_intersect.is_empty() {

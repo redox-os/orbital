@@ -27,7 +27,7 @@ pub fn read_type<R: Read, T: Copy>(r: &mut R, buf: &mut [T]) -> io::Result<usize
 
 fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
     let mut push = true;
-    for mut rect in redraws.iter_mut() {
+    for rect in redraws.iter_mut() {
         //If contained, ignore new redraw request
         let container = rect.container(&request);
         if container.area() <= rect.area() + request.area() {
