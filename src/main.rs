@@ -47,7 +47,7 @@ fn main() {
         {
             let path = env::var("PATH").unwrap_or(String::new());
             let mut paths = env::split_paths(&path).collect::<Vec<_>>();
-            paths.push(PathBuf::from("/ui/bin"));
+            paths.push(PathBuf::from("file:/ui/bin"));
             let new_path = env::join_paths(paths).unwrap();
             env::set_var("PATH", new_path);
         }
