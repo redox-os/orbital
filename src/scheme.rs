@@ -92,6 +92,7 @@ pub struct OrbitalScheme {
     win_tabbing: bool,
     next_id: isize,
     order: VecDeque<usize>,
+    zbuffer: Vec<(usize, WindowZOrder)>,
     pub windows: BTreeMap<usize, Window>,
     redraws: Vec<Rect>,
     pub todo: Vec<Packet>,
@@ -133,6 +134,7 @@ impl OrbitalScheme {
             win_tabbing: false,
             next_id: 1,
             order: VecDeque::new(),
+            zbuffer: Vec::new(),
             windows: BTreeMap::new(),
             redraws: vec![Rect::new(0, 0, width, height)],
             todo: Vec::new(),
@@ -157,7 +159,19 @@ impl OrbitalScheme {
         Rect::new(0, 0, self.image.width(), self.image.height())
     }
 
-    pub fn redraw(&mut self){
+    fn rezbuffer(&mut self) {
+        self.zbuffer.clear();
+
+        for &id in self.order.iter() {
+            if let Some(window) = self.windows.get(&id) {
+                self.zbuffer.push((id, window.zorder));
+            }
+        }
+
+        //self.zbuffer.sort_by(|a, b| a.1.cmp(&b.1));
+    }
+
+    pub fn redraw(&mut self) {
         let screen_rect = self.screen_rect();
         let cursor_rect = self.cursor_rect();
 
@@ -170,6 +184,7 @@ impl OrbitalScheme {
                                 BACKGROUND_COLOR);
 
                 for (i, id) in self.order.iter().enumerate().rev() {
+                    //let id = entry.0;
                     if let Some(window) = self.windows.get_mut(&id) {
                         window.draw_title(&mut self.image, &rect, i == 0, if i == 0 {
                             &mut self.window_max
@@ -205,7 +220,7 @@ impl OrbitalScheme {
             // Disable dragging
             self.dragging = DragMode::None;
 
-            //Redraw old focused window
+            // Redraw old focused window
             if let Some(id) = self.order.pop_front() {
                 if let Some(window) = self.windows.get_mut(&id) {
                     schedule(&mut self.redraws, window.title_rect());
@@ -216,7 +231,7 @@ impl OrbitalScheme {
                 }
                 self.order.push_back(id);
             }
-            //Redraw new focused window
+            // Redraw new focused window
             if let Some(id) = self.order.front() {
                 if let Some(window) = self.windows.get_mut(&id){
                     schedule(&mut self.redraws, window.title_rect());
@@ -226,6 +241,9 @@ impl OrbitalScheme {
                     }.to_event());
                 }
             }
+
+            // Recalculate zbuffer
+            self.rezbuffer();
         }
     }
 
@@ -234,7 +252,7 @@ impl OrbitalScheme {
         use orbfont;
         let mut rendered_text: Vec<orbfont::Text> = vec![];
         for id in self.order.iter() {
-            if let Some(window) = self.windows.get(id) {
+            if let Some(window) = self.windows.get(&id) {
                 if window.title.is_empty() {
                     rendered_text.push(self.font.render(&format!("[unnamed #{}]", id), 16.0));
                 } else {
@@ -326,6 +344,7 @@ impl OrbitalScheme {
         match self.dragging {
             DragMode::None => {
                 for &id in self.order.iter() {
+                    // let id = entry.0;
                     if let Some(window) = self.windows.get_mut(&id) {
                         if window.rect().contains(event.x, event.y) {
                             if ! self.win_key {
@@ -530,6 +549,7 @@ impl OrbitalScheme {
                 let mut focus = 0;
                 let mut i = 0;
                 for &id in self.order.iter() {
+                    //let id = entry.0;
                     if let Some(window) = self.windows.get_mut(&id) {
                         if window.rect().contains(self.cursor_x, self.cursor_y) {
                             if self.win_key {
@@ -667,6 +687,8 @@ impl OrbitalScheme {
                             }.to_event());
                         }
                     }
+
+                    self.rezbuffer();
                 }
             },
             _ => if ! event.left {
@@ -704,6 +726,7 @@ impl OrbitalScheme {
             EventOption::Button(event) => self.button_event(event),
             EventOption::Scroll(_) => {
                 if let Some(id) = self.order.front() {
+                    //let id = entry.0;
                     if let Some(window) = self.windows.get_mut(&id) {
                         window.event(event_union);
                     }
@@ -854,7 +877,7 @@ impl SchemeMut for OrbitalScheme {
         }
 
         if let Some(id) = self.order.front() {
-            if let Some(window) = self.windows.get(&id){
+            if let Some(window) = self.windows.get(&id) {
                 schedule(&mut self.redraws, window.title_rect());
                 schedule(&mut self.redraws, window.rect());
             }
@@ -887,6 +910,8 @@ impl SchemeMut for OrbitalScheme {
                 self.order.push_back(id);
             }
         }
+
+        self.rezbuffer();
 
         self.windows.insert(id, window);
 
@@ -996,13 +1021,17 @@ impl SchemeMut for OrbitalScheme {
             }
         }
 
-        if let Some(window) = self.windows.remove(&id) {
+        let res = if let Some(window) = self.windows.remove(&id) {
             schedule(&mut self.redraws, window.title_rect());
             schedule(&mut self.redraws, window.rect());
             Ok(0)
         } else {
             Err(Error::new(EBADF))
-        }
+        };
+
+        self.rezbuffer();
+
+        res
     }
 }
 

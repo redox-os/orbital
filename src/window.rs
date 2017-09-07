@@ -11,9 +11,10 @@ use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 
 use syscall::error::{Error, Result, EINVAL};
 
+#[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum WindowZOrder {
-    Normal,
     Back,
+    Normal,
     Front,
 }
 
