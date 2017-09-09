@@ -168,10 +168,12 @@ impl OrbitalScheme {
             }
         }
 
-        //self.zbuffer.sort_by(|a, b| a.1.cmp(&b.1));
+        self.zbuffer.sort_by(|a, b| b.1.cmp(&a.1));
     }
 
     pub fn redraw(&mut self) {
+        self.rezbuffer();
+
         let screen_rect = self.screen_rect();
         let cursor_rect = self.cursor_rect();
 
@@ -183,8 +185,8 @@ impl OrbitalScheme {
                                 rect.width() as u32, rect.height() as u32,
                                 BACKGROUND_COLOR);
 
-                for (i, id) in self.order.iter().enumerate().rev() {
-                    //let id = entry.0;
+                for (i, entry) in self.zbuffer.iter().enumerate().rev() {
+                    let id = entry.0;
                     if let Some(window) = self.windows.get_mut(&id) {
                         window.draw_title(&mut self.image, &rect, i == 0, if i == 0 {
                             &mut self.window_max
@@ -241,9 +243,6 @@ impl OrbitalScheme {
                     }.to_event());
                 }
             }
-
-            // Recalculate zbuffer
-            self.rezbuffer();
         }
     }
 
@@ -343,8 +342,8 @@ impl OrbitalScheme {
         // Check for focus switch, dragging, and forward mouse events to applications
         match self.dragging {
             DragMode::None => {
-                for &id in self.order.iter() {
-                    // let id = entry.0;
+                for entry in self.zbuffer.iter() {
+                    let id = entry.0;
                     if let Some(window) = self.windows.get_mut(&id) {
                         if window.rect().contains(event.x, event.y) {
                             if ! self.win_key {
@@ -548,8 +547,8 @@ impl OrbitalScheme {
             DragMode::None => {
                 let mut focus = 0;
                 let mut i = 0;
-                for &id in self.order.iter() {
-                    //let id = entry.0;
+                for entry in self.zbuffer.iter() {
+                    let id = entry.0;
                     if let Some(window) = self.windows.get_mut(&id) {
                         if window.rect().contains(self.cursor_x, self.cursor_y) {
                             if self.win_key {
@@ -687,8 +686,6 @@ impl OrbitalScheme {
                             }.to_event());
                         }
                     }
-
-                    self.rezbuffer();
                 }
             },
             _ => if ! event.left {
@@ -720,13 +717,15 @@ impl OrbitalScheme {
     }
 
     pub fn event(&mut self, event_union: Event){
+        self.rezbuffer();
+
         match event_union.to_option() {
             EventOption::Key(event) => self.key_event(event),
             EventOption::Mouse(event) => self.mouse_event(event),
             EventOption::Button(event) => self.button_event(event),
             EventOption::Scroll(_) => {
-                if let Some(id) = self.order.front() {
-                    //let id = entry.0;
+                if let Some(entry) = self.zbuffer.front() {
+                    let id = entry.0;
                     if let Some(window) = self.windows.get_mut(&id) {
                         window.event(event_union);
                     }
@@ -911,8 +910,6 @@ impl SchemeMut for OrbitalScheme {
             }
         }
 
-        self.rezbuffer();
-
         self.windows.insert(id, window);
 
         Ok(id)
@@ -1028,8 +1025,6 @@ impl SchemeMut for OrbitalScheme {
         } else {
             Err(Error::new(EBADF))
         };
-
-        self.rezbuffer();
 
         res
     }
