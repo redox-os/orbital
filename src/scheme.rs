@@ -92,7 +92,7 @@ pub struct OrbitalScheme {
     win_tabbing: bool,
     next_id: isize,
     order: VecDeque<usize>,
-    zbuffer: Vec<(usize, WindowZOrder)>,
+    zbuffer: Vec<(usize, WindowZOrder, usize)>,
     pub windows: BTreeMap<usize, Window>,
     redraws: Vec<Rect>,
     pub todo: Vec<Packet>,
@@ -162,9 +162,9 @@ impl OrbitalScheme {
     fn rezbuffer(&mut self) {
         self.zbuffer.clear();
 
-        for &id in self.order.iter() {
-            if let Some(window) = self.windows.get(&id) {
-                self.zbuffer.push((id, window.zorder));
+        for (i, id) in self.order.iter().enumerate() {
+            if let Some(window) = self.windows.get(id) {
+                self.zbuffer.push((*id, window.zorder, i));
             }
         }
 
@@ -185,8 +185,9 @@ impl OrbitalScheme {
                                 rect.width() as u32, rect.height() as u32,
                                 BACKGROUND_COLOR);
 
-                for (i, entry) in self.zbuffer.iter().enumerate().rev() {
+                for entry in self.zbuffer.iter().rev() {
                     let id = entry.0;
+                    let i = entry.2;
                     if let Some(window) = self.windows.get_mut(&id) {
                         window.draw_title(&mut self.image, &rect, i == 0, if i == 0 {
                             &mut self.window_max
@@ -546,9 +547,9 @@ impl OrbitalScheme {
         match self.dragging {
             DragMode::None => {
                 let mut focus = 0;
-                let mut i = 0;
                 for entry in self.zbuffer.iter() {
                     let id = entry.0;
+                    let i = entry.2;
                     if let Some(window) = self.windows.get_mut(&id) {
                         if window.rect().contains(self.cursor_x, self.cursor_y) {
                             if self.win_key {
@@ -645,7 +646,6 @@ impl OrbitalScheme {
                             break;
                         }
                     }
-                    i += 1;
                 }
 
                 if focus > 0 {
