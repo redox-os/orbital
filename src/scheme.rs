@@ -724,7 +724,7 @@ impl OrbitalScheme {
             EventOption::Mouse(event) => self.mouse_event(event),
             EventOption::Button(event) => self.button_event(event),
             EventOption::Scroll(_) => {
-                if let Some(entry) = self.zbuffer.front() {
+                if let Some(entry) = self.zbuffer.first() {
                     let id = entry.0;
                     if let Some(window) = self.windows.get_mut(&id) {
                         window.event(event_union);
