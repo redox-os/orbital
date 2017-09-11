@@ -3,7 +3,7 @@ use orbfont::Font;
 use std::cmp::{min, max};
 use std::collections::VecDeque;
 use std::mem::size_of;
-use std::{ptr, str};
+use std::ptr;
 
 use image::{Image, ImageRef};
 use rect::Rect;

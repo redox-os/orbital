@@ -12,7 +12,7 @@ extern crate syscall;
 extern crate toml;
 
 use event::EventQueue;
-use std::{env, str};
+use std::env;
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{Error, Result};
