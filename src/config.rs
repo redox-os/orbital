@@ -5,8 +5,6 @@ use toml;
 #[derive(Default, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    pub background: Vec<String>,
-    pub background_mode: String,
     pub cursor: String,
     pub bottom_left_corner: String,
     pub bottom_right_corner: String,
