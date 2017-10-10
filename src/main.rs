@@ -94,6 +94,8 @@ fn main() {
                         Err(err) => println!("orbital: failed to launch '{}': {}", login_cmd, err)
                     }
 
+                    syscall::setrens(0, 0).expect("orbital: failed to enter null namespace");
+
                     let scheme_display = scheme.clone();
                     event_queue.add(display_fd, move |_| -> Result<Option<()>> {
                         scheme_display.borrow_mut().display_event()?;
