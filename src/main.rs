@@ -1,5 +1,4 @@
-#![deny(warnings)]
-#![feature(asm)]
+//#![deny(warnings)]
 #![feature(const_fn)]
 
 extern crate orbital;
@@ -14,22 +13,22 @@ extern crate syscall;
 extern crate toml;
 
 use event::EventQueue;
+use orbclient::Event;
 use orbital::Orbital;
 use std::cell::RefCell;
 use std::env;
 use std::fs::File;
 use std::io::{Error, Result};
-use std::os::unix::io::{asrawfd, fromrawfd};
+use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::path::PathBuf;
 use std::rc::Rc;
 use syscall::flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR};
+use syscall::data::Packet;
 
 use config::Config;
 use scheme::OrbitalScheme;
 
 mod config;
-mod image;
-mod rect;
 mod scheme;
 mod theme;
 mod window;
@@ -55,12 +54,19 @@ fn main() {
                 let scheme = Rc::new(RefCell::new(OrbitalScheme::new(
                     display.width,
                     display.height,
-                    display.socket,
-                    display.display,
                     &config
                 )));
+                let scheme2 = Rc::clone(&scheme);
 
-                display.run(&login_cmd, args).expect("orbital: failed to launch");
+                let handle_display = move |orb: &mut Orbital, events: &mut [Event]| {
+                    scheme.borrow_mut().with_orbital(orb).display_event(events)
+                };
+                let handle_socket  = move |orb: &mut Orbital, packets: &mut [Packet]| {
+                    scheme2.borrow_mut().with_orbital(orb).scheme_event(packets)
+                };
+
+                display.run(&login_cmd, args, handle_display, handle_socket)
+                    .expect("orbital: failed to launch");
             },
             Err(err) => println!("orbital: could not register orbital: {}", err)
         }

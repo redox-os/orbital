@@ -1,12 +1,12 @@
 use orbclient::{Color, Event, Renderer};
 use orbfont::Font;
+use orbital::image::{Image, ImageRef};
+use orbital::rect::Rect;
 use std::cmp::{min, max};
 use std::collections::VecDeque;
 use std::mem::size_of;
 use std::ptr;
 
-use image::{Image, ImageRef};
-use rect::Rect;
 use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 
 use syscall::error::{Error, Result, EINVAL};
