@@ -11,7 +11,10 @@ extern crate syscall;
 extern crate toml;
 
 use orbital_core::Orbital;
-use std::env;
+use std::{
+    env,
+    process::Command
+};
 
 use config::Config;
 use scheme::OrbitalScheme;
@@ -43,7 +46,12 @@ fn main() {
                     &config
                 );
 
-                display.run(&login_cmd, args, scheme).expect("orbital: failed to launch");
+                Command::new(&login_cmd)
+                    .args(args)
+                    .spawn()
+                    .expect("orbital: failed to launch login cmd");
+
+                display.run(scheme).expect("orbital: failed to run main loop");
             },
             Err(err) => println!("orbital: could not register orbital: {}", err)
         }

@@ -22,7 +22,6 @@ use std::{
     mem,
     os::unix::io::{AsRawFd, FromRawFd},
     path::PathBuf,
-    process::Command,
     rc::Rc,
     slice,
 };
@@ -165,15 +164,10 @@ impl Orbital {
         Rect::new(0, 0, self.image.width(), self.image.height())
     }
     /// Start the main loop
-    pub fn run<I, H>(self, login_cmd: &str, args: I, handler: H) -> Result<(), Error>
-        where I: IntoIterator<Item = String>,
-              H: Handler + 'static,
+    pub fn run<H>(self, handler: H) -> Result<(), Error>
+        where H: Handler + 'static
     {
         let mut event_queue = EventQueue::<()>::new()?;
-
-        Command::new(&login_cmd)
-            .args(args)
-            .spawn()?;
 
         syscall::setrens(0, 0)?;
 
