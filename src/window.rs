@@ -1,7 +1,7 @@
 use orbclient::{Color, Event, Renderer};
 use orbfont::Font;
-use orbital::image::{Image, ImageRef};
-use orbital::rect::Rect;
+use orbital_core::image::{Image, ImageRef};
+use orbital_core::rect::Rect;
 use std::cmp::{min, max};
 use std::collections::VecDeque;
 use std::mem::size_of;

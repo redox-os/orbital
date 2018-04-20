@@ -2,7 +2,7 @@ use orbclient::{self, Event, EventOption, KeyEvent, MouseEvent, ButtonEvent, Foc
 use orbfont;
 use syscall;
 
-use orbital::{
+use orbital_core::{
     Handler,
     Orbital,
     image::{Image},

@@ -1,0 +1,13 @@
+[package]
+name = "orbital-core"
+version = "0.1.0"
+authors = ["jD91mZM2 <me@krake.one>"]
+
+[dependencies]
+failure = "0.1.1"
+orbclient = "0.3"
+orbimage = "0.1"
+redox_syscall = "0.1"
+
+[dependencies.redox_event]
+git = "https://github.com/redox-os/event.git"

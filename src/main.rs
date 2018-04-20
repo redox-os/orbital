@@ -1,18 +1,16 @@
 //#![deny(warnings)]
 #![feature(const_fn)]
 
-extern crate orbital;
+extern crate orbital_core;
 
-extern crate event;
 extern crate orbclient;
-extern crate orbimage;
 extern crate orbfont;
 #[macro_use]
 extern crate serde_derive;
 extern crate syscall;
 extern crate toml;
 
-use orbital::Orbital;
+use orbital_core::Orbital;
 use std::env;
 
 use config::Config;
@@ -31,7 +29,7 @@ fn main() {
         let display_path = args.next().expect("orbital: no display argument");
         let login_cmd = args.next().expect("orbital: no login manager argument");
 
-        orbital::fix_env(&display_path).unwrap();
+        orbital_core::fix_env(&display_path).unwrap();
 
         let display = Orbital::open_display(&display_path);
 

@@ -3,7 +3,6 @@
 #[macro_use] extern crate failure;
 extern crate event;
 extern crate orbclient;
-extern crate orbfont;
 extern crate orbimage;
 extern crate syscall;
 
