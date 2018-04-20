@@ -3,19 +3,16 @@ use orbfont;
 use syscall;
 
 use orbital::{
+    Handler,
     Orbital,
-    image::{Image, ImageRef},
+    image::{Image},
     rect::Rect
 };
 use std::{
     cmp,
     collections::{BTreeMap, VecDeque},
-    fs::File,
-    io::{self, Read, Write},
+    io,
     mem,
-    ops::{Deref, DerefMut},
-    os::unix::io::AsRawFd,
-    slice,
     str
 };
 use syscall::data::Packet;
@@ -156,6 +153,18 @@ impl OrbitalScheme {
         }
 
         self.zbuffer.sort_by(|a, b| b.1.cmp(&a.1));
+    }
+}
+impl Handler for OrbitalScheme {
+    fn handle_socket(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()> {
+        self.with_orbital(orb).scheme_event(packets)
+    }
+    fn handle_display(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()> {
+        self.with_orbital(orb).display_event(events)
+    }
+    fn handle_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
+        self.with_orbital(orb).redraw();
+        Ok(())
     }
 }
 pub struct OrbitalSchemeEvent<'a> {
@@ -694,7 +703,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         self.scheme.cursor_right = event.right;
     }
 
-    fn resize_event(&mut self, event: ResizeEvent) {
+    fn resize_event(&mut self, _event: ResizeEvent) {
         let screen_rect = self.orb.screen_rect();
         schedule(&mut self.scheme.redraws, screen_rect);
 
@@ -776,7 +785,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         }
 
-        self.redraw();
+        // redrawn by handle_after
 
         Ok(())
     }
@@ -822,7 +831,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         }
 
-        self.redraw();
+        // redrawn by handle_after
 
         Ok(())
     }

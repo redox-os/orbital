@@ -11,7 +11,7 @@ pub mod rect;
 pub mod image;
 
 use event::EventQueue;
-use image::{Image, ImageRef};
+use image::{ImageRef};
 use orbclient::{Color, Event, EventOption, Renderer};
 use rect::Rect;
 use std::{
@@ -45,7 +45,9 @@ impl From<syscall::Error> for Error {
 }
 
 /// Convenience function for setting DISPLAY and PATH environment variables
-pub fn fix_env(display_path: &str) {
+pub fn fix_env(display_path: &str) -> io::Result<()> {
+    env::set_current_dir("file:")?;
+
     env::set_var("DISPLAY", &display_path);
 
     let path = env::var("PATH").unwrap_or(String::new());
@@ -54,6 +56,7 @@ pub fn fix_env(display_path: &str) {
             .chain(iter::once(PathBuf::from("/ui/bin")))
     ).unwrap();
     env::set_var("PATH", new_path);
+    Ok(())
 }
 
 unsafe fn read_to_slice<R: Read, T: Copy>(mut r: R, buf: &mut [T]) -> io::Result<usize> {
@@ -70,6 +73,15 @@ unsafe fn display_fd_map(width: i32, height: i32, display_fd: usize) -> ImageRef
 
 unsafe fn display_fd_unmap(image: &mut ImageRef) {
     let _ = syscall::funmap(image.data().as_ptr() as usize);
+}
+
+pub trait Handler {
+    fn handle_socket(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()>;
+    fn handle_display(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()>;
+
+    fn handle_socket_after(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
+    fn handle_display_after(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
+    fn handle_after(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
 }
 
 pub struct Orbital {
@@ -129,30 +141,29 @@ impl Orbital {
         })
     }
     pub fn display_send(&mut self, event: &Event) -> io::Result<()> {
-        self.display.write_all(event)
+        self.display.write(event).map(|_| ())
     }
     pub fn display_sync(&mut self) -> io::Result<()> {
         self.display.sync_all()
     }
     pub fn socket_send(&mut self, packet: &Packet) -> io::Result<()> {
-        self.socket.write_all(packet)
+        self.socket.write(packet).map(|_| ())
     }
     pub fn screen_rect(&self) -> Rect {
         Rect::new(0, 0, self.image.width(), self.image.height())
     }
     /// Start the main loop
-    pub fn run<I, HD, HS>(self, login_cmd: &str, args: I, mut handle_display: HD, mut handle_socket: HS) -> Result<(), Error>
+    pub fn run<I, H>(self, login_cmd: &str, args: I, handler: H) -> Result<(), Error>
         where I: IntoIterator<Item = String>,
-              HD: FnMut(&mut Orbital, &mut [Event]) -> io::Result<()> + 'static,
-              HS: FnMut(&mut Orbital, &mut [Packet]) -> io::Result<()> + 'static
+              H: Handler + 'static,
     {
+        let mut event_queue = EventQueue::<()>::new()?;
+
         Command::new(&login_cmd)
             .args(args)
             .spawn()?;
 
         syscall::setrens(0, 0)?;
-
-        let mut event_queue = EventQueue::<()>::new()?;
 
         let socket_fd = self.socket.as_raw_fd();
         let display_fd = self.display.as_raw_fd();
@@ -160,39 +171,47 @@ impl Orbital {
         let me = Rc::new(RefCell::new(self));
         let me2 = Rc::clone(&me);
 
+        let handler = Rc::new(RefCell::new(handler));
+        let handler2 = Rc::clone(&handler);
+
         event_queue.add(socket_fd, move |_| -> io::Result<Option<()>> {
-            let mut me = me2.borrow_mut();
+            let mut me = me.borrow_mut();
+            let mut handler = handler.borrow_mut();
             let mut packets = [Packet::default(); 16];
-            let mut all: Vec<Packet> = Vec::new();
             loop {
                 match unsafe { read_to_slice(&mut me.socket, &mut packets) }? {
                     0 => break,
-                    count => all.extend(&packets[..count])
+                    count => handler.handle_socket(&mut me, &mut packets[..count])?
                 }
             }
-            handle_socket(&mut me, &mut packets)?;
+            handler.handle_socket_after(&mut me)?;
+            handler.handle_after(&mut me)?;
             Ok(None)
         })?;
 
         event_queue.add(display_fd, move |_| -> io::Result<Option<()>> {
-            let mut me = me.borrow_mut();
+            let mut me = me2.borrow_mut();
+            let mut handler = handler2.borrow_mut();
             let mut events = [Event::new(); 16];
-            let mut all: Vec<Event> = Vec::new();
             loop {
                 match unsafe { read_to_slice(&mut me.display, &mut events) }? {
                     0 => break,
-                    count => all.extend(&events[..count])
-                }
-            }
-            for event in &all {
-                if let EventOption::Resize(event) = event.to_option() {
-                    unsafe {
-                        display_fd_unmap(&mut me.image);
-                        me.image = display_fd_map(event.width as i32, event.height as i32, display_fd as usize);
+                    count => {
+                        let mut events = &mut events[..count];
+                        for event in events.iter() {
+                            if let EventOption::Resize(event) = event.to_option() {
+                                unsafe {
+                                    display_fd_unmap(&mut me.image);
+                                    me.image = display_fd_map(event.width as i32, event.height as i32, display_fd as usize);
+                                }
+                            }
+                        }
+                        handler.handle_display(&mut me, &mut events)?;
                     }
                 }
             }
-            handle_display(&mut me, &mut events)?;
+            handler.handle_display_after(&mut me)?;
+            handler.handle_after(&mut me)?;
             Ok(None)
         })?;
 
