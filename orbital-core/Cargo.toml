@@ -1,7 +1,9 @@
 [package]
+authors = ["Jeremy Soller <jackpot51@gmail.com>"]
+description = "The Orbital Windowing System and Compositor"
 name = "orbital-core"
+repository = "https://github.com/redox-os/orbital"
 version = "0.1.0"
-authors = ["jD91mZM2 <me@krake.one>"]
 
 [dependencies]
 failure = "0.1.1"
