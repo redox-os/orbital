@@ -761,7 +761,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 i += 1;
             }else{
                 self.scheme.todo.remove(i);
-                self.orb.socket_send(&packet)?;
+                self.orb.socket_write(&packet)?;
             }
         }
 
@@ -807,7 +807,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             if delay && packet.a == 0 {
                 self.scheme.todo.push(*packet);
             } else {
-                self.orb.socket_send(&packet)?;
+                self.orb.socket_write(&packet)?;
             }
         }
 

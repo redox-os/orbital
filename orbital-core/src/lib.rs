@@ -75,11 +75,16 @@ unsafe fn display_fd_unmap(image: &mut ImageRef) {
 }
 
 pub trait Handler {
+    /// Callback to handle events over the socket scheme
     fn handle_socket(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()>;
+    /// Callback to handle events over the display scheme
     fn handle_display(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()>;
 
+    /// Called after a batch of socket events have been handled
     fn handle_socket_after(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
+    /// Called after a batch of display events have been handled
     fn handle_display_after(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
+    /// Called after a batch of any events have been handled
     fn handle_after(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
 }
 
@@ -139,15 +144,23 @@ impl Orbital {
             height: height
         })
     }
-    pub fn display_send(&mut self, event: &Event) -> io::Result<()> {
+    /// Write an Event to display I/O
+    pub fn display_write(&mut self, event: &Event) -> io::Result<()> {
         self.display.write(event).map(|_| ())
     }
+    /// Synchronize display I/O
     pub fn display_sync(&mut self) -> io::Result<()> {
         self.display.sync_all()
     }
-    pub fn socket_send(&mut self, packet: &Packet) -> io::Result<()> {
+    /// Write a Packet to socket I/O
+    pub fn socket_write(&mut self, packet: &Packet) -> io::Result<()> {
         self.socket.write(packet).map(|_| ())
     }
+    /// Synchronize socket I/O
+    pub fn socket_sync(&mut self) -> io::Result<()> {
+        self.socket.sync_all()
+    }
+    /// Return the screen rectangle
     pub fn screen_rect(&self) -> Rect {
         Rect::new(0, 0, self.image.width(), self.image.height())
     }
