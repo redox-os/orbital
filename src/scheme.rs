@@ -83,7 +83,6 @@ pub struct OrbitalScheme {
     zbuffer: Vec<(usize, WindowZOrder, usize)>,
     pub windows: BTreeMap<usize, Window>,
     redraws: Vec<Rect>,
-    pub todo: Vec<Packet>,
     font: orbfont::Font
 }
 
@@ -120,7 +119,6 @@ impl OrbitalScheme {
             zbuffer: Vec::new(),
             windows: BTreeMap::new(),
             redraws: vec![Rect::new(0, 0, width, height)],
-            todo: Vec::new(),
             font: orbfont::Font::find(Some("Sans"), None, None).unwrap()
         }
     }
@@ -160,6 +158,18 @@ impl OrbitalScheme {
 impl Handler for OrbitalScheme {
     type Drain = Vec<Event>;
 
+    fn should_delay(&mut self, packet: &Packet) -> bool {
+        if packet.a == SYS_READ {
+            if let Some(window) = self.windows.get(&packet.b) {
+                window.async == false
+            } else {
+                true
+            }
+        } else {
+            false
+        }
+    }
+
     fn handle_scheme(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()> {
         self.with_orbital(orb).scheme_event(packets)
     }
@@ -176,11 +186,10 @@ impl Handler for OrbitalScheme {
                          parts: &str, title: String) -> syscall::Result<usize> {
         self.with_orbital(orb).window_new(x, y, width, height, parts, title)
     }
-    fn handle_window_drain_events(&mut self, _orb: &mut Orbital, id: usize, amount: usize)
-        -> syscall::Result<Self::Drain>
+    fn handle_window_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [u8]) -> syscall::Result<usize>
     {
         if let Some(window) = self.windows.get_mut(&id) {
-            Ok(window.drain_events(amount))
+            window.read(buf)
         } else {
             Err(Error::new(EBADF))
         }
@@ -848,30 +857,6 @@ impl<'a> OrbitalSchemeEvent<'a> {
             self.event(event);
         }
 
-        let mut i = 0;
-        while i < self.scheme.todo.len() {
-            let packet = self.scheme.todo[i].clone();
-
-            let delay = if packet.a == SYS_READ {
-                if let Some(window) = self.scheme.windows.get(&packet.b) {
-                    window.async == false
-                } else {
-                    true
-                }
-            } else {
-                false
-            };
-
-            //self.handle(&mut packet);
-
-            if delay && packet.a == 0 {
-                i += 1;
-            }else{
-                self.scheme.todo.remove(i);
-                self.orb.scheme_write(&packet)?;
-            }
-        }
-
         for (id, window) in self.windows.iter_mut() {
             if ! window.events.is_empty() {
                 if !window.notified_read {
@@ -897,27 +882,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         Ok(())
     }
 
-    pub fn scheme_event(&mut self, packets: &mut [Packet]) -> io::Result<()> {
-        for packet in packets.iter_mut() {
-            let delay = if packet.a == SYS_READ {
-                if let Some(window) = self.scheme.windows.get(&packet.b) {
-                    window.async == false
-                } else {
-                    true
-                }
-            } else {
-                false
-            };
-
-            //self.handle(packet);
-
-            if delay && packet.a == 0 {
-                self.scheme.todo.push(*packet);
-            } else {
-                self.orb.scheme_write(&packet)?;
-            }
-        }
-
+    pub fn scheme_event(&mut self, _packets: &mut [Packet]) -> io::Result<()> {
         for (id, window) in self.windows.iter_mut() {
             if ! window.events.is_empty() {
                 if !window.notified_read {

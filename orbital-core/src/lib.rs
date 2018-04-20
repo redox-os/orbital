@@ -24,7 +24,7 @@ use std::{
     path::PathBuf,
     rc::Rc,
     slice,
-    str
+    str,
 };
 use syscall::{
     SchemeMut,
@@ -84,6 +84,9 @@ pub trait Handler {
     /// Called when the event loop is first ran
     fn handle_startup(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
 
+    /// Return true if a packet should be delayed until a display event
+    fn should_delay(&mut self, packet: &Packet) -> bool;
+
     /// Callback to handle events over the scheme
     fn handle_scheme(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()>;
     /// Callback to handle events over the display socket
@@ -101,8 +104,7 @@ pub trait Handler {
                          x: i32, y: i32, width: i32, height: i32,
                          flags: &str, title: String) -> syscall::Result<usize>;
     /// Called when the scheme is read
-    fn handle_window_drain_events(&mut self, orb: &mut Orbital, id: usize, amount: usize)
-        -> syscall::Result<Self::Drain>;
+    fn handle_window_read(&mut self, orb: &mut Orbital, id: usize, buf: &mut [u8]) -> syscall::Result<usize>;
     fn handle_window_position(&mut self, orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> syscall::Result<()>;
     fn handle_window_resize(&mut self, orb: &mut Orbital, id: usize, w: Option<i32>, h: Option<i32>) -> syscall::Result<()>;
     fn handle_window_title(&mut self, orb: &mut Orbital, id: usize, title: String) -> syscall::Result<()>;
@@ -117,6 +119,7 @@ pub struct Orbital {
     pub scheme: File,
     pub display: File,
     pub image: ImageRef<'static>,
+    pub todo: Vec<Packet>,
 
     pub width: i32,
     pub height: i32
@@ -164,6 +167,7 @@ impl Orbital {
             scheme: scheme,
             display: display,
             image: image,
+            todo: Vec::new(),
 
             width: width,
             height: height
@@ -218,7 +222,15 @@ impl Orbital {
                     count => {
                         let packets = &mut packets[..count];
                         for packet in packets.iter_mut() {
+                            let delay = me.handler.should_delay(packet);
+
                             me.handle(packet);
+
+                            if delay && packet.a == 0 {
+                                me.orb.todo.push(*packet);
+                            } else {
+                                me.orb.scheme_write(&packet)?;
+                            }
                         }
                         me.handler.handle_scheme(&mut me.orb, packets)?;
                     }
@@ -250,6 +262,23 @@ impl Orbital {
                                 }
                             }
                         }
+
+                        let mut i = 0;
+                        while i < me.orb.todo.len() {
+                            let mut packet = me.orb.todo[i].clone();
+
+                            let delay = me.handler.should_delay(&packet);
+
+                            me.handle(&mut packet);
+
+                            if delay && packet.a == 0 {
+                                i += 1;
+                            }else{
+                                me.orb.todo.remove(i);
+                                me.orb.scheme_write(&packet)?;
+                            }
+                        }
+
                         me.handler.handle_display(&mut me.orb, events)?;
                     }
                 }
@@ -299,18 +328,7 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         self.handler.handle_window_new(&mut self.orb, x, y, width, height, flags, title)
     }
     fn read(&mut self, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
-        let n = buf.len() / mem::size_of::<Event>();
-        match self.handler.handle_window_drain_events(&mut self.orb, id, n) {
-            Err(err) => Err(err),
-            Ok(events) => {
-                let mut start = 0;
-                for event in events {
-                    let event: [u8; 24] = unsafe { mem::transmute(event) };
-                    buf[start..start+event.len()].copy_from_slice(&event);
-                }
-                Ok(n)
-            }
-        }
+        self.handler.handle_window_read(&mut self.orb, id, buf)
     }
     fn write(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
         if let Ok(msg) = str::from_utf8(buf) {
