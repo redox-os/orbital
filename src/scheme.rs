@@ -10,15 +10,17 @@ use orbital_core::{
 };
 use std::{
     cmp,
-    collections::{BTreeMap, VecDeque},
+    collections::{
+        BTreeMap,
+        VecDeque
+    },
     io,
     mem,
     str
 };
 use syscall::data::Packet;
-use syscall::error::{Error, Result, EBADF, EINVAL};
+use syscall::error::{Error, Result, EBADF};
 use syscall::number::SYS_READ;
-use syscall::scheme::SchemeMut;
 
 use config::Config;
 use theme::{BACKGROUND_COLOR, BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
@@ -156,7 +158,9 @@ impl OrbitalScheme {
     }
 }
 impl Handler for OrbitalScheme {
-    fn handle_socket(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()> {
+    type Drain = Vec<Event>;
+
+    fn handle_scheme(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()> {
         self.with_orbital(orb).scheme_event(packets)
     }
     fn handle_display(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()> {
@@ -165,6 +169,109 @@ impl Handler for OrbitalScheme {
     fn handle_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
         self.with_orbital(orb).redraw();
         Ok(())
+    }
+
+    fn handle_window_new(&mut self, orb: &mut Orbital,
+                         x: i32, y: i32, width: i32, height: i32,
+                         parts: &str, title: String) -> syscall::Result<usize> {
+        self.with_orbital(orb).window_new(x, y, width, height, parts, title)
+    }
+    fn handle_window_drain_events(&mut self, _orb: &mut Orbital, id: usize, amount: usize)
+        -> syscall::Result<Self::Drain>
+    {
+        if let Some(window) = self.windows.get_mut(&id) {
+            Ok(window.drain_events(amount))
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+    fn handle_window_position(&mut self, _orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> syscall::Result<()> {
+        if let Some(window) = self.windows.get_mut(&id) {
+            window.x = x.unwrap_or(window.x);
+            window.y = y.unwrap_or(window.y);
+
+            schedule(&mut self.redraws, window.title_rect());
+            schedule(&mut self.redraws, window.rect());
+
+            Ok(())
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+    fn handle_window_resize(&mut self, _orb: &mut Orbital, id: usize, w: Option<i32>, h: Option<i32>) -> syscall::Result<()> {
+        if let Some(window) = self.windows.get_mut(&id) {
+            let w = w.unwrap_or(window.width());
+            let h = h.unwrap_or(window.height());
+
+            window.set_size(w, h);
+
+            schedule(&mut self.redraws, window.title_rect());
+            schedule(&mut self.redraws, window.rect());
+
+            Ok(())
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+    fn handle_window_title(&mut self, _orb: &mut Orbital, id: usize, title: String) -> syscall::Result<()> {
+        if let Some(window) = self.windows.get_mut(&id) {
+            window.title = title;
+
+            schedule(&mut self.redraws, window.title_rect());
+
+            Ok(())
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+    fn handle_window_lookup(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
+        if self.windows.contains_key(&id) {
+            Ok(id)
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+    fn handle_window_map(&mut self, _orb: &mut Orbital, id: usize, offset: usize, size: usize) -> syscall::Result<usize> {
+        if let Some(window) = self.windows.get_mut(&id) {
+            window.map(offset, size)
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+    fn handle_window_path(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
+        if let Some(window) = self.windows.get(&id) {
+            window.path(buf)
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+    fn handle_window_sync(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
+        if let Some(window) = self.windows.get(&id) {
+            schedule(&mut self.redraws, window.rect());
+            Ok(0)
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+    fn handle_window_close(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
+        self.order.retain(|&e| e != id);
+
+        if let Some(id) = self.order.front() {
+            if let Some(window) = self.windows.get(&id){
+                schedule(&mut self.redraws, window.title_rect());
+                schedule(&mut self.redraws, window.rect());
+            }
+        }
+
+        let res = if let Some(window) = self.windows.remove(&id) {
+            schedule(&mut self.redraws, window.title_rect());
+            schedule(&mut self.redraws, window.rect());
+            Ok(0)
+        } else {
+            Err(Error::new(EBADF))
+        };
+
+        res
     }
 }
 pub struct OrbitalSchemeEvent<'a> {
@@ -743,7 +850,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         let mut i = 0;
         while i < self.scheme.todo.len() {
-            let mut packet = self.scheme.todo[i].clone();
+            let packet = self.scheme.todo[i].clone();
 
             let delay = if packet.a == SYS_READ {
                 if let Some(window) = self.scheme.windows.get(&packet.b) {
@@ -755,13 +862,13 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 false
             };
 
-            self.handle(&mut packet);
+            //self.handle(&mut packet);
 
             if delay && packet.a == 0 {
                 i += 1;
             }else{
                 self.scheme.todo.remove(i);
-                self.orb.socket_write(&packet)?;
+                self.orb.scheme_write(&packet)?;
             }
         }
 
@@ -802,12 +909,12 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 false
             };
 
-            self.handle(packet);
+            //self.handle(packet);
 
             if delay && packet.a == 0 {
                 self.scheme.todo.push(*packet);
             } else {
-                self.orb.socket_write(&packet)?;
+                self.orb.scheme_write(&packet)?;
             }
         }
 
@@ -835,26 +942,11 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         Ok(())
     }
-}
 
-impl<'a> SchemeMut for OrbitalSchemeEvent<'a> {
-    fn open(&mut self, url: &[u8], _flags: usize, _uid: u32, _gid: u32) -> Result<usize> {
-        let path = try!(str::from_utf8(url).or(Err(Error::new(EINVAL))));
-        let mut parts = path.split("/");
-
-        let flags = parts.next().unwrap_or("");
-
-        let mut x = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-        let mut y = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-        let width = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-        let height = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-
-        let mut title = parts.next().unwrap_or("").to_string();
-        for part in parts {
-            title.push('/');
-            title.push_str(part);
-        }
-
+    fn window_new(&mut self, mut x: i32, mut y: i32,
+                  width: i32, height: i32,
+                  flags: &str,
+                  title: String) -> Result<usize> {
         let id = self.scheme.next_id as usize;
         self.scheme.next_id += 1;
         if self.scheme.next_id < 0 {
@@ -906,119 +998,5 @@ impl<'a> SchemeMut for OrbitalSchemeEvent<'a> {
         self.scheme.windows.insert(id, window);
 
         Ok(id)
-    }
-
-    fn read(&mut self, id: usize, buf: &mut [u8]) -> Result<usize> {
-        if let Some(window) = self.scheme.windows.get_mut(&id) {
-            window.read(buf)
-        } else {
-            Err(Error::new(EBADF))
-        }
-    }
-
-    fn write(&mut self, id: usize, buf: &[u8]) -> Result<usize> {
-        if let Some(window) = self.scheme.windows.get_mut(&id) {
-            if let Ok(msg) = str::from_utf8(buf) {
-                let mut parts = msg.split(',');
-                match parts.next() {
-                    Some("P") => {
-                        schedule(&mut self.scheme.redraws, window.title_rect());
-                        schedule(&mut self.scheme.redraws, window.rect());
-
-                        let x = parts.next().unwrap_or("").parse::<i32>().unwrap_or(window.x);
-                        let y = parts.next().unwrap_or("").parse::<i32>().unwrap_or(window.y);
-
-                        window.x = x;
-                        window.y = y;
-
-                        schedule(&mut self.scheme.redraws, window.title_rect());
-                        schedule(&mut self.scheme.redraws, window.rect());
-
-                        Ok(buf.len())
-                    },
-                    Some("S") => {
-                        schedule(&mut self.scheme.redraws, window.title_rect());
-                        schedule(&mut self.scheme.redraws, window.rect());
-
-                        let w = parts.next().unwrap_or("").parse::<i32>().unwrap_or(window.width());
-                        let h = parts.next().unwrap_or("").parse::<i32>().unwrap_or(window.height());
-
-                        window.set_size(w, h);
-
-                        schedule(&mut self.scheme.redraws, window.title_rect());
-                        schedule(&mut self.scheme.redraws, window.rect());
-
-                        Ok(buf.len())
-                    },
-                    Some("T") => {
-                        window.title = parts.next().unwrap_or("").to_string();
-                        window.render_title(&self.scheme.font);
-
-                        schedule(&mut self.scheme.redraws, window.title_rect());
-
-                        Ok(buf.len())
-                    },
-                    _ => Err(Error::new(EINVAL))
-                }
-            } else {
-                Err(Error::new(EINVAL))
-            }
-        } else {
-            Err(Error::new(EBADF))
-        }
-    }
-
-    fn fevent(&mut self, id: usize, _flags: usize) -> Result<usize> {
-        if self.scheme.windows.contains_key(&id) {
-            Ok(id)
-        } else {
-            Err(Error::new(EBADF))
-        }
-    }
-
-    fn fmap(&mut self, id: usize, offset: usize, size: usize) -> Result<usize> {
-        if let Some(window) = self.scheme.windows.get_mut(&id) {
-            window.map(offset, size)
-        } else {
-            Err(Error::new(EBADF))
-        }
-    }
-
-    fn fpath(&mut self, id: usize, buf: &mut [u8]) -> Result<usize> {
-        if let Some(window) = self.scheme.windows.get(&id) {
-            window.path(buf)
-        } else {
-            Err(Error::new(EBADF))
-        }
-    }
-
-    fn fsync(&mut self, id: usize) -> Result<usize> {
-        if let Some(window) = self.scheme.windows.get(&id) {
-            schedule(&mut self.scheme.redraws, window.rect());
-            Ok(0)
-        } else {
-            Err(Error::new(EBADF))
-        }
-    }
-
-    fn close(&mut self, id: usize) -> Result<usize> {
-        self.scheme.order.retain(|&e| e != id);
-
-        if let Some(id) = self.scheme.order.front() {
-            if let Some(window) = self.scheme.windows.get(&id){
-                schedule(&mut self.scheme.redraws, window.title_rect());
-                schedule(&mut self.scheme.redraws, window.rect());
-            }
-        }
-
-        let res = if let Some(window) = self.scheme.windows.remove(&id) {
-            schedule(&mut self.scheme.redraws, window.title_rect());
-            schedule(&mut self.scheme.redraws, window.rect());
-            Ok(0)
-        } else {
-            Err(Error::new(EBADF))
-        };
-
-        res
     }
 }

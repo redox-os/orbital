@@ -23,10 +23,15 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd},
     path::PathBuf,
     rc::Rc,
-    slice
+    slice,
+    str
 };
-use syscall::data::Packet;
-use syscall::flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR};
+use syscall::{
+    SchemeMut,
+    data::Packet,
+    error::{EINVAL},
+    flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR}
+};
 
 #[derive(Debug, Fail)]
 pub enum Error {
@@ -74,24 +79,42 @@ unsafe fn display_fd_unmap(image: &mut ImageRef) {
 }
 
 pub trait Handler {
+    type Drain: IntoIterator<Item = Event>;
+
     /// Called when the event loop is first ran
     fn handle_startup(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
 
-    /// Callback to handle events over the socket scheme
-    fn handle_socket(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()>;
-    /// Callback to handle events over the display scheme
+    /// Callback to handle events over the scheme
+    fn handle_scheme(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()>;
+    /// Callback to handle events over the display socket
     fn handle_display(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()>;
 
-    /// Called after a batch of socket events have been handled
-    fn handle_socket_after(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
+    /// Called after a batch of scheme events have been handled
+    fn handle_scheme_after(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
     /// Called after a batch of display events have been handled
     fn handle_display_after(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
     /// Called after a batch of any events have been handled
     fn handle_after(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
+
+    /// Called when a new window is requested by the scheme
+    fn handle_window_new(&mut self, orb: &mut Orbital,
+                         x: i32, y: i32, width: i32, height: i32,
+                         flags: &str, title: String) -> syscall::Result<usize>;
+    /// Called when the scheme is read
+    fn handle_window_drain_events(&mut self, orb: &mut Orbital, id: usize, amount: usize)
+        -> syscall::Result<Self::Drain>;
+    fn handle_window_position(&mut self, orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> syscall::Result<()>;
+    fn handle_window_resize(&mut self, orb: &mut Orbital, id: usize, w: Option<i32>, h: Option<i32>) -> syscall::Result<()>;
+    fn handle_window_title(&mut self, orb: &mut Orbital, id: usize, title: String) -> syscall::Result<()>;
+    fn handle_window_lookup(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
+    fn handle_window_map(&mut self, orb: &mut Orbital, id: usize, offset: usize, size: usize) -> syscall::Result<usize>;
+    fn handle_window_path(&mut self, orb: &mut Orbital, id: usize, buf: &mut [u8]) -> syscall::Result<usize>;
+    fn handle_window_sync(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
+    fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
 }
 
 pub struct Orbital {
-    pub socket: File,
+    pub scheme: File,
     pub display: File,
     pub image: ImageRef<'static>,
 
@@ -99,9 +122,9 @@ pub struct Orbital {
     pub height: i32
 }
 impl Orbital {
-    /// Open an orbital display and connect to the socket
+    /// Open an orbital display and connect to the scheme
     pub fn open_display(display_path: &str) -> io::Result<Self> {
-        let socket = syscall::open(":orbital", O_CREAT | O_CLOEXEC | O_NONBLOCK | O_RDWR)
+        let scheme = syscall::open(":orbital", O_CREAT | O_CLOEXEC | O_NONBLOCK | O_RDWR)
                         .map(|socket| {
                             // Not that you can actually use this on targets other than redox...
                             // But it's still nice if it would compile.
@@ -138,7 +161,7 @@ impl Orbital {
         let image = unsafe { display_fd_map(width, height, display_fd) };
 
         Ok(Orbital {
-            socket: socket,
+            scheme: scheme,
             display: display,
             image: image,
 
@@ -154,13 +177,13 @@ impl Orbital {
     pub fn display_sync(&mut self) -> io::Result<()> {
         self.display.sync_all()
     }
-    /// Write a Packet to socket I/O
-    pub fn socket_write(&mut self, packet: &Packet) -> io::Result<()> {
-        self.socket.write(packet).map(|_| ())
+    /// Write a Packet to scheme I/O
+    pub fn scheme_write(&mut self, packet: &Packet) -> io::Result<()> {
+        self.scheme.write(packet).map(|_| ())
     }
-    /// Synchronize socket I/O
-    pub fn socket_sync(&mut self) -> io::Result<()> {
-        self.socket.sync_all()
+    /// Synchronize the scheme I/O
+    pub fn scheme_sync(&mut self) -> io::Result<()> {
+        self.scheme.sync_all()
     }
     /// Return the screen rectangle
     pub fn screen_rect(&self) -> Rect {
@@ -174,55 +197,65 @@ impl Orbital {
 
         syscall::setrens(0, 0)?;
 
-        let socket_fd = self.socket.as_raw_fd();
+        let scheme_fd = self.scheme.as_raw_fd();
         let display_fd = self.display.as_raw_fd();
 
         handler.handle_startup(&mut self)?;
 
-        let me = Rc::new(RefCell::new(self));
+        let me = Rc::new(RefCell::new(OrbitalHandler {
+            orb: self,
+            handler: handler,
+        }));
         let me2 = Rc::clone(&me);
 
-        let handler = Rc::new(RefCell::new(handler));
-        let handler2 = Rc::clone(&handler);
-
-        event_queue.add(socket_fd, move |_| -> io::Result<Option<()>> {
+        event_queue.add(scheme_fd, move |_| -> io::Result<Option<()>> {
             let mut me = me.borrow_mut();
-            let mut handler = handler.borrow_mut();
+            let me = &mut *me;
             let mut packets = [Packet::default(); 16];
             loop {
-                match unsafe { read_to_slice(&mut me.socket, &mut packets) }? {
+                match unsafe { read_to_slice(&mut me.orb.scheme, &mut packets) }? {
                     0 => break,
-                    count => handler.handle_socket(&mut me, &mut packets[..count])?
+                    count => {
+                        let packets = &mut packets[..count];
+                        for packet in packets.iter_mut() {
+                            me.handle(packet);
+                        }
+                        me.handler.handle_scheme(&mut me.orb, packets)?;
+                    }
                 }
             }
-            handler.handle_socket_after(&mut me)?;
-            handler.handle_after(&mut me)?;
+            me.handler.handle_scheme_after(&mut me.orb)?;
+            me.handler.handle_after(&mut me.orb)?;
             Ok(None)
         })?;
 
         event_queue.add(display_fd, move |_| -> io::Result<Option<()>> {
             let mut me = me2.borrow_mut();
-            let mut handler = handler2.borrow_mut();
+            let me = &mut *me;
             let mut events = [Event::new(); 16];
             loop {
-                match unsafe { read_to_slice(&mut me.display, &mut events) }? {
+                match unsafe { read_to_slice(&mut me.orb.display, &mut events) }? {
                     0 => break,
                     count => {
-                        let mut events = &mut events[..count];
+                        let events = &mut events[..count];
                         for event in events.iter() {
                             if let EventOption::Resize(event) = event.to_option() {
                                 unsafe {
-                                    display_fd_unmap(&mut me.image);
-                                    me.image = display_fd_map(event.width as i32, event.height as i32, display_fd as usize);
+                                    display_fd_unmap(&mut me.orb.image);
+                                    me.orb.image = display_fd_map(
+                                        event.width as i32,
+                                        event.height as i32,
+                                        display_fd as usize
+                                    );
                                 }
                             }
                         }
-                        handler.handle_display(&mut me, &mut events)?;
+                        me.handler.handle_display(&mut me.orb, events)?;
                     }
                 }
             }
-            handler.handle_display_after(&mut me)?;
-            handler.handle_after(&mut me)?;
+            me.handler.handle_display_after(&mut me.orb)?;
+            me.handler.handle_after(&mut me.orb)?;
             Ok(None)
         })?;
 
@@ -239,5 +272,92 @@ impl Drop for Orbital {
         unsafe {
             display_fd_unmap(&mut self.image);
         }
+    }
+}
+pub struct OrbitalHandler<H: Handler> {
+    orb: Orbital,
+    handler: H
+}
+impl<H: Handler> SchemeMut for OrbitalHandler<H> {
+    fn open(&mut self, path: &[u8], _: usize, _: u32, _: u32) -> syscall::Result<usize> {
+        let path = try!(str::from_utf8(path).or(Err(syscall::Error::new(EINVAL))));
+        let mut parts = path.split("/");
+
+        let flags = parts.next().unwrap_or("");
+
+        let x = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+        let y = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+        let width = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+        let height = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+
+        let mut title = parts.next().unwrap_or("").to_string();
+        for part in parts {
+            title.push('/');
+            title.push_str(part);
+        }
+
+        self.handler.handle_window_new(&mut self.orb, x, y, width, height, flags, title)
+    }
+    fn read(&mut self, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
+        let n = buf.len() / mem::size_of::<Event>();
+        match self.handler.handle_window_drain_events(&mut self.orb, id, n) {
+            Err(err) => Err(err),
+            Ok(events) => {
+                let mut start = 0;
+                for event in events {
+                    let event: [u8; 24] = unsafe { mem::transmute(event) };
+                    buf[start..start+event.len()].copy_from_slice(&event);
+                }
+                Ok(n)
+            }
+        }
+    }
+    fn write(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
+        if let Ok(msg) = str::from_utf8(buf) {
+            let mut parts = msg.split(',');
+            match parts.next() {
+                Some("P") => {
+                    let x = parts.next().unwrap_or("").parse::<i32>().ok();
+                    let y = parts.next().unwrap_or("").parse::<i32>().ok();
+
+                    self.handler.handle_window_position(&mut self.orb, id, x, y)?;
+
+                    Ok(buf.len())
+                },
+                Some("S") => {
+                    let w = parts.next().unwrap_or("").parse::<i32>().ok();
+                    let h = parts.next().unwrap_or("").parse::<i32>().ok();
+
+                    self.handler.handle_window_resize(&mut self.orb, id, w, h)?;
+
+                    Ok(buf.len())
+                },
+                Some("T") => {
+                    let title = parts.next().unwrap_or("").to_string();
+
+                    self.handler.handle_window_title(&mut self.orb, id, title)?;
+
+                    Ok(buf.len())
+                },
+                _ => Err(syscall::Error::new(EINVAL))
+            }
+        } else {
+            Err(syscall::Error::new(EINVAL))
+        }
+    }
+    fn fevent(&mut self, id: usize, _flags: usize) -> syscall::Result<usize> {
+        self.handler.handle_window_lookup(&mut self.orb, id)
+    }
+    fn fmap(&mut self, id: usize, offset: usize, size: usize) -> syscall::Result<usize> {
+        self.handler.handle_window_map(&mut self.orb, id, offset, size)
+    }
+    fn fpath(&mut self, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
+        self.handler.handle_window_path(&mut self.orb, id, buf)
+    }
+    fn fsync(&mut self, id: usize) -> syscall::Result<usize> {
+        self.handler.handle_window_sync(&mut self.orb, id)
+    }
+    fn close(&mut self, id: usize) -> syscall::Result<usize> {
+        self.handler.handle_window_close(&mut self.orb, id)
     }
 }
