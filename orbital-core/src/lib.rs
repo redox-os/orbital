@@ -23,7 +23,7 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd},
     path::PathBuf,
     rc::Rc,
-    slice,
+    slice
 };
 use syscall::data::Packet;
 use syscall::flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR};
@@ -74,6 +74,9 @@ unsafe fn display_fd_unmap(image: &mut ImageRef) {
 }
 
 pub trait Handler {
+    /// Called when the event loop is first ran
+    fn handle_startup(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
+
     /// Callback to handle events over the socket scheme
     fn handle_socket(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()>;
     /// Callback to handle events over the display scheme
@@ -164,7 +167,7 @@ impl Orbital {
         Rect::new(0, 0, self.image.width(), self.image.height())
     }
     /// Start the main loop
-    pub fn run<H>(self, handler: H) -> Result<(), Error>
+    pub fn run<H>(mut self, mut handler: H) -> Result<(), Error>
         where H: Handler + 'static
     {
         let mut event_queue = EventQueue::<()>::new()?;
@@ -173,6 +176,8 @@ impl Orbital {
 
         let socket_fd = self.socket.as_raw_fd();
         let display_fd = self.display.as_raw_fd();
+
+        handler.handle_startup(&mut self)?;
 
         let me = Rc::new(RefCell::new(self));
         let me2 = Rc::clone(&me);
