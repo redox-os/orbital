@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 
 use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 
-use syscall::error::{Error, Result, EINVAL};
+use syscall::error::Result;
 
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum WindowZOrder {
@@ -178,12 +178,8 @@ impl Window {
         self.events.push_back(event);
     }
 
-    pub fn map(&mut self, offset: usize, size: usize) -> Result<usize> {
-        if offset + size <= self.image.data().len() * 4 {
-            Ok(self.image.data_mut().as_mut_ptr() as usize + offset)
-        } else {
-            Err(Error::new(EINVAL))
-        }
+    pub fn map(&mut self) -> &mut [Color] {
+        self.image.data_mut()
     }
 
     pub fn read(&mut self, buf: &mut [Event]) {

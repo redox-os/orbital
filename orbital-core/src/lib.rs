@@ -109,7 +109,7 @@ pub trait Handler {
     fn handle_window_resize(&mut self, orb: &mut Orbital, id: usize, w: Option<i32>, h: Option<i32>) -> syscall::Result<()>;
     fn handle_window_title(&mut self, orb: &mut Orbital, id: usize, title: String) -> syscall::Result<()>;
     fn handle_window_lookup(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
-    fn handle_window_map(&mut self, orb: &mut Orbital, id: usize, offset: usize, size: usize) -> syscall::Result<usize>;
+    fn handle_window_map(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<&mut [Color]>;
     fn handle_window_path(&mut self, orb: &mut Orbital, id: usize, buf: &mut [u8]) -> syscall::Result<usize>;
     fn handle_window_sync(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
     fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
@@ -374,7 +374,12 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         self.handler.handle_window_lookup(&mut self.orb, id)
     }
     fn fmap(&mut self, id: usize, offset: usize, size: usize) -> syscall::Result<usize> {
-        self.handler.handle_window_map(&mut self.orb, id, offset, size)
+        let data = self.handler.handle_window_map(&mut self.orb, id)?;
+        if offset + size <= data.len() * 4 {
+            Ok(data.as_mut_ptr() as usize + offset)
+        } else {
+            Err(syscall::Error::new(EINVAL))
+        }
     }
     fn fpath(&mut self, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
         self.handler.handle_window_path(&mut self.orb, id, buf)

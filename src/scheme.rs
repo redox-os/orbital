@@ -1,4 +1,4 @@
-use orbclient::{self, Event, EventOption, KeyEvent, MouseEvent, ButtonEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, ScreenEvent, Renderer};
+use orbclient::{self, Color, Event, EventOption, KeyEvent, MouseEvent, ButtonEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, ScreenEvent, Renderer};
 use orbfont;
 use syscall;
 
@@ -240,9 +240,9 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_map(&mut self, _orb: &mut Orbital, id: usize, offset: usize, size: usize) -> syscall::Result<usize> {
+    fn handle_window_map(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<&mut [Color]> {
         if let Some(window) = self.windows.get_mut(&id) {
-            window.map(offset, size)
+            Ok(window.map())
         } else {
             Err(Error::new(EBADF))
         }
