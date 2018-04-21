@@ -78,6 +78,20 @@ unsafe fn display_fd_unmap(image: &mut ImageRef) {
     let _ = syscall::funmap(image.data().as_ptr() as usize);
 }
 
+pub const PROPERTY_ASYNC:      u8 = 0;
+pub const PROPERTY_BORDERLESS: u8 = 1;
+pub const PROPERTY_RESIZABLE:  u8 = 1 << 1;
+pub const PROPERTY_UNCLOSABLE: u8 = 1 << 2;
+
+pub struct Properties<'a> {
+    pub properties: u8,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub title: &'a str
+}
+
 pub trait Handler {
     type Drain: IntoIterator<Item = Event>;
 
@@ -110,7 +124,7 @@ pub trait Handler {
     fn handle_window_title(&mut self, orb: &mut Orbital, id: usize, title: String) -> syscall::Result<()>;
     fn handle_window_lookup(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
     fn handle_window_map(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<&mut [Color]>;
-    fn handle_window_path(&mut self, orb: &mut Orbital, id: usize, buf: &mut [u8]) -> syscall::Result<usize>;
+    fn handle_window_properties(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<Properties>;
     fn handle_window_sync(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
     fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
 }
@@ -381,8 +395,19 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             Err(syscall::Error::new(EINVAL))
         }
     }
-    fn fpath(&mut self, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
-        self.handler.handle_window_path(&mut self.orb, id, buf)
+    fn fpath(&mut self, id: usize, mut buf: &mut [u8]) -> syscall::Result<usize> {
+        let props = self.handler.handle_window_properties(&mut self.orb, id)?;
+        let original_len = buf.len();
+        write!(buf,
+            "orbital:{}{}{}{}{}/{}/{}/{}/{}/{}",
+            if props.properties & PROPERTY_ASYNC == PROPERTY_ASYNC { "a" } else { "" },
+            "", // TODO: Z order
+            if props.properties & PROPERTY_BORDERLESS == PROPERTY_BORDERLESS { "l" } else { "" },
+            if props.properties & PROPERTY_RESIZABLE == PROPERTY_RESIZABLE { "r" } else { "" },
+            if props.properties & PROPERTY_UNCLOSABLE == PROPERTY_UNCLOSABLE { "u" } else { "" },
+            props.x, props.y, props.width, props.height, props.title
+        ).unwrap();
+        Ok(original_len - buf.len())
     }
     fn fsync(&mut self, id: usize) -> syscall::Result<usize> {
         self.handler.handle_window_sync(&mut self.orb, id)

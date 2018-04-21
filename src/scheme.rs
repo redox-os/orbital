@@ -5,6 +5,7 @@ use syscall;
 use orbital_core::{
     Handler,
     Orbital,
+    Properties,
     image::{Image},
     rect::Rect
 };
@@ -247,9 +248,9 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_path(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
+    fn handle_window_properties(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<Properties> {
         if let Some(window) = self.windows.get(&id) {
-            window.path(buf)
+            Ok(window.properties())
         } else {
             Err(Error::new(EBADF))
         }
