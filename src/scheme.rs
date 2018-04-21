@@ -186,10 +186,10 @@ impl Handler for OrbitalScheme {
                          parts: &str, title: String) -> syscall::Result<usize> {
         self.with_orbital(orb).window_new(x, y, width, height, parts, title)
     }
-    fn handle_window_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [u8]) -> syscall::Result<usize>
+    fn handle_window_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [Event]) -> syscall::Result<()>
     {
         if let Some(window) = self.windows.get_mut(&id) {
-            window.read(buf)
+            Ok(window.read(buf))
         } else {
             Err(Error::new(EBADF))
         }

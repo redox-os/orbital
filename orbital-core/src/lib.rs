@@ -104,7 +104,7 @@ pub trait Handler {
                          x: i32, y: i32, width: i32, height: i32,
                          flags: &str, title: String) -> syscall::Result<usize>;
     /// Called when the scheme is read
-    fn handle_window_read(&mut self, orb: &mut Orbital, id: usize, buf: &mut [u8]) -> syscall::Result<usize>;
+    fn handle_window_read(&mut self, orb: &mut Orbital, id: usize, buf: &mut [Event]) -> syscall::Result<()>;
     fn handle_window_position(&mut self, orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> syscall::Result<()>;
     fn handle_window_resize(&mut self, orb: &mut Orbital, id: usize, w: Option<i32>, h: Option<i32>) -> syscall::Result<()>;
     fn handle_window_title(&mut self, orb: &mut Orbital, id: usize, title: String) -> syscall::Result<()>;
@@ -328,7 +328,14 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         self.handler.handle_window_new(&mut self.orb, x, y, width, height, flags, title)
     }
     fn read(&mut self, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
-        self.handler.handle_window_read(&mut self.orb, id, buf)
+        let slice: &mut [Event] = unsafe {
+            slice::from_raw_parts_mut(
+                buf.as_mut_ptr() as *mut Event,
+                buf.len() / mem::size_of::<Event>()
+            )
+        };
+        self.handler.handle_window_read(&mut self.orb, id, slice)?;
+        Ok(slice.len() * mem::size_of::<Event>())
     }
     fn write(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
         if let Ok(msg) = str::from_utf8(buf) {
