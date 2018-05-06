@@ -81,6 +81,15 @@ impl Rect {
         Rect::new(left, top, max(0, right - left), max(0, bottom - top))
     }
 
+    pub fn max(&self, other: &Rect) -> Rect {
+        let left = min(self.left(), other.left());
+        let right = max(self.right(), other.right());
+        let top = min(self.top(), other.top());
+        let bottom = max(self.bottom(), other.bottom());
+
+        Rect::new(left, top, max(0, right - left), max(0, bottom - top))
+    }
+
     pub fn offset(&self, x: i32, y: i32) -> Rect {
         Rect::new(self.x + x, self.y + y, self.w, self.h)
     }
