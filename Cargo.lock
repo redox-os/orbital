@@ -1,17 +1,3 @@
-[root]
-name = "orbital"
-version = "0.1.0"
-dependencies = [
- "orbclient 0.3.12 (registry+https://github.com/rust-lang/crates.io-index)",
- "orbfont 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "orbimage 0.1.15 (registry+https://github.com/rust-lang/crates.io-index)",
- "redox_event 0.1.0 (git+https://github.com/redox-os/event.git)",
- "redox_syscall 0.1.31 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde 0.9.15 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_derive 0.9.15 (registry+https://github.com/rust-lang/crates.io-index)",
- "toml 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
 [[package]]
 name = "adler32"
 version = "1.0.2"
@@ -245,6 +231,20 @@ dependencies = [
  "image 0.12.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "orbclient 0.3.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "resize 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "orbital"
+version = "0.1.0"
+dependencies = [
+ "orbclient 0.3.12 (registry+https://github.com/rust-lang/crates.io-index)",
+ "orbfont 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "orbimage 0.1.15 (registry+https://github.com/rust-lang/crates.io-index)",
+ "redox_event 0.1.0 (git+https://github.com/redox-os/event.git)",
+ "redox_syscall 0.1.31 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 0.9.15 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 0.9.15 (registry+https://github.com/rust-lang/crates.io-index)",
+ "toml 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

@@ -23,6 +23,7 @@ pub struct Window {
     pub y: i32,
     pub title: String,
     pub async: bool,
+    pub borderless: bool,
     pub resizable: bool,
     pub unclosable: bool,
     pub zorder: WindowZOrder,
@@ -40,6 +41,7 @@ impl Window {
             y: y,
             title: String::new(),
             async: false,
+            borderless: false,
             resizable: false,
             unclosable: false,
             zorder: WindowZOrder::Normal,
@@ -64,7 +66,7 @@ impl Window {
     }
 
     pub fn title_rect(&self) -> Rect {
-        if self.title.is_empty() {
+        if self.borderless {
             Rect::new(-1, -1, 0, 0)
         } else {
             Rect::new(self.x, self.y - 28, self.width(), 28)
@@ -112,11 +114,11 @@ impl Window {
     }
 
     pub fn max_contains(&self, x: i32, y: i32) -> bool {
-        ! self.title.is_empty() && x >= max(self.x + 6, self.x + self.width() - 36)  && y >= self.y - 28 && x < self.x + self.width() - 18 && y < self.y
+        ! self.borderless && x >= max(self.x + 6, self.x + self.width() - 36)  && y >= self.y - 28 && x < self.x + self.width() - 18 && y < self.y
     }
 
     pub fn close_contains(&self, x: i32, y: i32) -> bool {
-        ! self.title.is_empty() && x >= max(self.x + 6, self.x + self.width() - 18)  && y >= self.y - 28 && x < self.x + self.width() && y < self.y
+        ! self.borderless && x >= max(self.x + 6, self.x + self.width() - 18)  && y >= self.y - 28 && x < self.x + self.width() && y < self.y
     }
 
     pub fn draw_title(&mut self, image: &mut ImageRef, rect: &Rect, focused: bool, window_max: &mut Image, window_close: &mut Image) {
@@ -202,8 +204,14 @@ impl Window {
     pub fn path(&self, buf: &mut [u8]) -> Result<usize> {
         let mut i = 0;
         let path_str = format!(
-            "orbital:{}{}{}/{}/{}/{}/{}/{}",
+            "orbital:{}{}{}{}{}/{}/{}/{}/{}/{}",
             if self.async { "a" } else { "" },
+            match self.zorder {
+                WindowZOrder::Back => "b",
+                WindowZOrder::Front => "f",
+                _ => ""
+            },
+            if self.borderless { "l" } else { "" },
             if self.resizable { "r" } else { "" },
             if self.unclosable { "u" } else { "" },
             self.x, self.y, self.width(), self.height(), self.title

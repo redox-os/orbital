@@ -304,25 +304,27 @@ impl OrbitalScheme {
                 orbclient::K_UP | orbclient::K_DOWN | orbclient::K_LEFT | orbclient::K_RIGHT => if event.pressed {
                     if let Some(id) = self.order.front() {
                         if let Some(window) = self.windows.get_mut(&id) {
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
+                            if ! window.borderless {
+                                schedule(&mut self.redraws, window.title_rect());
+                                schedule(&mut self.redraws, window.rect());
 
-                            match event.scancode {
-                                orbclient::K_LEFT => window.x -= 1,
-                                orbclient::K_RIGHT => window.x += 1,
-                                orbclient::K_UP => window.y -= 1,
-                                orbclient::K_DOWN => window.y += 1,
-                                _ => ()
+                                match event.scancode {
+                                    orbclient::K_LEFT => window.x -= 1,
+                                    orbclient::K_RIGHT => window.x += 1,
+                                    orbclient::K_UP => window.y -= 1,
+                                    orbclient::K_DOWN => window.y += 1,
+                                    _ => ()
+                                }
+
+                                let move_event = MoveEvent {
+                                    x: window.x,
+                                    y: window.y
+                                }.to_event();
+                                window.event(move_event);
+
+                                schedule(&mut self.redraws, window.title_rect());
+                                schedule(&mut self.redraws, window.rect());
                             }
-
-                            let move_event = MoveEvent {
-                                x: window.x,
-                                y: window.y
-                            }.to_event();
-                            window.event(move_event);
-
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
                         }
                     }
                 },
@@ -555,7 +557,9 @@ impl OrbitalScheme {
                             if self.win_key {
                                 if event.left && ! self.cursor_left {
                                     focus = i;
-                                    self.dragging = DragMode::Title(id, self.cursor_x, self.cursor_y);
+                                    if ! window.borderless {
+                                        self.dragging = DragMode::Title(id, self.cursor_x, self.cursor_y);
+                                    }
                                 }
                             } else {
                                 window.event(event.to_event());
@@ -889,6 +893,7 @@ impl SchemeMut for OrbitalScheme {
                 'a' => window.async = true,
                 'b' => window.zorder = WindowZOrder::Back,
                 'f' => window.zorder = WindowZOrder::Front,
+                'l' => window.borderless = true,
                 'r' => window.resizable = true,
                 'u' => window.unclosable = true,
                 _ => ()
