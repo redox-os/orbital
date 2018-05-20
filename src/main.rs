@@ -107,7 +107,10 @@ fn main() {
                         Ok(None)
                     }).expect("orbital: failed to poll scheme");
 
-                    event_queue.trigger_all(0).expect("orbital: failed to trigger event queue");
+                    event_queue.trigger_all(event::Event {
+                        fd: 0,
+                        flags: 0,
+                    }).expect("orbital: failed to trigger event queue");
 
                     event_queue.run().expect("orbital: failed to run event queue");
                 },
