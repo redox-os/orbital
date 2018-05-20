@@ -8,7 +8,7 @@ readme = "README.md"
 authors = ["Jeremy Soller <jackpot51@gmail.com>"]
 
 [dependencies]
-orbclient = "0.3"
+orbclient = "=0.3.12"
 orbfont = "0.1"
 orbimage = "0.1"
 redox_event = { git = "https://github.com/redox-os/event.git" }
