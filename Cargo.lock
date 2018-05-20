@@ -336,7 +336,7 @@ dependencies = [
 [[package]]
 name = "redox_event"
 version = "0.1.0"
-source = "git+https://github.com/redox-os/event.git#f2448cdafefa5a8deb304d7ea09faf3feb5ff328"
+source = "git+https://github.com/redox-os/event.git#e9bf8ee4622cb82af2a10032ed711174b2188afd"
 dependencies = [
  "redox_syscall 0.1.37 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
