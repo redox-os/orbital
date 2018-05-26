@@ -11,7 +11,7 @@ pub mod image;
 
 use event::EventQueue;
 use image::{ImageRef};
-use orbclient::{Color, Event, EVENT_RESIZE, Renderer};
+use orbclient::{Color, Event, Renderer};
 use rect::Rect;
 use std::{
     cell::RefCell,
@@ -287,7 +287,7 @@ impl Orbital {
 
                         let mut i = 0;
                         while i < me.orb.todo.len() {
-                            let mut packet = me.orb.todo[i].clone();
+                            let mut packet = me.orb.todo[i];
 
                             let delay = me.handler.should_delay(&packet);
 
