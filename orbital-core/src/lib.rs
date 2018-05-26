@@ -29,7 +29,7 @@ use std::{
 use syscall::{
     SchemeMut,
     data::Packet,
-    error::{EINVAL},
+    error::{EBADF, EINVAL},
     flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR}
 };
 
@@ -113,19 +113,28 @@ pub trait Handler {
     /// Called after a batch of any events have been handled
     fn handle_after(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
 
-    /// Called when a new window is requested by the scheme
+    /// Called when a new window is requested by the scheme.
+    /// Return a window ID that will be used to identify it later.
     fn handle_window_new(&mut self, orb: &mut Orbital,
                          x: i32, y: i32, width: i32, height: i32,
                          flags: &str, title: String) -> syscall::Result<usize>;
-    /// Called when the scheme is read
+    /// Called when the scheme is read for events
     fn handle_window_read(&mut self, orb: &mut Orbital, id: usize, buf: &mut [Event]) -> syscall::Result<()>;
+    /// Called when the window asks to be repositioned
     fn handle_window_position(&mut self, orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> syscall::Result<()>;
+    /// Called when the window asks to be resized
     fn handle_window_resize(&mut self, orb: &mut Orbital, id: usize, w: Option<i32>, h: Option<i32>) -> syscall::Result<()>;
+    /// Called when the window asks to change title
     fn handle_window_title(&mut self, orb: &mut Orbital, id: usize, title: String) -> syscall::Result<()>;
-    fn handle_window_lookup(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
+    /// Called by certain scheme functions when they need to make sure a window exists with that ID
+    fn handle_window_exists(&mut self, orb: &mut Orbital, id: usize) -> bool;
+    /// Return a reference the window's image that will be mapped in the scheme's fmap function
     fn handle_window_map(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<&mut [Color]>;
+    /// Called to get window properties
     fn handle_window_properties(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<Properties>;
+    /// Called to flush a window. It's usually a good idea to redraw here.
     fn handle_window_sync(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
+    /// Called when a window should be closed
     fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
 }
 
@@ -385,7 +394,11 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         }
     }
     fn fevent(&mut self, id: usize, _flags: usize) -> syscall::Result<usize> {
-        self.handler.handle_window_lookup(&mut self.orb, id)
+        if self.handler.handle_window_exists(&mut self.orb, id) {
+            Ok(id)
+        } else {
+            Err(syscall::Error::new(EBADF))
+        }
     }
     fn fmap(&mut self, id: usize, offset: usize, size: usize) -> syscall::Result<usize> {
         let data = self.handler.handle_window_map(&mut self.orb, id)?;
