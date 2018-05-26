@@ -11,7 +11,7 @@ pub mod image;
 
 use event::EventQueue;
 use image::{ImageRef};
-use orbclient::{Color, Event, EventOption, Renderer};
+use orbclient::{Color, Event, EVENT_RESIZE, Renderer};
 use rect::Rect;
 use std::{
     cell::RefCell,
@@ -216,6 +216,17 @@ impl Orbital {
     pub fn screen_rect(&self) -> Rect {
         Rect::new(0, 0, self.image.width(), self.image.height())
     }
+    /// Resize the inner image buffer. You're responsible for redrawing.
+    pub fn resize(&mut self, width: i32, height: i32) {
+        unsafe {
+            display_fd_unmap(&mut self.image);
+            self.image = display_fd_map(
+                width as i32,
+                height as i32,
+                self.display.as_raw_fd() as usize
+            );
+        }
+    }
     /// Start the main loop
     pub fn run<H>(mut self, mut handler: H) -> Result<(), Error>
         where H: Handler + 'static
@@ -273,18 +284,6 @@ impl Orbital {
                     0 => break,
                     count => {
                         let events = &mut events[..count];
-                        for event in events.iter() {
-                            if let EventOption::Resize(event) = event.to_option() {
-                                unsafe {
-                                    display_fd_unmap(&mut me.orb.image);
-                                    me.orb.image = display_fd_map(
-                                        event.width as i32,
-                                        event.height as i32,
-                                        display_fd as usize
-                                    );
-                                }
-                            }
-                        }
 
                         let mut i = 0;
                         while i < me.orb.todo.len() {

@@ -160,15 +160,10 @@ impl Handler for OrbitalScheme {
     type Drain = Vec<Event>;
 
     fn should_delay(&mut self, packet: &Packet) -> bool {
-        if packet.a == SYS_READ {
-            if let Some(window) = self.windows.get(&packet.b) {
-                window.async == false
-            } else {
-                true
-            }
-        } else {
-            false
-        }
+        packet.a == SYS_READ &&
+            self.windows.get(&packet.b)
+                .map(|window| window.async)
+                .unwrap_or(true)
     }
 
     fn handle_scheme(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()> {
@@ -822,7 +817,9 @@ impl<'a> OrbitalSchemeEvent<'a> {
         self.scheme.cursor_right = event.right;
     }
 
-    fn resize_event(&mut self, _event: ResizeEvent) {
+    fn resize_event(&mut self, event: ResizeEvent) {
+        self.orb.resize(event.width as i32, event.height as i32);
+
         let screen_rect = self.orb.screen_rect();
         schedule(&mut self.scheme.redraws, screen_rect);
 
