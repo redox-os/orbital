@@ -93,8 +93,6 @@ pub struct Properties<'a> {
 }
 
 pub trait Handler {
-    type Drain: IntoIterator<Item = Event>;
-
     /// Called when the event loop is first ran
     fn handle_startup(&mut self, _orb: &mut Orbital) -> io::Result<()> { Ok(()) }
 

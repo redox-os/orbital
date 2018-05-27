@@ -157,8 +157,6 @@ impl OrbitalScheme {
     }
 }
 impl Handler for OrbitalScheme {
-    type Drain = Vec<Event>;
-
     fn should_delay(&mut self, packet: &Packet) -> bool {
         packet.a == SYS_READ &&
             self.windows.get(&packet.b)
