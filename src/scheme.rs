@@ -780,6 +780,7 @@ impl OrbitalScheme {
             for (id, window) in self.windows.iter_mut() {
                 if ! window.events.is_empty() {
                     if !window.notified_read {
+                        window.notified_read = true;
                         self.socket.write(&Packet {
                             id: 0,
                             pid: 0,
@@ -834,6 +835,7 @@ impl OrbitalScheme {
             for (id, window) in self.windows.iter_mut() {
                 if ! window.events.is_empty() {
                     if !window.notified_read {
+                        window.notified_read = true;
                         self.socket.write(&Packet {
                             id: 0,
                             pid: 0,
