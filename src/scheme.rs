@@ -777,18 +777,22 @@ impl OrbitalScheme {
                 }
             }
 
-            for (id, window) in self.windows.iter() {
+            for (id, window) in self.windows.iter_mut() {
                 if ! window.events.is_empty() {
-                    self.socket.write(&Packet {
-                        id: 0,
-                        pid: 0,
-                        uid: 0,
-                        gid: 0,
-                        a: syscall::number::SYS_FEVENT,
-                        b: *id,
-                        c: syscall::flag::EVENT_READ,
-                        d: window.events.len() * mem::size_of::<Event>()
-                    })?;
+                    if !window.notified_read {
+                        self.socket.write(&Packet {
+                            id: 0,
+                            pid: 0,
+                            uid: 0,
+                            gid: 0,
+                            a: syscall::number::SYS_FEVENT,
+                            b: *id,
+                            c: syscall::flag::EVENT_READ,
+                            d: window.events.len() * mem::size_of::<Event>()
+                        })?;
+                    }
+                } else {
+                    window.notified_read = false;
                 }
             }
         }
@@ -827,18 +831,22 @@ impl OrbitalScheme {
                 }
             }
 
-            for (id, window) in self.windows.iter() {
+            for (id, window) in self.windows.iter_mut() {
                 if ! window.events.is_empty() {
-                    self.socket.write(&Packet {
-                        id: 0,
-                        pid: 0,
-                        uid: 0,
-                        gid: 0,
-                        a: syscall::number::SYS_FEVENT,
-                        b: *id,
-                        c: syscall::flag::EVENT_READ,
-                        d: window.events.len() * mem::size_of::<Event>()
-                    })?;
+                    if !window.notified_read {
+                        self.socket.write(&Packet {
+                            id: 0,
+                            pid: 0,
+                            uid: 0,
+                            gid: 0,
+                            a: syscall::number::SYS_FEVENT,
+                            b: *id,
+                            c: syscall::flag::EVENT_READ,
+                            d: window.events.len() * mem::size_of::<Event>()
+                        })?;
+                    }
+                } else {
+                    window.notified_read = false;
                 }
             }
         }
@@ -981,7 +989,8 @@ impl SchemeMut for OrbitalScheme {
     }
 
     fn fevent(&mut self, id: usize, _flags: usize) -> Result<usize> {
-        if self.windows.contains_key(&id) {
+        if let Some(window) = self.windows.get_mut(&id) {
+            window.notified_read = false;
             Ok(id)
         } else {
             Err(Error::new(EBADF))

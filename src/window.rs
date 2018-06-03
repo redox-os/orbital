@@ -32,6 +32,8 @@ pub struct Window {
     title_image: Image,
     title_image_unfocused: Image,
     pub events: VecDeque<Event>,
+
+    pub notified_read: bool
 }
 
 impl Window {
@@ -49,7 +51,9 @@ impl Window {
             image: Image::new(w, h),
             title_image: Image::new(0, 0),
             title_image_unfocused: Image::new(0, 0),
-            events: VecDeque::new()
+            events: VecDeque::new(),
+
+            notified_read: false
         }
     }
 
