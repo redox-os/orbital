@@ -29,7 +29,7 @@ use std::{
 use syscall::{
     SchemeMut,
     data::Packet,
-    error::{EBADF, EINVAL},
+    error::EINVAL,
     flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR}
 };
 
@@ -124,8 +124,9 @@ pub trait Handler {
     fn handle_window_resize(&mut self, orb: &mut Orbital, id: usize, w: Option<i32>, h: Option<i32>) -> syscall::Result<()>;
     /// Called when the window asks to change title
     fn handle_window_title(&mut self, orb: &mut Orbital, id: usize, title: String) -> syscall::Result<()>;
-    /// Called by certain scheme functions when they need to make sure a window exists with that ID
-    fn handle_window_exists(&mut self, orb: &mut Orbital, id: usize) -> bool;
+    /// Called by fevent to clear notified status, assuming you're sending edge-triggered notifications
+    /// TODO: Abstract event system away completely.
+    fn handle_window_clear_notified(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<()>;
     /// Return a reference the window's image that will be mapped in the scheme's fmap function
     fn handle_window_map(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<&mut [Color]>;
     /// Called to get window properties
@@ -391,11 +392,8 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         }
     }
     fn fevent(&mut self, id: usize, _flags: usize) -> syscall::Result<usize> {
-        if self.handler.handle_window_exists(&mut self.orb, id) {
-            Ok(id)
-        } else {
-            Err(syscall::Error::new(EBADF))
-        }
+        self.handler.handle_window_clear_notified(&mut self.orb, id)
+            .and(Ok(id))
     }
     fn fmap(&mut self, id: usize, offset: usize, size: usize) -> syscall::Result<usize> {
         let data = self.handler.handle_window_map(&mut self.orb, id)?;

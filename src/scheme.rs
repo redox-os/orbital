@@ -233,8 +233,13 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_exists(&mut self, _orb: &mut Orbital, id: usize) -> bool {
-        self.windows.contains_key(&id)
+    fn handle_window_clear_notified(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<()> {
+        if let Some(window) = self.windows.get_mut(&id) {
+            window.notified_read = false;
+            Ok(())
+        } else {
+            Err(syscall::Error::new(EBADF))
+        }
     }
     fn handle_window_map(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<&mut [Color]> {
         if let Some(window) = self.windows.get_mut(&id) {
