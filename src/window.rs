@@ -50,7 +50,7 @@ impl Window {
             image: Image::new(w, h),
             title_image: Image::new(0, 0),
             title_image_unfocused: Image::new(0, 0),
-            events: Vec::new()
+            events: Vec::new(),
 
             notified_read: false
         }

@@ -855,11 +855,11 @@ impl<'a> OrbitalSchemeEvent<'a> {
             self.event(event);
         }
 
-        for (id, window) in self.windows.iter_mut() {
+        for (id, window) in self.scheme.windows.iter_mut() {
             if ! window.events.is_empty() {
                 if !window.notified_read {
                     window.notified_read = true;
-                    self.socket.write(&Packet {
+                    self.orb.scheme_write(&Packet {
                         id: 0,
                         pid: 0,
                         uid: 0,
@@ -881,11 +881,11 @@ impl<'a> OrbitalSchemeEvent<'a> {
     }
 
     pub fn scheme_event(&mut self, _packets: &mut [Packet]) -> io::Result<()> {
-        for (id, window) in self.windows.iter_mut() {
+        for (id, window) in self.scheme.windows.iter_mut() {
             if ! window.events.is_empty() {
                 if !window.notified_read {
                     window.notified_read = true;
-                    self.socket.write(&Packet {
+                    self.orb.scheme_write(&Packet {
                         id: 0,
                         pid: 0,
                         uid: 0,
