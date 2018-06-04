@@ -117,7 +117,7 @@ pub trait Handler {
                          x: i32, y: i32, width: i32, height: i32,
                          flags: &str, title: String) -> syscall::Result<usize>;
     /// Called when the scheme is read for events
-    fn handle_window_read(&mut self, orb: &mut Orbital, id: usize, buf: &mut [Event]) -> syscall::Result<()>;
+    fn handle_window_read(&mut self, orb: &mut Orbital, id: usize, buf: &mut [Event]) -> syscall::Result<usize>;
     /// Called when the window asks to be repositioned
     fn handle_window_position(&mut self, orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> syscall::Result<()>;
     /// Called when the window asks to be resized
@@ -355,8 +355,8 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
                 buf.len() / mem::size_of::<Event>()
             )
         };
-        self.handler.handle_window_read(&mut self.orb, id, slice)?;
-        Ok(slice.len() * mem::size_of::<Event>())
+        let n = self.handler.handle_window_read(&mut self.orb, id, slice)?;
+        Ok(n * mem::size_of::<Event>())
     }
     fn write(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
         if let Ok(msg) = str::from_utf8(buf) {

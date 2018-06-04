@@ -7,6 +7,7 @@ use orbital_core::{
     self
 };
 use std::cmp::{min, max};
+use std::collections::VecDeque;
 
 use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 
@@ -30,7 +31,7 @@ pub struct Window {
     image: Image,
     title_image: Image,
     title_image_unfocused: Image,
-    pub events: Vec<Event>,
+    pub events: VecDeque<Event>,
 
     pub notified_read: bool
 }
@@ -50,7 +51,7 @@ impl Window {
             image: Image::new(w, h),
             title_image: Image::new(0, 0),
             title_image_unfocused: Image::new(0, 0),
-            events: Vec::new(),
+            events: VecDeque::new(),
 
             notified_read: false
         }
@@ -176,22 +177,19 @@ impl Window {
     }
 
     pub fn event(&mut self, event: Event) {
-        self.events.push(event);
+        self.events.push_back(event);
     }
 
     pub fn map(&mut self) -> &mut [Color] {
         self.image.data_mut()
     }
 
-    pub fn read(&mut self, buf: &mut [Event]) {
+    pub fn read(&mut self, buf: &mut [Event]) -> usize {
         let len = self.events.len().min(buf.len());
-        buf[..len].copy_from_slice(&self.events[..len]);
-        //self.events.drain(..len);
-        for i in len..self.events.len() {
-            self.events[i-len] = self.events[i]; // copy element back
+        for i in 0..len {
+            buf[i] = self.events.pop_front().unwrap();
         }
-        let new_len = self.events.len() - len;
-        self.events.truncate(new_len);
+        len
     }
 
     pub fn properties(&self) -> Properties {
