@@ -203,13 +203,11 @@ impl Handler for OrbitalScheme {
     }
     fn handle_window_resize(&mut self, _orb: &mut Orbital, id: usize, w: Option<i32>, h: Option<i32>) -> syscall::Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
-            let rect = window.rect();
-
             schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, rect.rect());
+            schedule(&mut self.redraws, window.rect());
 
-            let w = w.unwrap_or(rect.width());
-            let h = h.unwrap_or(rect.height());
+            let w = w.unwrap_or(window.width());
+            let h = h.unwrap_or(window.height());
 
             window.set_size(w, h);
 

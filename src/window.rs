@@ -185,11 +185,13 @@ impl Window {
     }
 
     pub fn read(&mut self, buf: &mut [Event]) -> usize {
-        let len = self.events.len().min(buf.len());
-        for i in 0..len {
-            buf[i] = self.events.pop_front().unwrap();
+        for i in 0..buf.len() {
+            buf[i] = match self.events.pop_front() {
+                Some(item) => item,
+                None => return i
+            };
         }
-        len
+        buf.len()
     }
 
     pub fn properties(&self) -> Properties {
