@@ -160,7 +160,7 @@ impl Handler for OrbitalScheme {
     fn should_delay(&mut self, packet: &Packet) -> bool {
         packet.a == SYS_READ &&
             self.windows.get(&packet.b)
-                .map(|window| window.async)
+                .map(|window| !window.async)
                 .unwrap_or(true)
     }
 
