@@ -1,20 +1,15 @@
 [package]
 authors = ["Jeremy Soller <jackpot51@gmail.com>"]
 description = "The Orbital Windowing System and Compositor"
-license-file = "LICENSE"
-name = "orbital"
-readme = "README.md"
+name = "orbital-core"
 repository = "https://github.com/redox-os/orbital"
 version = "0.1.0"
 
 [dependencies]
 failure = "0.1.1"
-orbclient = "=0.3.12"
-orbfont = "0.1"
+orbclient = "0.3"
+orbimage = "0.1"
 redox_syscall = "0.1"
-serde = "0.9"
-serde_derive = "0.9"
-toml = "0.3"
 
-[dependencies.orbital-core]
-path = "orbital-core"
+[dependencies.redox_event]
+git = "https://github.com/redox-os/event.git"

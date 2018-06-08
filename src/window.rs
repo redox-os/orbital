@@ -1,15 +1,15 @@
 use orbclient::{Color, Event, Renderer};
 use orbfont::Font;
+use orbital_core::{
+    Properties,
+    image::{Image, ImageRef},
+    rect::Rect,
+    self
+};
 use std::cmp::{min, max};
 use std::collections::VecDeque;
-use std::mem::size_of;
-use std::ptr;
 
-use image::{Image, ImageRef};
-use rect::Rect;
 use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
-
-use syscall::error::{Error, Result, EINVAL};
 
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum WindowZOrder {
@@ -180,52 +180,34 @@ impl Window {
         self.events.push_back(event);
     }
 
-    pub fn map(&mut self, offset: usize, size: usize) -> Result<usize> {
-        if offset + size <= self.image.data().len() * 4 {
-            Ok(self.image.data_mut().as_mut_ptr() as usize + offset)
-        } else {
-            Err(Error::new(EINVAL))
-        }
+    pub fn map(&mut self) -> &mut [Color] {
+        self.image.data_mut()
     }
 
-    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        if buf.len() >= size_of::<Event>() {
-            let mut i = 0;
-            while i <= buf.len() - size_of::<Event>() {
-                if let Some(event) = self.events.pop_front() {
-                    unsafe { ptr::write(buf.as_mut_ptr().offset(i as isize) as *mut Event, event) };
-                    i += size_of::<Event>();
-                } else {
-                    break;
-                }
-            }
-            Ok(i)
-        } else {
-            Err(Error::new(EINVAL))
+    pub fn read(&mut self, buf: &mut [Event]) -> usize {
+        for i in 0..buf.len() {
+            buf[i] = match self.events.pop_front() {
+                Some(item) => item,
+                None => return i
+            };
         }
+        buf.len()
     }
 
-    pub fn path(&self, buf: &mut [u8]) -> Result<usize> {
-        let mut i = 0;
-        let path_str = format!(
-            "orbital:{}{}{}{}{}/{}/{}/{}/{}/{}",
-            if self.async { "a" } else { "" },
-            match self.zorder {
-                WindowZOrder::Back => "b",
-                WindowZOrder::Front => "f",
-                _ => ""
-            },
-            if self.borderless { "l" } else { "" },
-            if self.resizable { "r" } else { "" },
-            if self.unclosable { "u" } else { "" },
-            self.x, self.y, self.width(), self.height(), self.title
-        );
-        let path = path_str.as_bytes();
-        while i < buf.len() && i < path.len() {
-            buf[i] = path[i];
-            i += 1;
+    pub fn properties(&self) -> Properties {
+        let mut properties = 0;
+        if self.async { properties |= orbital_core::PROPERTY_ASYNC; }
+        if self.borderless { properties |= orbital_core::PROPERTY_BORDERLESS; }
+        if self.resizable { properties |= orbital_core::PROPERTY_RESIZABLE; }
+        if self.unclosable { properties |= orbital_core::PROPERTY_UNCLOSABLE; }
+        Properties {
+            properties: properties,
+            x: self.x,
+            y: self.y,
+            width: self.width(),
+            height: self.height(),
+            title: &self.title
         }
-        Ok(i)
     }
 
     pub fn render_title(&mut self, font: &Font) {
