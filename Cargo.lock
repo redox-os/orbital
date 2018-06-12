@@ -328,7 +328,7 @@ dependencies = [
  "failure 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "orbclient 0.3.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "orbimage 0.1.15 (registry+https://github.com/rust-lang/crates.io-index)",
- "redox_event 0.1.0 (git+https://github.com/redox-os/event.git)",
+ "redox_event 0.1.0 (git+https://gitlab.redox-os.org/redox-os/event.git)",
  "redox_syscall 0.1.38 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -392,7 +392,7 @@ dependencies = [
 [[package]]
 name = "redox_event"
 version = "0.1.0"
-source = "git+https://github.com/redox-os/event.git#e9bf8ee4622cb82af2a10032ed711174b2188afd"
+source = "git+https://gitlab.redox-os.org/redox-os/event.git#e9bf8ee4622cb82af2a10032ed711174b2188afd"
 dependencies = [
  "redox_syscall 0.1.38 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -591,7 +591,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum rand 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "eba5f8cb59cc50ed56be8880a5c7b496bfd9bd26394e176bc67884094145c2c5"
 "checksum rayon 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "80e811e76f1dbf68abf87a759083d34600017fc4e10b6bd5ad84a700f9dba4b1"
 "checksum rayon-core 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "9d24ad214285a7729b174ed6d3bcfcb80177807f959d95fafd5bfc5c4f201ac8"
-"checksum redox_event 0.1.0 (git+https://github.com/redox-os/event.git)" = "<none>"
+"checksum redox_event 0.1.0 (git+https://gitlab.redox-os.org/redox-os/event.git)" = "<none>"
 "checksum redox_syscall 0.1.38 (registry+https://github.com/rust-lang/crates.io-index)" = "0a12d51a5b5fd700e6c757f15877685bfa04fd7eb60c108f01d045cafa0073c2"
 "checksum resize 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "3e8f5c5cf4d79776ed121e1c5052718b4bb06d2b48049144a2f0e5ad613b608e"
 "checksum rustc-demangle 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)" = "76d7ba1feafada44f2d38eed812bd2489a03c0f5abb975799251518b68848649"
