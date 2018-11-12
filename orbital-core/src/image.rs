@@ -1,6 +1,7 @@
-use orbclient::{Color, Renderer};
+use orbclient::{Color, Mode, Renderer};
 use orbimage;
 use std::{cmp, mem};
+use std::cell::Cell;
 use std::path::Path;
 
 use rect::Rect;
@@ -119,7 +120,8 @@ impl<'a> ImageRoi<'a> {
 pub struct ImageRef<'a> {
     w: i32,
     h: i32,
-    data: &'a mut [Color]
+    data: &'a mut [Color],
+    mode: Cell<Mode>
 }
 
 impl<'a> ImageRef<'a> {
@@ -127,7 +129,8 @@ impl<'a> ImageRef<'a> {
         ImageRef {
             w: width,
             h: height,
-            data: data
+            data: data,
+            mode: Cell::new(Mode::Blend),
         }
     }
 
@@ -161,12 +164,16 @@ impl<'a> Renderer for ImageRef<'a> {
 
     /// Return a reference to a slice of colors making up the image
     fn data(&self) -> &[Color] {
-        &self.data[..]
+        &self.data
     }
 
     /// Return a mutable reference to a slice of colors making up the image
     fn data_mut(&mut self) -> &mut [Color] {
-        &mut self.data[..]
+        &mut self.data
+    }
+
+    fn mode(&self) -> &Cell<Mode> {
+        &self.mode
     }
 
     fn sync(&mut self) -> bool {
@@ -178,7 +185,8 @@ impl<'a> Renderer for ImageRef<'a> {
 pub struct Image {
     w: i32,
     h: i32,
-    data: Box<[Color]>
+    data: Box<[Color]>,
+    mode: Cell<Mode>,
 }
 
 impl Image {
@@ -194,7 +202,8 @@ impl Image {
         Image {
             w: width,
             h: height,
-            data: data
+            data: data,
+            mode: Cell::new(Mode::Blend),
         }
     }
 
@@ -220,15 +229,6 @@ impl Image {
     pub fn height(&self) -> i32 {
         self.h
     }
-
-    pub fn data(&self) -> &[Color] {
-        &self.data
-    }
-
-    pub fn data_mut(&mut self) -> &mut [Color] {
-        &mut self.data
-    }
-
     pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
         ImageRoi {
             rect: *rect,
@@ -251,12 +251,16 @@ impl Renderer for Image {
 
     /// Return a reference to a slice of colors making up the image
     fn data(&self) -> &[Color] {
-        &self.data[..]
+        &self.data
     }
 
     /// Return a mutable reference to a slice of colors making up the image
     fn data_mut(&mut self) -> &mut [Color] {
-        &mut self.data[..]
+        &mut self.data
+    }
+
+    fn mode(&self) -> &Cell<Mode> {
+        &self.mode
     }
 
     fn sync(&mut self) -> bool {
