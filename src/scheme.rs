@@ -222,6 +222,7 @@ impl Handler for OrbitalScheme {
     fn handle_window_title(&mut self, _orb: &mut Orbital, id: usize, title: String) -> syscall::Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             window.title = title;
+            window.render_title(&self.font);
 
             schedule(&mut self.redraws, window.title_rect());
 
