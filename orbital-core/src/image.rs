@@ -1,6 +1,6 @@
 use orbclient::{Color, Mode, Renderer};
 use orbimage;
-use std::{cmp, mem};
+use std::{cmp, mem, ptr};
 use std::cell::Cell;
 use std::path::Path;
 
