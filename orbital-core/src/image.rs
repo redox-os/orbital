@@ -6,18 +6,6 @@ use std::path::Path;
 
 use rect::Rect;
 
-#[cfg(target_arch = "x86_64")]
-#[inline(always)]
-#[cold]
-pub unsafe fn fast_copy(dst: *mut u8, src: *const u8, len: usize) {
-    asm!("cld
-        rep movsb"
-        :
-        : "{rdi}"(dst as usize), "{rsi}"(src as usize), "{rcx}"(len)
-        : "cc", "memory", "rdi", "rsi", "rcx"
-        : "intel", "volatile");
-}
-
 pub struct ImageRoiRows<'a> {
     rect: Rect,
     w: i32,
@@ -112,7 +100,7 @@ impl<'a> ImageRoi<'a> {
     pub fn blit(&'a mut self, other: &ImageRoi) {
         for (self_row, other_row) in self.rows_mut().zip(other.rows()) {
             let len = cmp::min(self_row.len(), other_row.len());
-            unsafe { fast_copy(self_row.as_mut_ptr() as *mut u8, other_row.as_ptr() as *const u8, len * 4); }
+            ptr::copy(other_row.as_ptr(), self_row.as_mut_ptr(), len);
         }
     }
 }

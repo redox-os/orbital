@@ -1,5 +1,3 @@
-#![feature(asm)]
-
 #[macro_use] extern crate failure;
 extern crate event;
 extern crate orbclient;
