@@ -100,7 +100,9 @@ impl<'a> ImageRoi<'a> {
     pub fn blit(&'a mut self, other: &ImageRoi) {
         for (self_row, other_row) in self.rows_mut().zip(other.rows()) {
             let len = cmp::min(self_row.len(), other_row.len());
-            ptr::copy(other_row.as_ptr(), self_row.as_mut_ptr(), len);
+            unsafe {
+                ptr::copy(other_row.as_ptr(), self_row.as_mut_ptr(), len);
+            }
         }
     }
 }
