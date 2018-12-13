@@ -25,6 +25,7 @@ pub struct Window {
     pub async: bool,
     pub borderless: bool,
     pub resizable: bool,
+    pub transparent: bool,
     pub unclosable: bool,
     pub zorder: WindowZOrder,
     pub max_restore: Option<Rect>,
@@ -45,6 +46,7 @@ impl Window {
             async: false,
             borderless: false,
             resizable: false,
+            transparent: false,
             unclosable: false,
             zorder: WindowZOrder::Normal,
             max_restore: None,
@@ -172,7 +174,11 @@ impl Window {
         let self_rect = self.rect();
         let intersect = self_rect.intersection(&rect);
         if ! intersect.is_empty() {
-            image.roi(&intersect).blend(&self.image.roi(&intersect.offset(-self_rect.left(), -self_rect.top())));
+            if self.transparent {
+                image.roi(&intersect).blend(&self.image.roi(&intersect.offset(-self_rect.left(), -self_rect.top())));
+            } else {
+                image.roi(&intersect).blit(&self.image.roi(&intersect.offset(-self_rect.left(), -self_rect.top())));
+            }
         }
     }
 
@@ -199,6 +205,7 @@ impl Window {
         if self.async { properties |= orbital_core::PROPERTY_ASYNC; }
         if self.borderless { properties |= orbital_core::PROPERTY_BORDERLESS; }
         if self.resizable { properties |= orbital_core::PROPERTY_RESIZABLE; }
+        if self.transparent { properties |= orbital_core::PROPERTY_TRANSPARENT; }
         if self.unclosable { properties |= orbital_core::PROPERTY_UNCLOSABLE; }
         Properties {
             properties: properties,

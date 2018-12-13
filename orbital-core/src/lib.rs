@@ -76,10 +76,11 @@ unsafe fn display_fd_unmap(image: &mut ImageRef) {
     let _ = syscall::funmap(image.data().as_ptr() as usize);
 }
 
-pub const PROPERTY_ASYNC:      u8 = 0;
-pub const PROPERTY_BORDERLESS: u8 = 1;
-pub const PROPERTY_RESIZABLE:  u8 = 1 << 1;
-pub const PROPERTY_UNCLOSABLE: u8 = 1 << 2;
+pub const PROPERTY_ASYNC:      u8 = 1 << 0;
+pub const PROPERTY_BORDERLESS: u8 = 1 << 1;
+pub const PROPERTY_RESIZABLE:  u8 = 1 << 2;
+pub const PROPERTY_TRANSPARENT: u8 = 1 << 3;
+pub const PROPERTY_UNCLOSABLE: u8 = 1 << 4;
 
 pub struct Properties<'a> {
     pub properties: u8,
@@ -405,11 +406,12 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         let props = self.handler.handle_window_properties(&mut self.orb, id)?;
         let original_len = buf.len();
         write!(buf,
-            "orbital:{}{}{}{}{}/{}/{}/{}/{}/{}",
+            "orbital:{}{}{}{}{}{}/{}/{}/{}/{}/{}",
             if props.properties & PROPERTY_ASYNC == PROPERTY_ASYNC { "a" } else { "" },
             "", // TODO: Z order
             if props.properties & PROPERTY_BORDERLESS == PROPERTY_BORDERLESS { "l" } else { "" },
             if props.properties & PROPERTY_RESIZABLE == PROPERTY_RESIZABLE { "r" } else { "" },
+            if props.properties & PROPERTY_TRANSPARENT == PROPERTY_TRANSPARENT { "t" } else { "" },
             if props.properties & PROPERTY_UNCLOSABLE == PROPERTY_UNCLOSABLE { "u" } else { "" },
             props.x, props.y, props.width, props.height, props.title
         ).unwrap();

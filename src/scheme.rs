@@ -941,6 +941,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 'f' => window.zorder = WindowZOrder::Front,
                 'l' => window.borderless = true,
                 'r' => window.resizable = true,
+                't' => window.transparent = true,
                 'u' => window.unclosable = true,
                 _ => ()
             }
