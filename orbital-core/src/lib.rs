@@ -67,7 +67,7 @@ unsafe fn read_to_slice<R: Read, T: Copy>(mut r: R, buf: &mut [T]) -> io::Result
     ).map(|count| count/mem::size_of::<T>())
 }
 unsafe fn display_fd_map(width: i32, height: i32, display_fd: usize) -> ImageRef<'static> {
-    let display_ptr = syscall::fmap(display_fd, syscall::Map {
+    let display_ptr = syscall::fmap(display_fd, &syscall::Map {
         offset: 0,
         size: (width * height * 4) as usize,
         flags: syscall::PROT_READ | syscall::PROT_WRITE,
