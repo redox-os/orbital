@@ -67,7 +67,11 @@ unsafe fn read_to_slice<R: Read, T: Copy>(mut r: R, buf: &mut [T]) -> io::Result
     ).map(|count| count/mem::size_of::<T>())
 }
 unsafe fn display_fd_map(width: i32, height: i32, display_fd: usize) -> ImageRef<'static> {
-    let display_ptr = syscall::fmap(display_fd, 0, (width * height * 4) as usize).unwrap();
+    let display_ptr = syscall::fmap(display_fd, syscall::Map {
+        offset: 0,
+        size: (width * height * 4) as usize,
+        flags: syscall::PROT_READ | syscall::PROT_WRITE,
+    }).unwrap();
     let display_slice = slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize);
     ImageRef::from_data(width, height, display_slice)
 }
@@ -394,10 +398,10 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         self.handler.handle_window_clear_notified(&mut self.orb, id)
             .and(Ok(id))
     }
-    fn fmap(&mut self, id: usize, offset: usize, size: usize) -> syscall::Result<usize> {
+    fn fmap(&mut self, id: usize, map: &syscall::Map) -> syscall::Result<usize> {
         let data = self.handler.handle_window_map(&mut self.orb, id)?;
-        if offset + size <= data.len() * 4 {
-            Ok(data.as_mut_ptr() as usize + offset)
+        if map.offset + map.size <= data.len() * 4 {
+            Ok(data.as_mut_ptr() as usize + map.offset)
         } else {
             Err(syscall::Error::new(EINVAL))
         }
