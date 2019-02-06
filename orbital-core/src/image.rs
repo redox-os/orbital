@@ -1,6 +1,7 @@
+use libc;
 use orbclient::{Color, Mode, Renderer};
 use orbimage;
-use std::{cmp, mem, ptr};
+use std::{cmp, mem, ptr, slice};
 use std::cell::Cell;
 use std::path::Path;
 
@@ -229,6 +230,85 @@ impl Image {
 }
 
 impl Renderer for Image {
+    /// Get the width of the image in pixels
+    fn width(&self) -> u32 {
+        self.w as u32
+    }
+
+    /// Get the height of the image in pixels
+    fn height(&self) -> u32 {
+        self.h as u32
+    }
+
+    /// Return a reference to a slice of colors making up the image
+    fn data(&self) -> &[Color] {
+        &self.data
+    }
+
+    /// Return a mutable reference to a slice of colors making up the image
+    fn data_mut(&mut self) -> &mut [Color] {
+        &mut self.data
+    }
+
+    fn mode(&self) -> &Cell<Mode> {
+        &self.mode
+    }
+
+    fn sync(&mut self) -> bool {
+        true
+    }
+}
+
+pub struct ImageAligned {
+    w: i32,
+    h: i32,
+    data: &'static mut [Color],
+    mode: Cell<Mode>,
+}
+
+impl Drop for ImageAligned {
+    fn drop(&mut self) {
+        unsafe { libc::free(self.data.as_mut_ptr() as *mut libc::c_void); }
+    }
+}
+
+impl ImageAligned {
+    pub unsafe fn new(width: i32, height: i32, align: usize) -> ImageAligned {
+        let size = (width * height) as usize;
+        let size_bytes = size * mem::size_of::<Color>();
+        let size_alignments = (size_bytes + align - 1) / align;
+        let size_aligned = size_alignments * align;
+        let ptr = libc::memalign(align, size_aligned);
+        libc::memset(ptr, 0, size_aligned);
+        ImageAligned {
+            w: width,
+            h: height,
+            data: slice::from_raw_parts_mut(
+                ptr as *mut Color,
+                size_aligned / mem::size_of::<Color>()
+            ),
+            mode: Cell::new(Mode::Blend),
+        }
+    }
+
+    pub fn width(&self) -> i32 {
+        self.w
+    }
+
+    pub fn height(&self) -> i32 {
+        self.h
+    }
+
+    pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
+        ImageRoi {
+            rect: *rect,
+            w: self.w,
+            data: &mut self.data
+        }
+    }
+}
+
+impl Renderer for ImageAligned {
     /// Get the width of the image in pixels
     fn width(&self) -> u32 {
         self.w as u32

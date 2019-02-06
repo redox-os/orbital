@@ -2,12 +2,13 @@ use orbclient::{Color, Event, Renderer};
 use orbfont::Font;
 use orbital_core::{
     Properties,
-    image::{Image, ImageRef},
+    image::{Image, ImageAligned, ImageRef},
     rect::Rect,
     self
 };
 use std::cmp::{min, max};
 use std::collections::VecDeque;
+use std::mem;
 
 use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 
@@ -29,11 +30,10 @@ pub struct Window {
     pub unclosable: bool,
     pub zorder: WindowZOrder,
     pub max_restore: Option<Rect>,
-    image: Image,
+    image: ImageAligned,
     title_image: Image,
     title_image_unfocused: Image,
     pub events: VecDeque<Event>,
-
     pub notified_read: bool
 }
 
@@ -50,11 +50,10 @@ impl Window {
             unclosable: false,
             zorder: WindowZOrder::Normal,
             max_restore: None,
-            image: Image::new(w, h),
+            image: unsafe { ImageAligned::new(w, h, 4096) }, // Ensure that image data is page aligned at beginning and end
             title_image: Image::new(0, 0),
             title_image_unfocused: Image::new(0, 0),
             events: VecDeque::new(),
-
             notified_read: false
         }
     }
@@ -228,7 +227,8 @@ impl Window {
     }
 
     pub fn set_size(&mut self, w: i32, h: i32) {
-        let mut new_image = Image::from_color(w, h, Color::rgba(0, 0, 0, 0));
+        //TODO: Invalidate old mappings
+        let mut new_image = unsafe { ImageAligned::new(w, h, 4096) };
         let new_rect = Rect::new(0, 0, w, h);
 
         let rect = Rect::new(0, 0, self.image.width(), self.image.height());

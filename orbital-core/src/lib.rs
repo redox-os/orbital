@@ -1,5 +1,6 @@
 #[macro_use] extern crate failure;
 extern crate event;
+extern crate libc;
 extern crate orbclient;
 extern crate orbimage;
 extern crate syscall;
@@ -399,9 +400,15 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             .and(Ok(id))
     }
     fn fmap(&mut self, id: usize, map: &syscall::Map) -> syscall::Result<usize> {
+        let page_size = 4096;
+        let map_pages = (map.offset + map.size + page_size - 1)/page_size;
         let data = self.handler.handle_window_map(&mut self.orb, id)?;
-        if map.offset + map.size <= data.len() * 4 {
-            Ok(data.as_mut_ptr() as usize + map.offset)
+        let data_addr = data.as_mut_ptr() as usize;
+        let data_size = data.len() * mem::size_of::<Color>();
+        // Do not allow leaking data before or after window to the user
+        println!("addr: {:X}, size: {}", data_addr, data_size);
+        if data_addr & (page_size - 1) == 0 && map_pages * page_size <= data_size {
+            Ok(data_addr + map.offset)
         } else {
             Err(syscall::Error::new(EINVAL))
         }
