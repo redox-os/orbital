@@ -397,7 +397,7 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
     }
     fn fevent(&mut self, id: usize, _flags: usize) -> syscall::Result<usize> {
         self.handler.handle_window_clear_notified(&mut self.orb, id)
-            .and(Ok(id))
+            .and(Ok(0))
     }
     fn fmap(&mut self, id: usize, map: &syscall::Map) -> syscall::Result<usize> {
         let page_size = 4096;
