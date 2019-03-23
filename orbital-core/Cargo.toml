@@ -6,11 +6,11 @@ repository = "https://github.com/redox-os/orbital"
 version = "0.1.0"
 
 [dependencies]
-failure = "0.1.1"
 libc = "0.2.48"
 orbclient = "0.3"
 orbimage = "0.1"
 redox_syscall = "0.1"
+err-derive = "0.1.5"
 
 [dependencies.redox_event]
 git = "https://github.com/redox-os/event.git"

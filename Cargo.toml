@@ -8,13 +8,13 @@ repository = "https://gitlab.redox-os.org/redox-os/orbital"
 version = "0.1.0"
 
 [dependencies]
-failure = "0.1.1"
 orbclient = "0.3"
 orbfont = "0.1"
 redox_syscall = "0.1"
 serde = "0.9"
 serde_derive = "0.9"
 toml = "0.3"
+err-derive = "0.1.5"
 
 [dependencies.orbital-core]
 path = "orbital-core"

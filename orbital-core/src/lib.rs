@@ -1,4 +1,4 @@
-#[macro_use] extern crate failure;
+#[macro_use] extern crate err_derive;
 extern crate event;
 extern crate libc;
 extern crate orbclient;
@@ -32,17 +32,31 @@ use syscall::{
     flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR}
 };
 
-#[derive(Debug, Fail)]
-pub enum Error {
-    #[fail(display = "io error: {}", _0)]
+#[derive(Debug, Error)]
+pub enum Error<'a> {
+    #[error(display = "failed to open display path at '{}': {}", display_path, why)]
+    DisplayPath { display_path: &'a str, why: io::Error },
+    #[error(display = "unable to add {} event to event queue: {}", desc, why)]
+    EventQueueAdd { desc: &'static str, why: io::Error },
+    #[error(display = "unable to get event queue: {}", _0)]
+    EventQueueNew(io::Error),
+    #[error(display = "failed to run event queue: {}", _0)]
+    EventQueueRun(io::Error),
+    #[error(display = "failed to trigger all events for {:?}: {}", event, why)]
+    EventQueueTrigger { event: event::Event, why: io::Error },
+    #[error(display = "io error: {}", _0)]
     IoError(io::Error),
-    #[fail(display = "syscall error: {}", _0)]
+    #[error(display = "failed to open orbital scheme: {}", _0)]
+    OrbitalScheme(io::Error),
+    #[error(display = "failed to startup handler: {}", _0)]
+    Startup(io::Error),
+    #[error(display = "syscall error: {}", _0)]
     SyscallError(syscall::Error),
 }
-impl From<io::Error> for Error {
+impl<'a> From<io::Error> for Error<'a> {
     fn from(err: io::Error) -> Self { Error::IoError(err) }
 }
-impl From<syscall::Error> for Error {
+impl<'a> From<syscall::Error> for Error<'a> {
     fn from(err: syscall::Error) -> Self { Error::SyscallError(err) }
 }
 
@@ -152,7 +166,7 @@ pub struct Orbital {
 }
 impl Orbital {
     /// Open an orbital display and connect to the scheme
-    pub fn open_display(display_path: &str) -> io::Result<Self> {
+    pub fn open_display(display_path: &str) -> Result<Self, Error> {
         let scheme = syscall::open(":orbital", O_CREAT | O_CLOEXEC | O_NONBLOCK | O_RDWR)
                         .map(|socket| {
                             // Not that you can actually use this on targets other than redox...
@@ -162,7 +176,8 @@ impl Orbital {
 
                             unsafe { File::from_raw_fd(socket) }
                         })
-                        .map_err(|err| io::Error::from_raw_os_error(err.errno))?;
+                        .map_err(|err| io::Error::from_raw_os_error(err.errno))
+                        .map_err(Error::OrbitalScheme)?;
 
         let display = syscall::open(&display_path, O_CLOEXEC | O_NONBLOCK | O_RDWR)
                         .map(|socket| {
@@ -173,7 +188,8 @@ impl Orbital {
 
                             unsafe { File::from_raw_fd(socket) }
                         })
-                        .map_err(|err| io::Error::from_raw_os_error(err.errno))?;
+                        .map_err(|err| io::Error::from_raw_os_error(err.errno))
+                        .map_err(|why| Error::DisplayPath { display_path, why })?;
 
         let display_fd = display.as_raw_fd();
 
@@ -199,6 +215,7 @@ impl Orbital {
             height: height
         })
     }
+
     /// Write an Event to display I/O
     pub fn display_write(&mut self, event: &Event) -> io::Result<()> {
         self.display.write(event).map(|_| ())
@@ -231,23 +248,25 @@ impl Orbital {
         }
     }
     /// Start the main loop
-    pub fn run<H>(mut self, mut handler: H) -> Result<(), Error>
+    pub fn run<'a, H>(mut self, mut handler: H) -> Result<(), Error<'a>>
         where H: Handler + 'static
     {
-        let mut event_queue = EventQueue::<()>::new()?;
+        let mut event_queue = EventQueue::<()>::new()
+            .map_err(Error::EventQueueNew)?;
 
         syscall::setrens(0, 0)?;
 
         let scheme_fd = self.scheme.as_raw_fd();
         let display_fd = self.display.as_raw_fd();
 
-        handler.handle_startup(&mut self)?;
+        handler.handle_startup(&mut self)
+            .map_err(Error::Startup)?;
 
         let me = Rc::new(RefCell::new(OrbitalHandler {
             orb: self,
             handler: handler,
         }));
-        let me2 = Rc::clone(&me);
+        let me2 = me.clone();
 
         event_queue.add(scheme_fd, move |_| -> io::Result<Option<()>> {
             let mut me = me.borrow_mut();
@@ -278,7 +297,7 @@ impl Orbital {
             Ok(None)
         })?;
 
-        event_queue.add(display_fd, move |_| -> io::Result<Option<()>> {
+        let display_func = move |_| -> io::Result<Option<()>> {
             let mut me = me2.borrow_mut();
             let me = &mut *me;
             let mut events = [Event::new(); 16];
@@ -311,13 +330,20 @@ impl Orbital {
             me.handler.handle_display_after(&mut me.orb)?;
             me.handler.handle_after(&mut me.orb)?;
             Ok(None)
-        })?;
+        };
 
-        event_queue.trigger_all(event::Event {
+        event_queue.add(display_fd, display_func)
+            .map_err(|why| Error::EventQueueAdd { desc: "display", why })?;
+
+        let event = event::Event {
             fd: 0,
             flags: 0,
-        })?;
-        event_queue.run()?;
+        };
+
+        event_queue.trigger_all(event)
+            .map_err(|why| Error::EventQueueTrigger { event, why })?;
+
+        event_queue.run().map_err(Error::EventQueueRun)?;
         Ok(())
     }
 }
