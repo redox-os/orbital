@@ -8,7 +8,6 @@ use orbital_core::{
 };
 use std::cmp::{min, max};
 use std::collections::VecDeque;
-use std::mem;
 
 use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 
