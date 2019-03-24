@@ -153,41 +153,32 @@ pub struct Orbital {
 impl Orbital {
     /// Open an orbital display and connect to the scheme
     pub fn open_display(display_path: &str) -> io::Result<Self> {
-        let scheme = syscall::open(":orbital", O_CREAT | O_CLOEXEC | O_NONBLOCK | O_RDWR)
-                        .map(|socket| {
-                            // Not that you can actually use this on targets other than redox...
-                            // But it's still nice if it would compile.
-                            #[cfg(not(target_os = "redox"))]
-                            let socket = socket as i32;
-
-                            unsafe { File::from_raw_fd(socket) }
-                        })
-                        .map_err(|err| io::Error::from_raw_os_error(err.errno))?;
-
         let display = syscall::open(&display_path, O_CLOEXEC | O_NONBLOCK | O_RDWR)
-                        .map(|socket| {
-                            // Not that you can actually use this on targets other than redox...
-                            // But it's still nice if it would compile.
-                            #[cfg(not(target_os = "redox"))]
-                            let socket = socket as i32;
+            .map(|socket| {
+                unsafe { File::from_raw_fd(socket) }
+            })
+            .map_err(|err| {
+                eprintln!("orbital: failed to open display {}: {}", display_path, err);
+                io::Error::from_raw_os_error(err.errno)
+            })?;
 
-                            unsafe { File::from_raw_fd(socket) }
-                        })
-                        .map_err(|err| io::Error::from_raw_os_error(err.errno))?;
-
-        let display_fd = display.as_raw_fd();
-
-        #[cfg(not(target_os = "redox"))]
-        let display_fd = display_fd as usize;
+        let scheme = syscall::open(":orbital", O_CREAT | O_CLOEXEC | O_NONBLOCK | O_RDWR)
+            .map(|socket| {
+                unsafe { File::from_raw_fd(socket) }
+            })
+            .map_err(|err| {
+                eprintln!("orbital: failed to create :orbital: {}", err);
+                io::Error::from_raw_os_error(err.errno)
+            })?;
 
         let mut buf: [u8; 4096] = [0; 4096];
-        let count = syscall::fpath(display_fd, &mut buf).unwrap();
+        let count = syscall::fpath(display.as_raw_fd(), &mut buf).unwrap();
         let path = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
         let res = path.split(":").nth(1).unwrap_or("");
         let width = res.split("/").nth(1).unwrap_or("").parse::<i32>().unwrap_or(0);
         let height = res.split("/").nth(2).unwrap_or("").parse::<i32>().unwrap_or(0);
 
-        let image = unsafe { display_fd_map(width, height, display_fd) };
+        let image = unsafe { display_fd_map(width, height, display.as_raw_fd()) };
 
         Ok(Orbital {
             scheme: scheme,
