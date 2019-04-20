@@ -397,12 +397,15 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         let data_addr = data.as_mut_ptr() as usize;
         let data_size = data.len() * mem::size_of::<Color>();
         // Do not allow leaking data before or after window to the user
-        println!("addr: {:X}, size: {}", data_addr, data_size);
         if data_addr & (page_size - 1) == 0 && map_pages * page_size <= data_size {
             Ok(data_addr + map.offset)
         } else {
             Err(syscall::Error::new(EINVAL))
         }
+    }
+    fn funmap(&mut self, address: usize) -> syscall::Result<usize> {
+        // TODO
+        Ok(0)
     }
     fn fpath(&mut self, id: usize, mut buf: &mut [u8]) -> syscall::Result<usize> {
         let props = self.handler.handle_window_properties(&mut self.orb, id)?;
