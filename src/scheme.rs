@@ -365,7 +365,6 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
     /// Draws a list of currently open windows in the middle of the screen
     fn draw_window_list(&mut self) {
-        use orbfont;
         let mut rendered_text: Vec<orbfont::Text> = vec![];
         for id in self.scheme.order.iter() {
             if let Some(window) = self.scheme.windows.get(&id) {

@@ -19,7 +19,7 @@ use std::{
     io::{self, Read, Write},
     iter,
     mem,
-    os::unix::io::{AsRawFd, FromRawFd},
+    os::unix::io::{AsRawFd, FromRawFd, RawFd},
     path::PathBuf,
     rc::Rc,
     slice,
@@ -155,7 +155,7 @@ impl Orbital {
     pub fn open_display(display_path: &str) -> io::Result<Self> {
         let display = syscall::open(&display_path, O_CLOEXEC | O_NONBLOCK | O_RDWR)
             .map(|socket| {
-                unsafe { File::from_raw_fd(socket) }
+                unsafe { File::from_raw_fd(socket as RawFd) }
             })
             .map_err(|err| {
                 eprintln!("orbital: failed to open display {}: {}", display_path, err);
@@ -164,7 +164,7 @@ impl Orbital {
 
         let scheme = syscall::open(":orbital", O_CREAT | O_CLOEXEC | O_NONBLOCK | O_RDWR)
             .map(|socket| {
-                unsafe { File::from_raw_fd(socket) }
+                unsafe { File::from_raw_fd(socket as RawFd) }
             })
             .map_err(|err| {
                 eprintln!("orbital: failed to create :orbital: {}", err);
@@ -172,13 +172,13 @@ impl Orbital {
             })?;
 
         let mut buf: [u8; 4096] = [0; 4096];
-        let count = syscall::fpath(display.as_raw_fd(), &mut buf).unwrap();
+        let count = syscall::fpath(display.as_raw_fd() as usize, &mut buf).unwrap();
         let path = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
         let res = path.split(":").nth(1).unwrap_or("");
         let width = res.split("/").nth(1).unwrap_or("").parse::<i32>().unwrap_or(0);
         let height = res.split("/").nth(2).unwrap_or("").parse::<i32>().unwrap_or(0);
 
-        let image = unsafe { display_fd_map(width, height, display.as_raw_fd()) };
+        let image = unsafe { display_fd_map(width, height, display.as_raw_fd() as usize) };
 
         Ok(Orbital {
             scheme: scheme,
