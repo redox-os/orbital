@@ -227,7 +227,7 @@ impl Orbital {
     {
         let mut event_queue = EventQueue::<()>::new()?;
 
-        syscall::setrens(0, 0)?;
+        //TODO: Figure out why rand: gets opened after this: syscall::setrens(0, 0)?;
 
         let scheme_fd = self.scheme.as_raw_fd();
         let display_fd = self.display.as_raw_fd();
