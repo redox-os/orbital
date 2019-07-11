@@ -355,9 +355,15 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
     }
     fn write(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
         if let Ok(msg) = str::from_utf8(buf) {
-            let mut parts = msg.split(',');
-            match parts.next() {
-                Some("P") => {
+            let (kind, data) = {
+                let mut parts = msg.splitn(2, ',');
+                let kind = parts.next().unwrap_or("");
+                let data = parts.next().unwrap_or("");
+                (kind, data)
+            };
+            match kind {
+                "P" => {
+                    let mut parts = data.split(',');
                     let x = parts.next().unwrap_or("").parse::<i32>().ok();
                     let y = parts.next().unwrap_or("").parse::<i32>().ok();
 
@@ -365,7 +371,8 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
 
                     Ok(buf.len())
                 },
-                Some("S") => {
+                "S" => {
+                    let mut parts = data.split(',');
                     let w = parts.next().unwrap_or("").parse::<i32>().ok();
                     let h = parts.next().unwrap_or("").parse::<i32>().ok();
 
@@ -373,10 +380,8 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
 
                     Ok(buf.len())
                 },
-                Some("T") => {
-                    let title = parts.next().unwrap_or("").to_string();
-
-                    self.handler.handle_window_title(&mut self.orb, id, title)?;
+                "T" => {
+                    self.handler.handle_window_title(&mut self.orb, id, data.to_string())?;
 
                     Ok(buf.len())
                 },

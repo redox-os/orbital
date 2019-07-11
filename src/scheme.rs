@@ -1,4 +1,7 @@
-use orbclient::{self, Color, Event, EventOption, KeyEvent, MouseEvent, ButtonEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, ScreenEvent, Renderer};
+use orbclient::{
+    self, Color, Event, EventOption, ClipboardEvent, KeyEvent, MouseEvent, ButtonEvent, FocusEvent,
+    QuitEvent, MoveEvent, ResizeEvent, ScreenEvent, Renderer
+};
 use orbfont;
 use syscall;
 
@@ -440,6 +443,42 @@ impl<'a> OrbitalSchemeEvent<'a> {
                                 schedule(&mut self.scheme.redraws, window.title_rect());
                                 schedule(&mut self.scheme.redraws, window.rect());
                             }
+                        }
+                    }
+                },
+                orbclient::K_C => if event.pressed {
+                    if let Some(id) = self.scheme.order.front() {
+                        if let Some(window) = self.scheme.windows.get_mut(&id) {
+                            //TODO: set window's clipboard to primary
+                            let clipboard_event = ClipboardEvent {
+                                kind: orbclient::CLIPBOARD_COPY,
+                                size: 0,
+                            }.to_event();
+                            window.event(clipboard_event);
+                        }
+                    }
+                },
+                orbclient::K_X => if event.pressed {
+                    if let Some(id) = self.scheme.order.front() {
+                        if let Some(window) = self.scheme.windows.get_mut(&id) {
+                            //TODO: set window's clipboard to primary
+                            let clipboard_event = ClipboardEvent {
+                                kind: orbclient::CLIPBOARD_CUT,
+                                size: 0,
+                            }.to_event();
+                            window.event(clipboard_event);
+                        }
+                    }
+                },
+                orbclient::K_V => if event.pressed {
+                    if let Some(id) = self.scheme.order.front() {
+                        if let Some(window) = self.scheme.windows.get_mut(&id) {
+                            //TODO: set window's clipboard to primary
+                            let clipboard_event = ClipboardEvent {
+                                kind: orbclient::CLIPBOARD_PASTE,
+                                size: 0,
+                            }.to_event();
+                            window.event(clipboard_event);
                         }
                     }
                 },
