@@ -33,7 +33,9 @@ pub struct Window {
     title_image: Image,
     title_image_unfocused: Image,
     pub events: VecDeque<Event>,
-    pub notified_read: bool
+    pub notified_read: bool,
+    //TODO: implement better clipboard mechanism
+    pub clipboard_seek: usize,
 }
 
 impl Window {
@@ -53,7 +55,9 @@ impl Window {
             title_image: Image::new(0, 0),
             title_image_unfocused: Image::new(0, 0),
             events: VecDeque::new(),
-            notified_read: false
+            notified_read: false,
+            //TODO: implement better clipboard mechanism
+            clipboard_seek: 0,
         }
     }
 

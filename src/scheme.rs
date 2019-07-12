@@ -87,7 +87,8 @@ pub struct OrbitalScheme {
     zbuffer: Vec<(usize, WindowZOrder, usize)>,
     pub windows: BTreeMap<usize, Window>,
     redraws: Vec<Rect>,
-    font: orbfont::Font
+    font: orbfont::Font,
+    clipboard: Vec<u8>,
 }
 
 impl OrbitalScheme {
@@ -123,7 +124,8 @@ impl OrbitalScheme {
             zbuffer: Vec::new(),
             windows: BTreeMap::new(),
             redraws: vec![Rect::new(0, 0, width, height)],
-            font: orbfont::Font::find(Some("Sans"), None, None).unwrap()
+            font: orbfont::Font::find(Some("Sans"), None, None).unwrap(),
+            clipboard: Vec::new(),
         }
     }
 
@@ -283,6 +285,56 @@ impl Handler for OrbitalScheme {
         };
 
         res
+    }
+
+    fn handle_clipboard_new(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
+        //TODO: implement better clipboard mechanism
+        if let Some(window) = self.windows.get_mut(&id) {
+            window.clipboard_seek = 0;
+            Ok(id)
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+
+    fn handle_clipboard_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
+        //TODO: implement better clipboard mechanism
+        if let Some(window) = self.windows.get_mut(&id) {
+            let mut i = 0;
+            while i < buf.len() && window.clipboard_seek < self.clipboard.len() {
+                buf[i] = self.clipboard[i];
+                i += 1;
+                window.clipboard_seek += 1;
+            }
+            Ok(i)
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+
+    fn handle_clipboard_write(&mut self, _orb: &mut Orbital, id: usize, buf: &[u8]) -> syscall::Result<usize> {
+        //TODO: implement better clipboard mechanism
+        if let Some(window) = self.windows.get_mut(&id) {
+            let mut i = 0;
+            self.clipboard.truncate(window.clipboard_seek);
+            while i < buf.len() {
+                self.clipboard.push(buf[i]);
+                i += 1;
+                window.clipboard_seek += 1;
+            }
+            Ok(i)
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+
+    fn handle_clipboard_close(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
+        //TODO: implement better clipboard mechanism
+        if self.windows.contains_key(&id) {
+            Ok(0)
+        } else {
+            Err(Error::new(EBADF))
+        }
     }
 }
 pub struct OrbitalSchemeEvent<'a> {

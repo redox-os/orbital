@@ -32,6 +32,8 @@ use syscall::{
     flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR}
 };
 
+const CLIPBOARD_FLAG: usize = (1 << 63);
+
 #[derive(Debug, Fail)]
 pub enum Error {
     #[fail(display = "io error: {}", _0)]
@@ -139,6 +141,15 @@ pub trait Handler {
     fn handle_window_sync(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
     /// Called when a window should be closed
     fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
+
+    // Create a clipboard from a window
+    fn handle_clipboard_new(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
+    // Read window clipboard
+    fn handle_clipboard_read(&mut self, orb: &mut Orbital, id: usize, buf: &mut [u8]) -> syscall::Result<usize>;
+    // Write window clipboard
+    fn handle_clipboard_write(&mut self, orb: &mut Orbital, id: usize, buf: &[u8]) -> syscall::Result<usize>;
+    // Close the window's clipboard access
+    fn handle_clipboard_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
 }
 
 pub struct Orbital {
@@ -343,7 +354,20 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
 
         self.handler.handle_window_new(&mut self.orb, x, y, width, height, flags, title)
     }
+    fn dup(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
+        if buf == b"clipboard" {
+            //TODO: implement better clipboard mechanism
+            self.handler.handle_clipboard_new(&mut self.orb, id).map(|id| id | CLIPBOARD_FLAG)
+        } else {
+            Err(syscall::Error::new(EINVAL))
+        }
+    }
     fn read(&mut self, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
+        //TODO: implement better clipboard mechanism
+        if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
+            return self.handler.handle_clipboard_read(&mut self.orb, id & !CLIPBOARD_FLAG, buf);
+        }
+
         let slice: &mut [Event] = unsafe {
             slice::from_raw_parts_mut(
                 buf.as_mut_ptr() as *mut Event,
@@ -354,6 +378,11 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         Ok(n * mem::size_of::<Event>())
     }
     fn write(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
+        //TODO: implement better clipboard mechanism
+        if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
+            return self.handler.handle_clipboard_write(&mut self.orb, id & !CLIPBOARD_FLAG, buf);
+        }
+
         if let Ok(msg) = str::from_utf8(buf) {
             let (kind, data) = {
                 let mut parts = msg.splitn(2, ',');
@@ -431,6 +460,11 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         self.handler.handle_window_sync(&mut self.orb, id)
     }
     fn close(&mut self, id: usize) -> syscall::Result<usize> {
+        //TODO: implement better clipboard mechanism
+        if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
+            return self.handler.handle_clipboard_close(&mut self.orb, id & !CLIPBOARD_FLAG);
+        }
+
         self.handler.handle_window_close(&mut self.orb, id)
     }
 }
