@@ -16,7 +16,7 @@ use std::{
     cell::RefCell,
     env,
     fs::File,
-    io::{self, Read, Write},
+    io::{self, ErrorKind, Read, Write},
     iter,
     mem,
     os::unix::io::{AsRawFd, FromRawFd, RawFd},
@@ -255,10 +255,10 @@ impl Orbital {
             let mut me = me.borrow_mut();
             let me = &mut *me;
             let mut packets = [Packet::default(); 16];
-            loop {
-                match unsafe { read_to_slice(&mut me.orb.scheme, &mut packets) }? {
-                    0 => break,
-                    count => {
+            let result = loop {
+                match unsafe { read_to_slice(&mut me.orb.scheme, &mut packets) } {
+                    Ok(0) => break Some(()),
+                    Ok(count) => {
                         let packets = &mut packets[..count];
                         for packet in packets.iter_mut() {
                             let delay = me.handler.should_delay(packet);
@@ -272,12 +272,17 @@ impl Orbital {
                             }
                         }
                         me.handler.handle_scheme(&mut me.orb, packets)?;
+                    },
+                    Err(err) => if err.kind() == ErrorKind::WouldBlock {
+                        break None;
+                    } else {
+                        return Err(err);
                     }
                 }
-            }
+            };
             me.handler.handle_scheme_after(&mut me.orb)?;
             me.handler.handle_after(&mut me.orb)?;
-            Ok(None)
+            Ok(result)
         })?;
 
         event_queue.add(display_fd, move |_| -> io::Result<Option<()>> {
@@ -320,6 +325,7 @@ impl Orbital {
             flags: 0,
         })?;
         event_queue.run()?;
+        //TODO: Cleanup and handle TODO
         Ok(())
     }
 }
