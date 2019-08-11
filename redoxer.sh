@@ -4,6 +4,7 @@ set -e
 
 if [ "$(uname)" != "Redox" ]
 then
+    redoxer build --verbose
     redoxer build --verbose --examples
     exec redoxer exec --folder . --gui -- sh -- ./redoxer.sh simple
 fi
