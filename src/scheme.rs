@@ -49,6 +49,7 @@ fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 enum CursorKind {
+    None,
     LeftPtr,
     BottomLeftCorner,
     BottomRightCorner,
@@ -94,6 +95,7 @@ pub struct OrbitalScheme {
 impl OrbitalScheme {
     pub fn new(width: i32, height: i32, config: &Config) -> OrbitalScheme {
         let mut cursors = BTreeMap::new();
+        cursors.insert(CursorKind::None, Image::new(0, 0));
         cursors.insert(CursorKind::LeftPtr, Image::from_path(&config.cursor).unwrap_or(Image::new(0, 0)));
         cursors.insert(CursorKind::BottomLeftCorner, Image::from_path(&config.bottom_left_corner).unwrap_or(Image::new(0, 0)));
         cursors.insert(CursorKind::BottomRightCorner, Image::from_path(&config.bottom_right_corner).unwrap_or(Image::new(0, 0)));
@@ -139,6 +141,7 @@ impl OrbitalScheme {
     fn cursor_rect(&self) -> Rect {
         let cursor = &self.cursors[&self.cursor_i];
         let (off_x, off_y) = match self.cursor_i {
+            CursorKind::None => (0, 0),
             CursorKind::LeftPtr => (0, 0),
             CursorKind::BottomLeftCorner => (0, -cursor.height()),
             CursorKind::BottomRightCorner => (-cursor.width(), -cursor.height()),
@@ -579,6 +582,9 @@ impl<'a> OrbitalSchemeEvent<'a> {
                     let id = entry.0;
                     if let Some(window) = self.scheme.windows.get_mut(&id) {
                         if window.rect().contains(event.x, event.y) {
+                            if ! window.mouse_cursor {
+                                new_cursor = CursorKind::None;
+                            }
                             if ! self.scheme.win_key {
                                 let mut window_event = event.to_event();
                                 window_event.a -= window.x as i64;
