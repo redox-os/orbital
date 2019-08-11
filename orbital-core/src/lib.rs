@@ -124,6 +124,12 @@ pub trait Handler {
                          flags: &str, title: String) -> syscall::Result<usize>;
     /// Called when the scheme is read for events
     fn handle_window_read(&mut self, orb: &mut Orbital, id: usize, buf: &mut [Event]) -> syscall::Result<usize>;
+    /// Called when the window asks to set mouse cursor visibility
+    fn handle_window_mouse_cursor(&mut self, orb: &mut Orbital, id: usize, visible: bool) -> syscall::Result<()>;
+    /// Called when the window asks to set mouse grabbing
+    fn handle_window_mouse_grab(&mut self, orb: &mut Orbital, id: usize, grab: bool) -> syscall::Result<()>;
+    /// Called when the window asks to set mouse relative mode
+    fn handle_window_mouse_relative(&mut self, orb: &mut Orbital, id: usize, relative: bool) -> syscall::Result<()>;
     /// Called when the window asks to be repositioned
     fn handle_window_position(&mut self, orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> syscall::Result<()>;
     /// Called when the window asks to be resized
@@ -397,6 +403,33 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
                 (kind, data)
             };
             match kind {
+                "M" => match data {
+                    "C,0" => {
+                        self.handler.handle_window_mouse_cursor(&mut self.orb, id, false)?;
+                        Ok(buf.len())
+                    },
+                    "C,1" => {
+                        self.handler.handle_window_mouse_cursor(&mut self.orb, id, true)?;
+                        Ok(buf.len())
+                    },
+                    "G,0" => {
+                        self.handler.handle_window_mouse_grab(&mut self.orb, id, false)?;
+                        Ok(buf.len())
+                    }
+                    "G,1" => {
+                        self.handler.handle_window_mouse_grab(&mut self.orb, id, true)?;
+                        Ok(buf.len())
+                    },
+                    "R,0" => {
+                        self.handler.handle_window_mouse_relative(&mut self.orb, id, false)?;
+                        Ok(buf.len())
+                    },
+                    "R,1" => {
+                        self.handler.handle_window_mouse_relative(&mut self.orb, id, true)?;
+                        Ok(buf.len())
+                    },
+                    _ => Err(syscall::Error::new(EINVAL)),
+                },
                 "P" => {
                     let mut parts = data.split(',');
                     let x = parts.next().unwrap_or("").parse::<i32>().ok();

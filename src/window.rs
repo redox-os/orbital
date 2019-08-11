@@ -36,6 +36,9 @@ pub struct Window {
     pub notified_read: bool,
     //TODO: implement better clipboard mechanism
     pub clipboard_seek: usize,
+    pub mouse_cursor: bool,
+    pub mouse_grab: bool,
+    pub mouse_relative: bool,
 }
 
 impl Window {
@@ -58,6 +61,9 @@ impl Window {
             notified_read: false,
             //TODO: implement better clipboard mechanism
             clipboard_seek: 0,
+            mouse_cursor: true,
+            mouse_grab: false,
+            mouse_relative: false,
         }
     }
 

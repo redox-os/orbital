@@ -193,6 +193,30 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
+    fn handle_window_mouse_cursor(&mut self, _orb: &mut Orbital, id: usize, visible: bool) -> syscall::Result<()> {
+        if let Some(window) = self.windows.get_mut(&id) {
+            window.mouse_cursor = visible;
+            Ok(())
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+    fn handle_window_mouse_grab(&mut self, _orb: &mut Orbital, id: usize, grab: bool) -> syscall::Result<()> {
+        if let Some(window) = self.windows.get_mut(&id) {
+            window.mouse_grab = grab;
+            Ok(())
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
+    fn handle_window_mouse_relative(&mut self, _orb: &mut Orbital, id: usize, relative: bool) -> syscall::Result<()> {
+        if let Some(window) = self.windows.get_mut(&id) {
+            window.mouse_relative = relative;
+            Ok(())
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
     fn handle_window_position(&mut self, _orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> syscall::Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             window.x = x.unwrap_or(window.x);
