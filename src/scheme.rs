@@ -781,6 +781,15 @@ impl<'a> OrbitalSchemeEvent<'a> {
     }
 
     fn mouse_relative_event(&mut self, event: MouseRelativeEvent) {
+        if let Some(id) = self.scheme.order.front() {
+            if let Some(window) = self.scheme.windows.get_mut(&id) {
+                if window.mouse_relative {
+                    window.event(event.to_event());
+                    return;
+                }
+            }
+        }
+
         let x = cmp::max(0, cmp::min(self.orb.image.width(), self.scheme.cursor_x + event.dx));
         let y = cmp::max(0, cmp::min(self.orb.image.height(), self.scheme.cursor_y + event.dy));
         self.mouse_event(MouseEvent { x, y });
