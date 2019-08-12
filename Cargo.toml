@@ -9,7 +9,7 @@ version = "0.1.0"
 
 [dependencies]
 failure = "0.1.1"
-orbclient = "0.3.23"
+orbclient = "0.3.27"
 orbfont = "0.1"
 redox_syscall = "0.1"
 serde = "0.9"

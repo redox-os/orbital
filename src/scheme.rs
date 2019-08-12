@@ -1,6 +1,6 @@
 use orbclient::{
-    self, Color, Event, EventOption, ClipboardEvent, KeyEvent, MouseEvent, ButtonEvent, FocusEvent,
-    QuitEvent, MoveEvent, ResizeEvent, ScreenEvent, Renderer
+    self, Color, Event, EventOption, KeyEvent, MouseEvent, MouseRelativeEvent, ButtonEvent,
+    ClipboardEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, ScreenEvent, Renderer
 };
 use orbfont;
 use syscall;
@@ -780,6 +780,12 @@ impl<'a> OrbitalSchemeEvent<'a> {
         }
     }
 
+    fn mouse_relative_event(&mut self, event: MouseRelativeEvent) {
+        let x = cmp::max(0, cmp::min(self.orb.image.width(), self.scheme.cursor_x + event.dx));
+        let y = cmp::max(0, cmp::min(self.orb.image.height(), self.scheme.cursor_y + event.dy));
+        self.mouse_event(MouseEvent { x, y });
+    }
+
     fn button_event(&mut self, event: ButtonEvent) {
         // Check for focus switch, dragging, and forward mouse events to applications
         match self.scheme.dragging {
@@ -959,6 +965,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         match event_union.to_option() {
             EventOption::Key(event) => self.key_event(event),
             EventOption::Mouse(event) => self.mouse_event(event),
+            EventOption::MouseRelative(event) => self.mouse_relative_event(event),
             EventOption::Button(event) => self.button_event(event),
             EventOption::Scroll(_) => {
                 if let Some(entry) = self.scheme.zbuffer.first() {
