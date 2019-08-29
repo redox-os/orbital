@@ -90,24 +90,27 @@ pub struct OrbitalScheme {
     redraws: Vec<Rect>,
     font: orbfont::Font,
     clipboard: Vec<u8>,
+    scale: i32,
 }
 
 impl OrbitalScheme {
     pub fn new(width: i32, height: i32, config: &Config) -> OrbitalScheme {
+        let scale = (height / 1600) + 1;
+
         let mut cursors = BTreeMap::new();
         cursors.insert(CursorKind::None, Image::new(0, 0));
-        cursors.insert(CursorKind::LeftPtr, Image::from_path(&config.cursor).unwrap_or(Image::new(0, 0)));
-        cursors.insert(CursorKind::BottomLeftCorner, Image::from_path(&config.bottom_left_corner).unwrap_or(Image::new(0, 0)));
-        cursors.insert(CursorKind::BottomRightCorner, Image::from_path(&config.bottom_right_corner).unwrap_or(Image::new(0, 0)));
-        cursors.insert(CursorKind::BottomSide, Image::from_path(&config.bottom_side).unwrap_or(Image::new(0, 0)));
-        cursors.insert(CursorKind::LeftSide, Image::from_path(&config.left_side).unwrap_or(Image::new(0, 0)));
-        cursors.insert(CursorKind::RightSide, Image::from_path(&config.right_side).unwrap_or(Image::new(0, 0)));
+        cursors.insert(CursorKind::LeftPtr, Image::from_path_scale(&config.cursor, scale).unwrap_or(Image::new(0, 0)));
+        cursors.insert(CursorKind::BottomLeftCorner, Image::from_path_scale(&config.bottom_left_corner, scale).unwrap_or(Image::new(0, 0)));
+        cursors.insert(CursorKind::BottomRightCorner, Image::from_path_scale(&config.bottom_right_corner, scale).unwrap_or(Image::new(0, 0)));
+        cursors.insert(CursorKind::BottomSide, Image::from_path_scale(&config.bottom_side, scale).unwrap_or(Image::new(0, 0)));
+        cursors.insert(CursorKind::LeftSide, Image::from_path_scale(&config.left_side, scale).unwrap_or(Image::new(0, 0)));
+        cursors.insert(CursorKind::RightSide, Image::from_path_scale(&config.right_side, scale).unwrap_or(Image::new(0, 0)));
 
         OrbitalScheme {
-            window_max: Image::from_path(&config.window_max).unwrap_or(Image::new(0, 0)),
-            window_max_unfocused: Image::from_path(&config.window_max_unfocused).unwrap_or(Image::new(0, 0)),
-            window_close: Image::from_path(&config.window_close).unwrap_or(Image::new(0, 0)),
-            window_close_unfocused: Image::from_path(&config.window_close_unfocused).unwrap_or(Image::new(0, 0)),
+            window_max: Image::from_path_scale(&config.window_max, scale).unwrap_or(Image::new(0, 0)),
+            window_max_unfocused: Image::from_path_scale(&config.window_max_unfocused, scale).unwrap_or(Image::new(0, 0)),
+            window_close: Image::from_path_scale(&config.window_close, scale).unwrap_or(Image::new(0, 0)),
+            window_close_unfocused: Image::from_path_scale(&config.window_close_unfocused, scale).unwrap_or(Image::new(0, 0)),
             cursors: cursors,
             cursor_i: CursorKind::LeftPtr,
             cursor_x: 0,
@@ -128,6 +131,7 @@ impl OrbitalScheme {
             redraws: vec![Rect::new(0, 0, width, height)],
             font: orbfont::Font::find(Some("Sans"), None, None).unwrap(),
             clipboard: Vec::new(),
+            scale,
         }
     }
 
@@ -447,6 +451,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
     /// Draws a list of currently open windows in the middle of the screen
     fn draw_window_list(&mut self) {
+        //TODO: HiDPI
+
         let mut rendered_text: Vec<orbfont::Text> = vec![];
         for id in self.scheme.order.iter() {
             if let Some(window) = self.scheme.windows.get(&id) {
@@ -1068,7 +1074,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         }
 
-        let mut window = Window::new(x, y, width, height);
+        let mut window = Window::new(x, y, width, height, self.scheme.scale);
 
         for flag in flags.chars() {
             match flag {

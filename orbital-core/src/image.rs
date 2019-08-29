@@ -199,15 +199,50 @@ impl Image {
     }
 
     pub fn from_path<P: AsRef<Path>>(path: P) -> Option<Image> {
+        Image::from_path_scale(path, 1)
+    }
+
+    pub fn from_path_scale<P: AsRef<Path>>(path: P, scale: i32) -> Option<Image> {
         match orbimage::Image::from_path(path) {
             Ok(orb_image) => {
                 let width = orb_image.width();
                 let height = orb_image.height();
                 let data = orb_image.into_data();
-                Some(Image::from_data(width as i32, height as i32, unsafe { mem::transmute(data) }))
+                if scale == 1 {
+                    Some(Image::from_data(
+                        width as i32, height as i32,
+                        unsafe { mem::transmute(data) }
+                    ))
+                } else if scale > 1 {
+                    let mut new_data = vec![
+                        Color::rgb(0, 0, 0);
+                        data.len() * (scale * scale) as usize
+                    ].into_boxed_slice();
+
+                    for y in 0..height as i32 {
+                        for x in 0..width as i32 {
+                            let i = y * width as i32 + x;
+                            let value = data[i as usize].data;
+                            for y_s in 0..scale {
+                                for x_s in 0..scale {
+                                    let new_i = (y * scale + y_s) * width as i32 * scale + x * scale + x_s;
+                                    new_data[new_i as usize].data = value;
+                                }
+                            }
+                        }
+                    }
+
+                    Some(Image::from_data(
+                        width as i32 * scale, height as i32 * scale,
+                        unsafe { mem::transmute(new_data) }
+                    ))
+                } else {
+                    println!("orbital Image::from_path_scale: scale {} < 1", scale);
+                    None
+                }
             },
             Err(err) => {
-                println!("orbital Image::from_path: {}", err);
+                println!("orbital Image::from_path_scale: {}", err);
                 None
             }
         }

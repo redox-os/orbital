@@ -21,6 +21,7 @@ pub enum WindowZOrder {
 pub struct Window {
     pub x: i32,
     pub y: i32,
+    pub scale: i32,
     pub title: String,
     pub async: bool,
     pub borderless: bool,
@@ -42,10 +43,11 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn new(x: i32, y: i32, w: i32, h: i32) -> Window {
+    pub fn new(x: i32, y: i32, w: i32, h: i32, scale: i32) -> Window {
         Window {
-            x: x,
-            y: y,
+            x,
+            y,
+            scale,
             title: String::new(),
             async: false,
             borderless: false,
@@ -83,13 +85,13 @@ impl Window {
         if self.borderless {
             Rect::new(-1, -1, 0, 0)
         } else {
-            Rect::new(self.x, self.y - 28, self.width(), 28)
+            Rect::new(self.x, self.y - 28 * self.scale, self.width(), 28 * self.scale)
         }
     }
 
     pub fn bottom_border_rect(&self) -> Rect {
         if self.resizable {
-            Rect::new(self.x, self.y + self.height(), self.width(), 8)
+            Rect::new(self.x, self.y + self.height(), self.width(), 8 * self.scale)
         } else {
             Rect::new(-1, -1, 0, 0)
         }
@@ -97,7 +99,7 @@ impl Window {
 
     pub fn bottom_left_border_rect(&self) -> Rect {
         if self.resizable {
-            Rect::new(self.x - 8, self.y + self.height(), 8, 8)
+            Rect::new(self.x - 8 * self.scale, self.y + self.height(), 8 * self.scale, 8 * self.scale)
         } else {
             Rect::new(-1, -1, 0, 0)
         }
@@ -105,7 +107,7 @@ impl Window {
 
     pub fn bottom_right_border_rect(&self) -> Rect {
         if self.resizable {
-            Rect::new(self.x + self.width(), self.y + self.height(), 8, 8)
+            Rect::new(self.x + self.width(), self.y + self.height(), 8 * self.scale, 8 * self.scale)
         } else {
             Rect::new(-1, -1, 0, 0)
         }
@@ -113,7 +115,7 @@ impl Window {
 
     pub fn left_border_rect(&self) -> Rect {
         if self.resizable {
-            Rect::new(self.x - 8, self.y, 8, self.height())
+            Rect::new(self.x - 8 * self.scale, self.y, 8 * self.scale, self.height())
         } else {
             Rect::new(-1, -1, 0, 0)
         }
@@ -121,18 +123,18 @@ impl Window {
 
     pub fn right_border_rect(&self) -> Rect {
         if self.resizable {
-            Rect::new(self.x + self.width(), self.y, 8, self.height())
+            Rect::new(self.x + self.width(), self.y, 8 * self.scale, self.height())
         } else {
             Rect::new(-1, -1, 0, 0)
         }
     }
 
     pub fn max_contains(&self, x: i32, y: i32) -> bool {
-        ! self.borderless && x >= max(self.x + 6, self.x + self.width() - 36)  && y >= self.y - 28 && x < self.x + self.width() - 18 && y < self.y
+        ! self.borderless && x >= max(self.x + 6 * self.scale, self.x + self.width() - 36 * self.scale)  && y >= self.y - 28 * self.scale && x < self.x + self.width() - 18 * self.scale && y < self.y
     }
 
     pub fn close_contains(&self, x: i32, y: i32) -> bool {
-        ! self.borderless && x >= max(self.x + 6, self.x + self.width() - 18)  && y >= self.y - 28 && x < self.x + self.width() && y < self.y
+        ! self.borderless && x >= max(self.x + 6 * self.scale, self.x + self.width() - 18 * self.scale)  && y >= self.y - 28 * self.scale && x < self.x + self.width() && y < self.y
     }
 
     pub fn draw_title(&mut self, image: &mut ImageRef, rect: &Rect, focused: bool, window_max: &mut Image, window_close: &mut Image) {
@@ -143,11 +145,11 @@ impl Window {
                        title_intersect.width() as u32, title_intersect.height() as u32,
                        if focused { BAR_HIGHLIGHT_COLOR } else { BAR_COLOR });
 
-            let mut x = self.x + 6;
-            let w = max(self.x + 6, self.x + self.width() - 18) - x;
+            let mut x = self.x + 6 * self.scale;
+            let w = max(self.x + 6 * self.scale, self.x + self.width() - 18 * self.scale) - x;
             if w > 0 {
                 let title_image = if focused { &mut self.title_image } else { &mut self.title_image_unfocused };
-                let image_rect = Rect::new(x, title_rect.top() + 6, min(w, title_image.width()), title_image.height());
+                let image_rect = Rect::new(x, title_rect.top() + 6 * self.scale, min(w, title_image.width()), title_image.height());
                 let image_intersect = rect.intersection(&image_rect);
                 if ! image_intersect.is_empty() {
                     image.roi(&image_intersect).blend(&title_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
@@ -155,9 +157,9 @@ impl Window {
             }
 
             if self.resizable {
-                x = max(self.x + 6, self.x + self.width() - 36);
-                if x + 36 <= self.x + self.width() {
-                    let image_rect = Rect::new(x, title_rect.top() + 7, window_max.width(), window_max.height());
+                x = max(self.x + 6, self.x + self.width() - 36 * self.scale);
+                if x + 36 * self.scale <= self.x + self.width() {
+                    let image_rect = Rect::new(x, title_rect.top() + 7 * self.scale, window_max.width(), window_max.height());
                     let image_intersect = rect.intersection(&image_rect);
                     if ! image_intersect.is_empty() {
                         image.roi(&image_intersect).blend(&window_max.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
@@ -166,9 +168,9 @@ impl Window {
             }
 
             if !self.unclosable {
-                x = max(self.x + 6, self.x + self.width() - 18);
-                if x + 18 <= self.x + self.width() {
-                    let image_rect = Rect::new(x, title_rect.top() + 7, window_close.width(), window_close.height());
+                x = max(self.x + 6 * self.scale, self.x + self.width() - 18 * self.scale);
+                if x + 18 * self.scale <= self.x + self.width() {
+                    let image_rect = Rect::new(x, title_rect.top() + 7 * self.scale, window_close.width(), window_close.height());
                     let image_intersect = rect.intersection(&image_rect);
                     if ! image_intersect.is_empty() {
                         image.roi(&image_intersect).blend(&window_close.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
@@ -226,7 +228,7 @@ impl Window {
     }
 
     pub fn render_title(&mut self, font: &Font) {
-        let title_render = font.render(&self.title, 16.0);
+        let title_render = font.render(&self.title, (16 * self.scale) as f32);
 
         self.title_image = Image::from_color(title_render.width() as i32, title_render.height() as i32, BAR_HIGHLIGHT_COLOR);
         title_render.draw(&mut self.title_image, 0, 0, TEXT_HIGHLIGHT_COLOR);
