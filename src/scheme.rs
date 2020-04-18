@@ -484,7 +484,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
     }
 
     fn key_event(&mut self, event: KeyEvent) {
-        if event.scancode == 0x38 {
+        if event.scancode == 0x5B {
             self.scheme.win_key = event.pressed;
             // If the win key was released, stop drawing the win-tab window switcher
             if !self.scheme.win_key {
