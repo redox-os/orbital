@@ -478,7 +478,19 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             Err(syscall::Error::new(EINVAL))
         }
     }
+    fn fmap_old(&mut self, id: usize, map: &syscall::OldMap) -> syscall::Result<usize> {
+        self.fmap(id, &syscall::Map {
+            offset: map.offset,
+            size: map.size,
+            flags: map.flags,
+            address: 0,
+        })
+    }
     fn funmap(&mut self, _address: usize, _size: usize) -> syscall::Result<usize> {
+        // TODO
+        Ok(0)
+    }
+    fn funmap_old(&mut self, _address: usize) -> syscall::Result<usize> {
         // TODO
         Ok(0)
     }
