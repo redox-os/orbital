@@ -74,13 +74,14 @@ unsafe fn display_fd_map(width: i32, height: i32, display_fd: usize) -> ImageRef
         offset: 0,
         size: (width * height * 4) as usize,
         flags: syscall::PROT_READ | syscall::PROT_WRITE,
+        address: 0,
     }).unwrap();
     let display_slice = slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize);
     ImageRef::from_data(width, height, display_slice)
 }
 
 unsafe fn display_fd_unmap(image: &mut ImageRef) {
-    let _ = syscall::funmap(image.data().as_ptr() as usize);
+    let _ = syscall::funmap(image.data().as_ptr() as usize, (image.width() * image.height() * 4) as usize);
 }
 
 pub const PROPERTY_ASYNC:      u8 = 1 << 0;
@@ -459,9 +460,10 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             Err(syscall::Error::new(EINVAL))
         }
     }
-    fn fevent(&mut self, id: usize, _flags: usize) -> syscall::Result<usize> {
-        self.handler.handle_window_clear_notified(&mut self.orb, id)
-            .and(Ok(0))
+    fn fevent(&mut self, id: usize, _flags: syscall::EventFlags) -> syscall::Result<syscall::EventFlags> {
+        self.handler
+            .handle_window_clear_notified(&mut self.orb, id)
+            .and(Ok(syscall::EventFlags::empty()))
     }
     fn fmap(&mut self, id: usize, map: &syscall::Map) -> syscall::Result<usize> {
         let page_size = 4096;
@@ -476,7 +478,7 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             Err(syscall::Error::new(EINVAL))
         }
     }
-    fn funmap(&mut self, address: usize) -> syscall::Result<usize> {
+    fn funmap(&mut self, _address: usize, _size: usize) -> syscall::Result<usize> {
         // TODO
         Ok(0)
     }

@@ -26,7 +26,7 @@ mod window;
 
 fn main() {
     // Daemonize
-    if unsafe { syscall::clone(0).unwrap() } == 0 {
+    if unsafe { syscall::clone(syscall::CloneFlags::empty()).unwrap() } == 0 {
         let mut args = env::args().skip(1);
 
         let display_path = args.next().expect("orbital: no display argument");
