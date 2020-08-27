@@ -26,13 +26,14 @@ use std::{
     str,
 };
 use syscall::{
-    SchemeMut,
     data::Packet,
     error::EINVAL,
-    flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR}
+    flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR},
+    EventFlags,
+    SchemeMut,
 };
 
-const CLIPBOARD_FLAG: usize = (1 << 63);
+const CLIPBOARD_FLAG: usize = 1 << 63;
 
 #[derive(Debug, Fail)]
 pub enum Error {
@@ -329,7 +330,7 @@ impl Orbital {
 
         event_queue.trigger_all(event::Event {
             fd: 0,
-            flags: 0,
+            flags: EventFlags::empty(),
         })?;
         event_queue.run()?;
         //TODO: Cleanup and handle TODO
@@ -349,7 +350,7 @@ pub struct OrbitalHandler<H: Handler> {
 }
 impl<H: Handler> SchemeMut for OrbitalHandler<H> {
     fn open(&mut self, path: &[u8], _: usize, _: u32, _: u32) -> syscall::Result<usize> {
-        let path = try!(str::from_utf8(path).or(Err(syscall::Error::new(EINVAL))));
+        let path = str::from_utf8(path).or(Err(syscall::Error::new(EINVAL)))?;
         let mut parts = path.split("/");
 
         let flags = parts.next().unwrap_or("");
