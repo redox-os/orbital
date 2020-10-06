@@ -32,7 +32,7 @@ use syscall::{
     flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR}
 };
 
-const CLIPBOARD_FLAG: usize = (1 << 63);
+const CLIPBOARD_FLAG: usize = 1 << 63;
 
 #[derive(Debug, Fail)]
 pub enum Error {
@@ -348,7 +348,7 @@ pub struct OrbitalHandler<H: Handler> {
 }
 impl<H: Handler> SchemeMut for OrbitalHandler<H> {
     fn open(&mut self, path: &[u8], _: usize, _: u32, _: u32) -> syscall::Result<usize> {
-        let path = try!(str::from_utf8(path).or(Err(syscall::Error::new(EINVAL))));
+        let path = str::from_utf8(path).or(Err(syscall::Error::new(EINVAL)))?;
         let mut parts = path.split("/");
 
         let flags = parts.next().unwrap_or("");

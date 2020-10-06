@@ -18,3 +18,6 @@ toml = "0.3"
 
 [dependencies.orbital-core]
 path = "orbital-core"
+
+[patch.crates-io]
+orbclient = { git = "https://gitlab.redox-os.org/redox-os/orbclient.git", branch = "text-input" }

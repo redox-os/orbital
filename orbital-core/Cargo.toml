@@ -13,4 +13,5 @@ orbimage = "0.1"
 redox_syscall = "0.1"
 
 [dependencies.redox_event]
-git = "https://github.com/redox-os/event.git"
+git = "https://gitlab.redox-os.org/redox-os/event.git"
+rev = "c31e3d3d5f44d60ff9fec2b1ee58b982e72c0d77"
