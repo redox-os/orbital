@@ -26,13 +26,14 @@ use std::{
     str,
 };
 use syscall::{
-    SchemeMut,
     data::Packet,
     error::EINVAL,
-    flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR}
+    flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR},
+    EventFlags,
+    SchemeMut,
 };
 
-const CLIPBOARD_FLAG: usize = (1 << 63);
+const CLIPBOARD_FLAG: usize = 1 << 63;
 
 #[derive(Debug, Fail)]
 pub enum Error {
@@ -74,13 +75,14 @@ unsafe fn display_fd_map(width: i32, height: i32, display_fd: usize) -> ImageRef
         offset: 0,
         size: (width * height * 4) as usize,
         flags: syscall::PROT_READ | syscall::PROT_WRITE,
+        address: 0,
     }).unwrap();
     let display_slice = slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize);
     ImageRef::from_data(width, height, display_slice)
 }
 
 unsafe fn display_fd_unmap(image: &mut ImageRef) {
-    let _ = syscall::funmap(image.data().as_ptr() as usize);
+    let _ = syscall::funmap(image.data().as_ptr() as usize, (image.width() * image.height() * 4) as usize);
 }
 
 pub const PROPERTY_ASYNC:      u8 = 1 << 0;
@@ -328,7 +330,7 @@ impl Orbital {
 
         event_queue.trigger_all(event::Event {
             fd: 0,
-            flags: 0,
+            flags: EventFlags::empty(),
         })?;
         event_queue.run()?;
         //TODO: Cleanup and handle TODO
@@ -348,7 +350,7 @@ pub struct OrbitalHandler<H: Handler> {
 }
 impl<H: Handler> SchemeMut for OrbitalHandler<H> {
     fn open(&mut self, path: &[u8], _: usize, _: u32, _: u32) -> syscall::Result<usize> {
-        let path = try!(str::from_utf8(path).or(Err(syscall::Error::new(EINVAL))));
+        let path = str::from_utf8(path).or(Err(syscall::Error::new(EINVAL)))?;
         let mut parts = path.split("/");
 
         let flags = parts.next().unwrap_or("");
@@ -459,9 +461,10 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             Err(syscall::Error::new(EINVAL))
         }
     }
-    fn fevent(&mut self, id: usize, _flags: usize) -> syscall::Result<usize> {
-        self.handler.handle_window_clear_notified(&mut self.orb, id)
-            .and(Ok(0))
+    fn fevent(&mut self, id: usize, _flags: syscall::EventFlags) -> syscall::Result<syscall::EventFlags> {
+        self.handler
+            .handle_window_clear_notified(&mut self.orb, id)
+            .and(Ok(syscall::EventFlags::empty()))
     }
     fn fmap(&mut self, id: usize, map: &syscall::Map) -> syscall::Result<usize> {
         let page_size = 4096;
@@ -476,7 +479,19 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             Err(syscall::Error::new(EINVAL))
         }
     }
-    fn funmap(&mut self, address: usize) -> syscall::Result<usize> {
+    fn fmap_old(&mut self, id: usize, map: &syscall::OldMap) -> syscall::Result<usize> {
+        self.fmap(id, &syscall::Map {
+            offset: map.offset,
+            size: map.size,
+            flags: map.flags,
+            address: 0,
+        })
+    }
+    fn funmap(&mut self, _address: usize, _size: usize) -> syscall::Result<usize> {
+        // TODO
+        Ok(0)
+    }
+    fn funmap_old(&mut self, _address: usize) -> syscall::Result<usize> {
         // TODO
         Ok(0)
     }

@@ -1011,7 +1011,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                         gid: 0,
                         a: syscall::number::SYS_FEVENT,
                         b: *id,
-                        c: syscall::flag::EVENT_READ,
+                        c: syscall::flag::EVENT_READ.bits(),
                         d: window.events.len() * mem::size_of::<Event>()
                     })?;
                 }
@@ -1037,7 +1037,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                         gid: 0,
                         a: syscall::number::SYS_FEVENT,
                         b: *id,
-                        c: syscall::flag::EVENT_READ,
+                        c: syscall::flag::EVENT_READ.bits(),
                         d: window.events.len() * mem::size_of::<Event>()
                     })?;
                 }
