@@ -1,6 +1,7 @@
 use orbclient::{
     self, Color, Event, EventOption, KeyEvent, MouseEvent, MouseRelativeEvent, ButtonEvent,
-    ClipboardEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, ScreenEvent, Renderer
+    ClipboardEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, ScreenEvent, Renderer,
+    TextInputEvent,
 };
 use orbfont;
 use syscall;
@@ -573,6 +574,12 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         } else if let Some(id) = self.scheme.order.front() {
             if let Some(window) = self.scheme.windows.get_mut(&id) {
+                if event.pressed && event.character != '\0' {
+                    let text_input_event = TextInputEvent {
+                        character: event.character,
+                    }.to_event();
+                    window.event(text_input_event);
+                }
                 window.event(event.to_event());
             }
         }
