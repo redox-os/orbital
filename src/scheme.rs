@@ -1,7 +1,7 @@
 use orbclient::{
     self, Color, Event, EventOption, KeyEvent, MouseEvent, MouseRelativeEvent, ButtonEvent,
-    ClipboardEvent, FocusEvent, QuitEvent, MoveEvent, ResizeEvent, ScreenEvent, Renderer,
-    TextInputEvent,
+    ClipboardEvent, FocusEvent, HoverEvent, QuitEvent, MoveEvent, ResizeEvent, Renderer,
+    ScreenEvent, TextInputEvent,
 };
 use orbfont;
 use syscall;
@@ -85,6 +85,7 @@ pub struct OrbitalScheme {
     win_key: bool,
     win_tabbing: bool,
     next_id: isize,
+    hover: Option<usize>,
     order: VecDeque<usize>,
     zbuffer: Vec<(usize, WindowZOrder, usize)>,
     pub windows: BTreeMap<usize, Window>,
@@ -126,6 +127,7 @@ impl OrbitalScheme {
             // While it is true, redraw() calls draw_window_list()
             win_tabbing: false,
             next_id: 1,
+            hover: None,
             order: VecDeque::new(),
             zbuffer: Vec::new(),
             windows: BTreeMap::new(),
@@ -587,6 +589,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
     fn mouse_event(&mut self, event: MouseEvent) {
         let mut new_cursor = CursorKind::LeftPtr;
+        let mut new_hover = None;
 
         // Check for focus switch, dragging, and forward mouse events to applications
         match self.scheme.dragging {
@@ -598,6 +601,15 @@ impl<'a> OrbitalSchemeEvent<'a> {
                             if ! window.mouse_cursor {
                                 new_cursor = CursorKind::None;
                             }
+
+                            new_hover = Some(id);
+                            if new_hover != self.scheme.hover {
+                                let hover_event = HoverEvent {
+                                    entered: true
+                                }.to_event();
+                                window.event(hover_event);
+                            }
+
                             if ! self.scheme.win_key {
                                 let mut window_event = event.to_event();
                                 window_event.a -= window.x as i64;
@@ -768,6 +780,19 @@ impl<'a> OrbitalSchemeEvent<'a> {
                     self.scheme.dragging = DragMode::None;
                 }
             }
+        }
+
+        if new_hover != self.scheme.hover {
+            if let Some(id) = self.scheme.hover {
+                if let Some(window) = self.scheme.windows.get_mut(&id) {
+                    let hover_event = HoverEvent {
+                        entered: false
+                    }.to_event();
+                    window.event(hover_event);
+                }
+            }
+
+            self.scheme.hover = new_hover;
         }
 
         if new_cursor != self.scheme.cursor_i {
