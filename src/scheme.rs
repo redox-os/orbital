@@ -229,6 +229,9 @@ impl Handler for OrbitalScheme {
     }
     fn handle_window_position(&mut self, _orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> syscall::Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
+            schedule(&mut self.redraws, window.title_rect());
+            schedule(&mut self.redraws, window.rect());
+            
             window.x = x.unwrap_or(window.x);
             window.y = y.unwrap_or(window.y);
 
