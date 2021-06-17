@@ -349,8 +349,7 @@ pub struct OrbitalHandler<H: Handler> {
     handler: H
 }
 impl<H: Handler> SchemeMut for OrbitalHandler<H> {
-    fn open(&mut self, path: &[u8], _: usize, _: u32, _: u32) -> syscall::Result<usize> {
-        let path = str::from_utf8(path).or(Err(syscall::Error::new(EINVAL)))?;
+    fn open(&mut self, path: &str, _: usize, _: u32, _: u32) -> syscall::Result<usize> {
         let mut parts = path.split("/");
 
         let flags = parts.next().unwrap_or("");

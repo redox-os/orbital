@@ -1,5 +1,4 @@
 //#![deny(warnings)]
-#![feature(const_fn)]
 
 extern crate orbital_core;
 
