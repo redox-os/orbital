@@ -6,7 +6,7 @@ if [ "$(uname)" != "Redox" ]
 then
     redoxer build --verbose
     redoxer build --verbose --examples
-    exec redoxer exec --folder . --gui -- sh -- ./redoxer.sh simple
+    exec redoxer exec --folder . --gui -- sh -- ./redoxer.sh multiple
 fi
 
 old_path="file:/bin/orbital"

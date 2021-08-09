@@ -1,3 +1,4 @@
+use log::{debug, info, error};
 use orbclient::{
     self, Color, Event, EventOption, KeyEvent, MouseEvent, MouseRelativeEvent, ButtonEvent,
     ClipboardEvent, FocusEvent, HoverEvent, QuitEvent, MoveEvent, ResizeEvent, Renderer,
@@ -59,6 +60,14 @@ enum CursorKind {
     RightSide,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Direction {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
 enum DragMode {
     None,
     Title(usize, i32, i32),
@@ -67,6 +76,33 @@ enum DragMode {
     BottomBorder(usize, i32),
     BottomLeftBorder(usize, i32, i32, i32),
     BottomRightBorder(usize, i32, i32),
+}
+
+#[derive(Clone, Debug)]
+struct Fork {
+    pub parent: Option<usize>,
+    pub rect: Rect,
+    pub orient: Orientation,
+    pub a: Option<usize>,
+    pub b: Option<usize>,
+}
+
+impl Fork {
+    pub fn new(parent: Option<usize>, rect: Rect, orient: Orientation, a: Option<usize>, b: Option<usize>) -> Self {
+        Self {
+            parent,
+            rect,
+            orient,
+            a,
+            b
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Orientation {
+    Horizontal,
+    Vertical,
 }
 
 pub struct OrbitalScheme {
@@ -89,6 +125,7 @@ pub struct OrbitalScheme {
     order: VecDeque<usize>,
     zbuffer: Vec<(usize, WindowZOrder, usize)>,
     pub windows: BTreeMap<usize, Window>,
+    forks: BTreeMap<usize, Fork>,
     redraws: Vec<Rect>,
     font: orbfont::Font,
     clipboard: Vec<u8>,
@@ -107,6 +144,16 @@ impl OrbitalScheme {
         cursors.insert(CursorKind::BottomSide, Image::from_path_scale(&config.bottom_side, scale).unwrap_or(Image::new(0, 0)));
         cursors.insert(CursorKind::LeftSide, Image::from_path_scale(&config.left_side, scale).unwrap_or(Image::new(0, 0)));
         cursors.insert(CursorKind::RightSide, Image::from_path_scale(&config.right_side, scale).unwrap_or(Image::new(0, 0)));
+
+        // Add topmost fork
+        let mut forks = BTreeMap::new();
+        forks.insert(0, Fork::new(
+            None,
+            Rect::new(0, 0, width, height - 48 /* TODO: automatic dock height */),
+            Orientation::Horizontal,
+            None,
+            None
+        ));
 
         OrbitalScheme {
             window_max: Image::from_path_scale(&config.window_max, scale).unwrap_or(Image::new(0, 0)),
@@ -131,6 +178,7 @@ impl OrbitalScheme {
             order: VecDeque::new(),
             zbuffer: Vec::new(),
             windows: BTreeMap::new(),
+            forks,
             redraws: vec![Rect::new(0, 0, width, height)],
             font: orbfont::Font::find(Some("Sans"), None, None).unwrap(),
             clipboard: Vec::new(),
@@ -169,6 +217,356 @@ impl OrbitalScheme {
         }
 
         self.zbuffer.sort_by(|a, b| b.1.cmp(&a.1));
+    }
+
+    //TODO: redraws
+    fn tiled_create(&mut self, id: usize, window: &mut Window) {
+        let mut rect = window.tiled_rect();
+
+        // Tile with most recent also tiled window
+        for other_id in self.order.iter() {
+            let other = match self.windows.get_mut(&other_id) {
+                Some(some) => some,
+                None => continue,
+            };
+
+            let mut fork_id = match other.parent {
+                Some(some) => some,
+                None => continue,
+            };
+
+            let new_fork_opt = match self.forks.get_mut(&fork_id) {
+                Some(fork) => if fork.b.is_some() {
+                    // Create new fork if needed
+                    let original_fork_id = fork_id;
+                    fork_id = self.next_id as usize;
+                    self.next_id += 1;
+                    if self.next_id < 0 {
+                        //TODO: should this be an error?
+                        self.next_id = 1;
+                    }
+
+                    let orient = match fork.orient {
+                        Orientation::Horizontal => Orientation::Vertical,
+                        Orientation::Vertical => Orientation::Horizontal,
+                    };
+
+                    debug!("create fork {:?} {:?}", fork_id, orient);
+
+                    other.parent = Some(fork_id);
+                    if fork.a == Some(*other_id) {
+                        fork.a = Some(fork_id);
+                    } else if fork.b == Some(*other_id) {
+                        fork.b = Some(fork_id);
+                    } else {
+                        error!("failed to find {:?} in fork {:?}", other_id, original_fork_id);
+                    }
+
+                    Some(Fork::new(
+                        Some(original_fork_id),
+                        other.tiled_rect(),
+                        orient,
+                        Some(*other_id),
+                        None,
+                    ))
+                } else {
+                    None
+                },
+                None => continue,
+            };
+
+            if let Some(new_fork) = new_fork_opt {
+                self.forks.insert(fork_id, new_fork);
+            }
+
+            let fork = match self.forks.get_mut(&fork_id) {
+                Some(some) => some,
+                None => continue,
+            };
+
+            fork.b = Some(id);
+
+            let mut other_rect = other.tiled_rect();
+            rect = other_rect;
+            match fork.orient {
+                Orientation::Horizontal => {
+                    other_rect.w /= 2;
+                    rect.x += other_rect.w;
+                    rect.w = other_rect.w;
+                },
+                Orientation::Vertical => {
+                    other_rect.h /= 2;
+                    rect.y += other_rect.h;
+                    rect.h = other_rect.h;
+                }
+            }
+            other.set_tiled_rect(other_rect);
+
+            window.parent = Some(fork_id);
+            break;
+        }
+
+        if window.parent.is_none() {
+            // Check topmost fork for room
+            let fork_id = 0;
+            if let Some(fork) = self.forks.get_mut(&fork_id) {
+                if fork.a.is_none() {
+                    fork.a = Some(id);
+
+                    rect = fork.rect;
+
+                    window.parent = Some(fork_id);
+                } else {
+                    info!("found no place for window, floating");
+                }
+            }
+        }
+
+        window.set_tiled_rect(rect);
+    }
+
+    //TODO: redraws
+    fn tiled_close(&mut self, id: usize, window: Window) {
+        let fork_id = match window.parent {
+            Some(some) => some,
+            None => return,
+        };
+
+        let mut resizes = VecDeque::new();
+        let mut replace_opt = None;
+        let remove = if let Some(fork) = self.forks.get_mut(&fork_id) {
+            if let Some(other_id) = if fork.a == Some(id) {
+                fork.a = None;
+                fork.b.take()
+            } else if fork.b == Some(id) {
+                fork.b = None;
+                fork.a.take()
+            } else {
+                error!("failed to find {:?} in fork {:?}", id, fork_id);
+                return; //TODO: error?
+            } {
+                if let Some(parent_id) = fork.parent {
+                    replace_opt = Some((parent_id, other_id));
+                    resizes.push_back((other_id, fork.rect));
+                    true
+                } else {
+                    fork.a = Some(other_id);
+                    resizes.push_back((other_id, fork.rect));
+                    false
+                }
+            } else {
+                // Do not remove top fork even if empty
+                //TODO: can we work without special casing the top fork?
+                fork_id != 0
+            }
+        } else {
+            error!("failed to find fork {:?}", fork_id);
+            return; //TODO: error?
+        };
+
+        if let Some((parent_id, other_id)) = replace_opt {
+            debug!("replace {:?} with {:?} in {:?}", fork_id, other_id, parent_id);
+
+            if let Some(fork) = self.forks.get_mut(&parent_id) {
+                if fork.a == Some(fork_id) {
+                    fork.a = Some(other_id);
+                } else if fork.b == Some(fork_id) {
+                    fork.b = Some(other_id);
+                } else {
+                    error!("failed to find {:?} in fork {:?}", fork_id, parent_id);
+                }
+            }
+
+            if let Some(window) = self.windows.get_mut(&other_id) {
+                window.parent = Some(parent_id);
+            } else if let Some(fork) = self.forks.get_mut(&other_id) {
+                fork.parent = Some(parent_id);
+            } else {
+                error!("failed to find window or fork {:?}", other_id);
+            }
+        }
+
+        if remove {
+            debug!("removing fork {:?}", fork_id);
+            if self.forks.remove(&fork_id).is_none() {
+                error!("failed to remove fork {:?}", fork_id);
+                return; //TODO: error?
+            }
+        }
+
+        while let Some((other_id, rect)) = resizes.pop_front() {
+            debug!("resizing {:?} to {:?}", other_id, rect);
+
+            if let Some(window) = self.windows.get_mut(&other_id) {
+                window.set_tiled_rect(rect);
+            } else if let Some(fork) = self.forks.get_mut(&other_id) {
+                fork.rect = rect;
+
+                if let Some(a) = fork.a {
+                    let mut a_rect = rect;
+                    if let Some(b) = fork.b {
+                        let mut b_rect = rect;
+                        //TODO: don't just forget relative sizes!
+                        match fork.orient {
+                            Orientation::Horizontal => {
+                                a_rect.w /= 2;
+                                b_rect.x += a_rect.w;
+                                b_rect.w = a_rect.w;
+                            },
+                            Orientation::Vertical => {
+                                a_rect.h /= 2;
+                                b_rect.y += a_rect.h;
+                                b_rect.h = a_rect.h;
+                            },
+                        }
+                        resizes.push_back((b, b_rect));
+                    }
+                    resizes.push_back((a, a_rect));
+                }
+
+            } else {
+                error!("failed to find window or fork {:?}", other_id);
+            }
+        }
+    }
+
+    fn tiled_focus(&mut self, direction: Direction) {
+        let current_id = match self.order.front() {
+            Some(some) => *some,
+            None => return,
+        };
+
+        let current_rect = match self.windows.get(&current_id) {
+            Some(current) => current.rect(),
+            None => return,
+        };
+        let (current_left, current_right, current_top, current_bottom) = (
+            current_rect.left(), current_rect.right(), current_rect.top(), current_rect.bottom()
+        );
+
+        let mut closest_dist = 0;
+        let mut closest = None;
+        for id in self.order.iter() {
+            if *id == current_id {
+                continue;
+            }
+
+            let window_rect = match self.windows.get(&id) {
+                Some(window) => {
+                    // Skip windows which are not normal z-order
+                    if window.zorder != WindowZOrder::Normal {
+                        continue;
+                    }
+                    window.rect()
+                },
+                None => continue,
+            };
+            let (window_left, window_right, window_top, window_bottom) = (
+                window_rect.left(), window_rect.right(), window_rect.top(), window_rect.bottom()
+            );
+
+            // Window is not intersecting vertically
+            let out_of_bounds_vertical = || {
+                window_top >= current_bottom || window_bottom <= current_top
+            };
+            // Window is not intersecting horizontally
+            let out_of_bounds_horizontal = || {
+                window_left >= current_right || window_right <= current_left
+            };
+
+            // The distance must be that of the shortest straight line that can be
+            // drawn from the current window, in the specified direction, to the window
+            // we are evaluating.
+            let dist = match direction {
+                Direction::Left => {
+                    if out_of_bounds_vertical() { continue; }
+                    if window_right <= current_left {
+                        // To the left, with space
+                        current_left - window_right
+                    } else if window_left <= current_left {
+                        // To the left, overlapping
+                        0
+                    } else {
+                        // Not to the left, skipping
+                        continue;
+                    }
+                },
+                Direction::Right => {
+                    if out_of_bounds_vertical() { continue; }
+                    if window_left >= current_right {
+                        // To the right, with space
+                        window_left - current_right
+                    } else if window_right >= current_right {
+                        // To the right, overlapping
+                        0
+                    } else {
+                        // Not to the right, skipping
+                        continue;
+                    }
+                },
+                Direction::Up => {
+                    if out_of_bounds_horizontal() { continue; }
+                    if window_bottom <= current_top {
+                        // To the top, with space
+                        current_top - window_bottom
+                    } else if window_top <= current_top {
+                        // To the top, overlapping
+                        0
+                    } else {
+                        // Not to the top, skipping
+                        continue;
+                    }
+                },
+                Direction::Down => {
+                    if out_of_bounds_horizontal() { continue; }
+                    if window_top >= current_bottom {
+                        // To the bottom, with space
+                        window_top - current_bottom
+                    } else if window_bottom >= current_bottom {
+                        // To the bottom, overlapping
+                        0
+                    } else {
+                        // Not to the bottom, skipping
+                        continue;
+                    }
+                },
+            };
+
+            // Distance in wrong direction, skip
+            if dist < 0 { continue; }
+
+            // Save if closer than closest distance
+            if dist < closest_dist || closest.is_none() {
+                closest_dist = dist;
+                closest = Some(*id);
+            }
+        }
+
+        if let Some(id) = closest {
+            debug!("swap {:?} with {:?}", current_id, id);
+
+            // Move new window to front
+            self.order.retain(|x| *x != id);
+            self.order.push_front(id);
+
+            // Redraw old focused window
+            if let Some(window) = self.windows.get_mut(&current_id) {
+                schedule(&mut self.redraws, window.title_rect());
+                schedule(&mut self.redraws, window.rect());
+                window.event(FocusEvent {
+                    focused: false
+                }.to_event());
+            }
+
+            // Redraw new focused window
+            if let Some(window) = self.windows.get_mut(&id){
+                schedule(&mut self.redraws, window.title_rect());
+                schedule(&mut self.redraws, window.rect());
+                window.event(FocusEvent {
+                    focused: true
+                }.to_event());
+            }
+        }
     }
 }
 impl Handler for OrbitalScheme {
@@ -231,7 +629,7 @@ impl Handler for OrbitalScheme {
         if let Some(window) = self.windows.get_mut(&id) {
             schedule(&mut self.redraws, window.title_rect());
             schedule(&mut self.redraws, window.rect());
-            
+
             window.x = x.unwrap_or(window.x);
             window.y = y.unwrap_or(window.y);
 
@@ -306,22 +704,27 @@ impl Handler for OrbitalScheme {
     fn handle_window_close(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
         self.order.retain(|&e| e != id);
 
-        if let Some(id) = self.order.front() {
-            if let Some(window) = self.windows.get(&id){
+        // Remove closed window
+        let window = match self.windows.remove(&id) {
+            Some(some) => some,
+            None => return Err(Error::new(EBADF)),
+        };
+
+        // Redraw closed window region
+        schedule(&mut self.redraws, window.title_rect());
+        schedule(&mut self.redraws, window.rect());
+
+        // Redraw front window, now that it is active
+        if let Some(front_id) = self.order.front() {
+            if let Some(window) = self.windows.get(&front_id){
                 schedule(&mut self.redraws, window.title_rect());
                 schedule(&mut self.redraws, window.rect());
             }
         }
 
-        let res = if let Some(window) = self.windows.remove(&id) {
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
-            Ok(0)
-        } else {
-            Err(Error::new(EBADF))
-        };
+        self.tiled_close(id, window);
 
-        res
+        Ok(0)
     }
 
     fn handle_clipboard_new(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
@@ -573,8 +976,26 @@ impl<'a> OrbitalSchemeEvent<'a> {
                         }
                     }
                 },
-                _ => if event.pressed {
-                    println!("WIN+{:X}", event.scancode);
+                orbclient::K_H => if event.pressed {
+                    self.scheme.tiled_focus(Direction::Left);
+                },
+                orbclient::K_J => if event.pressed {
+                    self.scheme.tiled_focus(Direction::Down);
+                },
+                orbclient::K_K => if event.pressed {
+                    self.scheme.tiled_focus(Direction::Up);
+                },
+                orbclient::K_L => if event.pressed {
+                    self.scheme.tiled_focus(Direction::Right);
+                },
+                _ => {
+                    //TODO: remove hack for sending super events to lowest numbered window
+                    if let Some((id, window)) = self.scheme.windows.iter_mut().next() {
+                        info!("sending super {:?} to {}", event, id);
+                        let mut super_event = event.to_event();
+                        super_event.code += 0x1000_0000;
+                        window.event(super_event);
+                    }
                 }
             }
         } else if let Some(id) = self.scheme.order.front() {
@@ -1026,7 +1447,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 }
             },
             EventOption::Resize(event) => self.resize_event(event),
-            event => println!("orbital: unexpected event: {:?}", event)
+            event => error!("orbital: unexpected event: {:?}", event)
         }
     }
 
@@ -1037,7 +1458,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         for (id, window) in self.scheme.windows.iter_mut() {
             if ! window.events.is_empty() {
-                if !window.notified_read {
+                if !window.notified_read || window.async {
                     window.notified_read = true;
                     self.orb.scheme_write(&Packet {
                         id: 0,
@@ -1063,7 +1484,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
     pub fn scheme_event(&mut self, _packets: &mut [Packet]) -> io::Result<()> {
         for (id, window) in self.scheme.windows.iter_mut() {
             if ! window.events.is_empty() {
-                if !window.notified_read {
+                if !window.notified_read || window.async {
                     window.notified_read = true;
                     self.orb.scheme_write(&Packet {
                         id: 0,
@@ -1093,6 +1514,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         let id = self.scheme.next_id as usize;
         self.scheme.next_id += 1;
         if self.scheme.next_id < 0 {
+            //TODO: should this be an error?
             self.scheme.next_id = 1;
         }
 
@@ -1126,6 +1548,10 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         window.title = title;
         window.render_title(&self.scheme.font);
+
+        if window.resizable {
+            self.scheme.tiled_create(id, &mut window);
+        }
 
         schedule(&mut self.scheme.redraws, window.title_rect());
         schedule(&mut self.scheme.redraws, window.rect());
