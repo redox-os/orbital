@@ -1,4 +1,4 @@
-use orbclient::{Color, Event, Renderer};
+use orbclient::{Color, Event, Renderer, MoveEvent, ResizeEvent};
 use orbfont::Font;
 use orbital_core::{
     Properties,
@@ -21,7 +21,10 @@ pub enum WindowZOrder {
 pub struct Window {
     pub x: i32,
     pub y: i32,
+    pub tiled_w: i32,
+    pub tiled_h: i32,
     pub scale: i32,
+    pub parent: Option<usize>,
     pub title: String,
     pub async: bool,
     pub borderless: bool,
@@ -47,7 +50,10 @@ impl Window {
         Window {
             x,
             y,
+            tiled_w: w,
+            tiled_h: h,
             scale,
+            parent: None,
             title: String::new(),
             async: false,
             borderless: false,
@@ -66,6 +72,33 @@ impl Window {
             mouse_cursor: true,
             mouse_grab: false,
             mouse_relative: false,
+        }
+    }
+
+    pub fn tiled_rect(&self) -> Rect {
+        let title_h = self.title_rect().h;
+        Rect::new(self.x, self.y - title_h, self.tiled_w, self.tiled_h)
+    }
+
+    pub fn set_tiled_rect(&mut self, rect: Rect) {
+        let title_h = self.title_rect().h;
+
+        if rect.x != self.x || rect.y != self.y {
+            self.x = rect.x;
+            self.y = rect.y + title_h;
+            self.event(MoveEvent {
+                x: self.x,
+                y: self.y
+            }.to_event());
+        }
+
+        if rect.w != self.tiled_w || rect.h != self.tiled_h {
+            self.tiled_w = rect.w;
+            self.tiled_h = rect.h;
+            self.event(ResizeEvent {
+                width: self.tiled_w as u32,
+                height: max(self.tiled_h - title_h, 0) as u32,
+            }.to_event());
         }
     }
 
