@@ -230,10 +230,14 @@ impl Window {
     pub fn render_title(&mut self, font: &Font) {
         let title_render = font.render(&self.title, (16 * self.scale) as f32);
 
-        self.title_image = Image::from_color(title_render.width() as i32, title_render.height() as i32, BAR_HIGHLIGHT_COLOR);
+        let color_blank = Color::rgba(0, 0, 0, 0);
+
+        self.title_image = Image::from_color(title_render.width() as i32, title_render.height() as i32, color_blank);
+        self.title_image.mode().set(orbclient::Mode::Overwrite);
         title_render.draw(&mut self.title_image, 0, 0, TEXT_HIGHLIGHT_COLOR);
 
-        self.title_image_unfocused = Image::from_color(title_render.width() as i32, title_render.height() as i32, BAR_COLOR);
+        self.title_image_unfocused = Image::from_color(title_render.width() as i32, title_render.height() as i32, color_blank);
+        self.title_image_unfocused.mode().set(orbclient::Mode::Overwrite);
         title_render.draw(&mut self.title_image_unfocused, 0, 0, TEXT_COLOR);
     }
 
