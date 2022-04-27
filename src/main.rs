@@ -2,6 +2,8 @@
 
 extern crate orbital_core;
 
+extern crate env_logger;
+extern crate log;
 extern crate orbclient;
 extern crate orbfont;
 #[macro_use]
@@ -26,6 +28,11 @@ mod window;
 fn main() {
     // Daemonize
     if unsafe { syscall::clone(syscall::CloneFlags::empty()).unwrap() } == 0 {
+        env_logger::builder()
+            .filter_level(log::LevelFilter::Debug)
+            .parse_default_env()
+            .init();
+
         let mut args = env::args().skip(1);
 
         let display_path = args.next().expect("orbital: no display argument");
