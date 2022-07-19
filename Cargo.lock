@@ -441,6 +441,7 @@ dependencies = [
  "orbclient",
  "orbfont",
  "orbital-core",
+ "redox-daemon",
  "redox_syscall",
  "serde",
  "serde_derive",
@@ -548,6 +549,14 @@ dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
  "num_cpus",
+]
+
+[[package]]
+name = "redox-daemon"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "redox_syscall",
 ]
 
 [[package]]

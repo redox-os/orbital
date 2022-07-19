@@ -24,8 +24,11 @@ mod theme;
 mod window;
 
 fn main() {
-    // Daemonize
-    if unsafe { syscall::clone(syscall::CloneFlags::empty()).unwrap() } == 0 {
+    redox_daemon::Daemon::new(move |daemon| {
+        // TODO: To prevent possible race conditions, insert this right after the scheme has been
+        // created.
+        daemon.ready().expect("orbital: failed to notify parent");
+
         let mut args = env::args().skip(1);
 
         let display_path = args.next().expect("orbital: no display argument");
@@ -54,5 +57,6 @@ fn main() {
             },
             Err(err) => println!("orbital: could not register orbital: {}", err)
         }
-    }
+        std::process::exit(0);
+    }).expect("orbital: failed to daemonize");
 }
