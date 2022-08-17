@@ -2,6 +2,8 @@
 
 extern crate orbital_core;
 
+extern crate env_logger;
+extern crate log;
 extern crate orbclient;
 extern crate orbfont;
 #[macro_use]
@@ -28,6 +30,11 @@ fn main() {
         // TODO: To prevent possible race conditions, insert this right after the scheme has been
         // created.
         daemon.ready().expect("orbital: failed to notify parent");
+
+        env_logger::builder()
+            .filter_level(log::LevelFilter::Debug)
+            .parse_default_env()
+            .init();
 
         let mut args = env::args().skip(1);
 

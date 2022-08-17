@@ -231,7 +231,7 @@ impl Handler for OrbitalScheme {
         if let Some(window) = self.windows.get_mut(&id) {
             schedule(&mut self.redraws, window.title_rect());
             schedule(&mut self.redraws, window.rect());
-            
+
             window.x = x.unwrap_or(window.x);
             window.y = y.unwrap_or(window.y);
 
@@ -573,8 +573,14 @@ impl<'a> OrbitalSchemeEvent<'a> {
                         }
                     }
                 },
-                _ => if event.pressed {
-                    println!("WIN+{:X}", event.scancode);
+                _ => {
+                    //TODO: remove hack for sending super events to lowest numbered window
+                    if let Some((id, window)) = self.scheme.windows.iter_mut().next() {
+                        log::info!("sending super {:?} to {}", event, id);
+                        let mut super_event = event.to_event();
+                        super_event.code += 0x1000_0000;
+                        window.event(super_event);
+                    }
                 }
             }
         } else if let Some(id) = self.scheme.order.front() {
@@ -1026,7 +1032,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 }
             },
             EventOption::Resize(event) => self.resize_event(event),
-            event => println!("orbital: unexpected event: {:?}", event)
+            event => log::error!("orbital: unexpected event: {:?}", event)
         }
     }
 
@@ -1037,7 +1043,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         for (id, window) in self.scheme.windows.iter_mut() {
             if ! window.events.is_empty() {
-                if !window.notified_read {
+                if !window.notified_read || window.async {
                     window.notified_read = true;
                     self.orb.scheme_write(&Packet {
                         id: 0,
@@ -1063,7 +1069,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
     pub fn scheme_event(&mut self, _packets: &mut [Packet]) -> io::Result<()> {
         for (id, window) in self.scheme.windows.iter_mut() {
             if ! window.events.is_empty() {
-                if !window.notified_read {
+                if !window.notified_read || window.async {
                     window.notified_read = true;
                     self.orb.scheme_write(&Packet {
                         id: 0,
@@ -1093,6 +1099,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         let id = self.scheme.next_id as usize;
         self.scheme.next_id += 1;
         if self.scheme.next_id < 0 {
+            //TODO: should this be an error?
             self.scheme.next_id = 1;
         }
 
