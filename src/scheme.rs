@@ -498,7 +498,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         } else if self.scheme.win_key {
             match event.scancode {
-                orbclient::K_ESC => if event.pressed {
+                orbclient::K_Q => if event.pressed {
                     if let Some(id) = self.scheme.order.front() {
                         if let Some(window) = self.scheme.windows.get_mut(&id) {
                             window.event(QuitEvent.to_event());
@@ -510,20 +510,44 @@ impl<'a> OrbitalSchemeEvent<'a> {
                     self.scheme.win_tabbing = true;
                     self.win_tab();
                 },
-                orbclient::K_UP | orbclient::K_DOWN | orbclient::K_LEFT | orbclient::K_RIGHT => if event.pressed {
+                orbclient::K_UP |
+                orbclient::K_DOWN |
+                orbclient::K_LEFT |
+                orbclient::K_RIGHT => if event.pressed {
                     if let Some(id) = self.scheme.order.front() {
                         if let Some(window) = self.scheme.windows.get_mut(&id) {
                             if ! window.borderless {
                                 schedule(&mut self.scheme.redraws, window.title_rect());
                                 schedule(&mut self.scheme.redraws, window.rect());
 
+                                // Align location to grid
+                                let grid_size = 16;
+                                window.x -= window.x % grid_size;
+                                window.y -= window.y % grid_size;
+
                                 match event.scancode {
-                                    orbclient::K_LEFT => window.x -= 1,
-                                    orbclient::K_RIGHT => window.x += 1,
-                                    orbclient::K_UP => window.y -= 1,
-                                    orbclient::K_DOWN => window.y += 1,
+                                    orbclient::K_LEFT => window.x -= grid_size,
+                                    orbclient::K_RIGHT => window.x += grid_size,
+                                    orbclient::K_UP => window.y -= grid_size,
+                                    orbclient::K_DOWN => window.y += grid_size,
                                     _ => ()
                                 }
+
+                                // Ensure window remains visible
+                                window.x = cmp::max(
+                                    -window.width() + grid_size,
+                                    cmp::min(
+                                        self.orb.image.width() - grid_size,
+                                        window.x
+                                    )
+                                );
+                                window.y = cmp::max(
+                                    -window.height() + grid_size,
+                                    cmp::min(
+                                        self.orb.image.height() - grid_size,
+                                        window.y
+                                    )
+                                );
 
                                 let move_event = MoveEvent {
                                     x: window.x,
