@@ -74,15 +74,15 @@ unsafe fn read_to_slice<R: Read, T: Copy>(mut r: R, buf: &mut [T]) -> io::Result
         buf.len() * mem::size_of::<T>())
     ).map(|count| count/mem::size_of::<T>())
 }
-unsafe fn display_fd_map(width: i32, height: i32, display_fd: usize) -> ImageRef<'static> {
+unsafe fn display_fd_map(width: i32, height: i32, display_fd: usize) -> syscall::Result<ImageRef<'static>> {
     let display_ptr = syscall::fmap(display_fd, &syscall::Map {
         offset: 0,
         size: (width * height * 4) as usize,
         flags: syscall::PROT_READ | syscall::PROT_WRITE,
         address: 0,
-    }).unwrap();
+    })?;
     let display_slice = slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize);
-    ImageRef::from_data(width, height, display_slice)
+    Ok(ImageRef::from_data(width, height, display_slice))
 }
 
 unsafe fn display_fd_unmap(image: &mut ImageRef) {
@@ -201,7 +201,7 @@ impl Orbital {
         let width = res.split("/").nth(1).unwrap_or("").parse::<i32>().unwrap_or(0);
         let height = res.split("/").nth(2).unwrap_or("").parse::<i32>().unwrap_or(0);
 
-        let image = unsafe { display_fd_map(width, height, display.as_raw_fd() as usize) };
+        let image = unsafe { display_fd_map(width, height, display.as_raw_fd() as usize).unwrap() };
 
         Ok(Orbital {
             scheme: scheme,
@@ -236,12 +236,15 @@ impl Orbital {
     /// Resize the inner image buffer. You're responsible for redrawing.
     pub fn resize(&mut self, width: i32, height: i32) {
         unsafe {
-            display_fd_unmap(&mut self.image);
-            self.image = display_fd_map(
-                width as i32,
-                height as i32,
-                self.display.as_raw_fd() as usize
-            );
+            match display_fd_map(width, height, self.display.as_raw_fd() as usize) {
+                Ok(ok) => {
+                    display_fd_unmap(&mut self.image);
+                    self.image = ok;
+                },
+                Err(err) => {
+                    eprintln!("orbital: failed to resize display to {}x{}: {}", width, height, err);
+                }
+            }
         }
     }
     /// Start the main loop
