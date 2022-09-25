@@ -196,21 +196,61 @@ impl Orbital {
 
         let mut buf: [u8; 4096] = [0; 4096];
         let count = syscall::fpath(display.as_raw_fd() as usize, &mut buf).unwrap();
-        let path = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
-        let res = path.split(":").nth(1).unwrap_or("");
-        let width = res.split("/").nth(1).unwrap_or("").parse::<i32>().unwrap_or(0);
-        let height = res.split("/").nth(2).unwrap_or("").parse::<i32>().unwrap_or(0);
+
+        let url = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
+
+        let mut url_parts = url.split(':');
+        let scheme_name = url_parts.next().unwrap();
+        let path = url_parts.next().unwrap();
+
+        let mut path_parts = path.split('/');
+        let vt_screen = path_parts.next().unwrap_or("");
+        let width = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+        let height = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+
+        // If display server supports multiple displays in a VT
+        if vt_screen.contains('.') {
+            // Look for other screens in the same VT
+            let mut parts = vt_screen.split('.');
+            let vt_i = parts.next().unwrap_or("").parse::<usize>().unwrap_or(0);
+            let start_screen_i = parts.next().unwrap_or("").parse::<usize>().unwrap_or(0);
+            //TODO: determine maximum number of screens
+            for screen_i in start_screen_i + 1..1024 {
+                let extra_path = format!("{}:{}.{}", scheme_name, vt_i, screen_i);
+                let extra_file = match syscall::open(&extra_path, O_CLOEXEC | O_NONBLOCK | O_RDWR) {
+                    Ok(socket) => unsafe { File::from_raw_fd(socket as RawFd) },
+                    Err(_err) => break,
+
+                };
+
+                let mut buf: [u8; 4096] = [0; 4096];
+                let count = syscall::fpath(extra_file.as_raw_fd() as usize, &mut buf).unwrap();
+
+                let url = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
+
+                let mut url_parts = url.split(':');
+                let _scheme_name = url_parts.next().unwrap();
+                let path = url_parts.next().unwrap();
+
+                let mut path_parts = path.split('/');
+                let _vt_screen = path_parts.next().unwrap_or("");
+                let width = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+                let height = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+
+                println!("TODO: SCREEN {}: {}x{}", screen_i, width, height);
+            }
+        }
 
         let image = unsafe { display_fd_map(width, height, display.as_raw_fd() as usize).unwrap() };
 
         Ok(Orbital {
-            scheme: scheme,
-            display: display,
-            image: image,
+            scheme,
+            display,
+            image,
             todo: Vec::new(),
 
-            width: width,
-            height: height
+            width,
+            height
         })
     }
     /// Write an Event to display I/O
