@@ -5,12 +5,14 @@ extern crate orbclient;
 extern crate orbimage;
 extern crate syscall;
 
-pub mod rect;
+pub mod display;
 pub mod image;
+pub mod rect;
 
+use display::Display;
 use event::EventQueue;
 use image::{ImageRef};
-use orbclient::{Color, Event, Renderer};
+use orbclient::{Color, Event};
 use rect::Rect;
 use std::{
     cell::RefCell,
@@ -73,20 +75,6 @@ unsafe fn read_to_slice<R: Read, T: Copy>(mut r: R, buf: &mut [T]) -> io::Result
         buf.as_mut_ptr() as *mut u8,
         buf.len() * mem::size_of::<T>())
     ).map(|count| count/mem::size_of::<T>())
-}
-unsafe fn display_fd_map(width: i32, height: i32, display_fd: usize) -> syscall::Result<ImageRef<'static>> {
-    let display_ptr = syscall::fmap(display_fd, &syscall::Map {
-        offset: 0,
-        size: (width * height * 4) as usize,
-        flags: syscall::PROT_READ | syscall::PROT_WRITE,
-        address: 0,
-    })?;
-    let display_slice = slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize);
-    Ok(ImageRef::from_data(width, height, display_slice))
-}
-
-unsafe fn display_fd_unmap(image: &mut ImageRef) {
-    let _ = syscall::funmap(image.data().as_ptr() as usize, (image.width() * image.height() * 4) as usize);
 }
 
 pub const PROPERTY_ASYNC:      u8 = 1 << 0;
@@ -162,37 +150,6 @@ pub trait Handler {
     fn handle_clipboard_write(&mut self, orb: &mut Orbital, id: usize, buf: &[u8]) -> syscall::Result<usize>;
     // Close the window's clipboard access
     fn handle_clipboard_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
-}
-
-pub struct Display {
-    x: i32,
-    y: i32,
-    file: File,
-    image: ImageRef<'static>,
-}
-impl Display {
-    fn new(x: i32, y: i32, width: i32, height: i32, file: File) -> io::Result<Self> {
-        let image = unsafe {
-            display_fd_map(width, height, file.as_raw_fd() as usize)
-                .map_err(|err| {
-                    eprintln!("orbital: failed to map display: {}", err);
-                    io::Error::from_raw_os_error(err.errno)
-                })?
-        };
-        Ok(Self {
-            x,
-            y,
-            file,
-            image,
-        })
-    }
-}
-impl Drop for Display {
-    fn drop(&mut self) {
-        unsafe {
-            display_fd_unmap(&mut self.image);
-        }
-    }
 }
 
 pub struct Orbital {
@@ -282,10 +239,7 @@ impl Orbital {
                     height
                 );
 
-                let mut extra_display = Display::new(x, y, width, height, extra_file)?;
-                extra_display.image.set(Color::rgb(0x5f, 0xaf, 0xff));
-                extra_display.file.sync_all()?;
-                displays.push(extra_display);
+                displays.push(Display::new(x, y, width, height, extra_file)?);
             }
         }
 
@@ -297,26 +251,27 @@ impl Orbital {
     }
 
     //TODO: replace these adapter functions
-    pub fn display(&self) -> &File {
-        &self.displays[0].file
-    }
-    pub fn display_mut(&mut self) -> &mut File {
-        &mut self.displays[0].file
-    }
     pub fn image(&self) -> &ImageRef<'static> {
         &self.displays[0].image
     }
     pub fn image_mut(&mut self) -> &mut ImageRef<'static> {
         &mut self.displays[0].image
     }
+    /// Return the screen rectangle
+    pub fn screen_rect(&self) -> Rect {
+        self.displays[0].screen_rect()
+    }
 
     /// Write an Event to display I/O
     pub fn display_write(&mut self, event: &Event) -> io::Result<()> {
-        self.display_mut().write(event).map(|_| ())
+        self.displays[0].file.write(event).map(|_| ())
     }
     /// Synchronize display I/O
     pub fn display_sync(&mut self) -> io::Result<()> {
-        self.display_mut().sync_all()
+        for display in self.displays.iter_mut() {
+            display.file.sync_all()?;
+        }
+        Ok(())
     }
     /// Write a Packet to scheme I/O
     pub fn scheme_write(&mut self, packet: &Packet) -> io::Result<()> {
@@ -326,23 +281,11 @@ impl Orbital {
     pub fn scheme_sync(&mut self) -> io::Result<()> {
         self.scheme.sync_all()
     }
-    /// Return the screen rectangle
-    pub fn screen_rect(&self) -> Rect {
-        Rect::new(0, 0, self.image().width(), self.image().height())
-    }
     /// Resize the inner image buffer. You're responsible for redrawing.
     pub fn resize(&mut self, width: i32, height: i32) {
-        unsafe {
-            match display_fd_map(width, height, self.display_mut().as_raw_fd() as usize) {
-                Ok(ok) => {
-                    display_fd_unmap(self.image_mut());
-                    *self.image_mut() = ok;
-                },
-                Err(err) => {
-                    eprintln!("orbital: failed to resize display to {}x{}: {}", width, height, err);
-                }
-            }
-        }
+        //TODO: should other screens be moved after a resize?
+        //TODO: support resizing other screens?
+        unsafe { self.displays[0].resize(width, height); }
     }
     /// Start the main loop
     pub fn run<H>(mut self, mut handler: H) -> Result<(), Error>
@@ -353,7 +296,7 @@ impl Orbital {
         //TODO: Figure out why rand: gets opened after this: syscall::setrens(0, 0)?;
 
         let scheme_fd = self.scheme.as_raw_fd();
-        let display_fd = self.display_mut().as_raw_fd();
+        let display_fd = self.displays[0].file.as_raw_fd();
 
         handler.handle_startup(&mut self)?;
 
@@ -402,7 +345,7 @@ impl Orbital {
             let me = &mut *me;
             let mut events = [Event::new(); 16];
             loop {
-                match unsafe { read_to_slice(&mut me.orb.display(), &mut events) }? {
+                match unsafe { read_to_slice(&mut me.orb.displays[0].file, &mut events) }? {
                     0 => break,
                     count => {
                         let events = &mut events[..count];

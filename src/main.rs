@@ -48,8 +48,7 @@ fn main() {
                 println!("orbital: found display {}x{}", orbital.image().width(), orbital.image().height());
                 let config = Config::from_path("/ui/orbital.toml");
                 let scheme = OrbitalScheme::new(
-                    orbital.image().width(),
-                    orbital.image().height(),
+                    &orbital.displays,
                     &config
                 );
 

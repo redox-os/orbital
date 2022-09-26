@@ -10,6 +10,7 @@ use orbital_core::{
     Handler,
     Orbital,
     Properties,
+    display::Display,
     image::{Image},
     rect::Rect
 };
@@ -96,8 +97,13 @@ pub struct OrbitalScheme {
 }
 
 impl OrbitalScheme {
-    pub fn new(width: i32, height: i32, config: &Config) -> OrbitalScheme {
-        let scale = (height / 1600) + 1;
+    pub fn new(displays: &[Display], config: &Config) -> OrbitalScheme {
+        let mut redraws = Vec::new();
+        let mut scale = 1;
+        for display in displays.iter() {
+            redraws.push(display.screen_rect());
+            scale = cmp::max(scale, display.scale);
+        }
 
         let mut cursors = BTreeMap::new();
         cursors.insert(CursorKind::None, Image::new(0, 0));
@@ -131,7 +137,7 @@ impl OrbitalScheme {
             order: VecDeque::new(),
             zbuffer: Vec::new(),
             windows: BTreeMap::new(),
-            redraws: vec![Rect::new(0, 0, width, height)],
+            redraws,
             font: orbfont::Font::find(Some("Sans"), None, None).unwrap(),
             clipboard: Vec::new(),
             scale,
@@ -382,44 +388,41 @@ impl<'a> OrbitalSchemeEvent<'a> {
     pub fn redraw(&mut self) {
         self.scheme.rezbuffer();
 
-        let screen_rect = self.orb.screen_rect();
         let cursor_rect = self.scheme.cursor_rect();
 
-        for mut rect in self.scheme.redraws.drain(..) {
-            rect = rect.intersection(&screen_rect);
+        for original_rect in self.scheme.redraws.drain(..) {
+            for display in self.orb.displays.iter_mut() {
+                let rect = original_rect.intersection(&display.screen_rect());
+                if ! rect.is_empty() {
+                    display.rect(&rect, BACKGROUND_COLOR);
 
-            if ! rect.is_empty() {
-                self.orb.image_mut().rect(rect.left(), rect.top(),
-                                rect.width() as u32, rect.height() as u32,
-                                BACKGROUND_COLOR);
-
-                for entry in self.scheme.zbuffer.iter().rev() {
-                    let id = entry.0;
-                    let i = entry.2;
-                    if let Some(window) = self.scheme.windows.get_mut(&id) {
-                        window.draw_title(self.orb.image_mut(), &rect, i == 0, if i == 0 {
-                            &mut self.scheme.window_max
-                        } else {
-                            &mut self.scheme.window_max_unfocused
-                        }, if i == 0 {
-                            &mut self.scheme.window_close
-                        } else {
-                            &mut self.scheme.window_close_unfocused
-                        });
-                        window.draw(self.orb.image_mut(), &rect);
+                    for entry in self.scheme.zbuffer.iter().rev() {
+                        let id = entry.0;
+                        let i = entry.2;
+                        if let Some(window) = self.scheme.windows.get_mut(&id) {
+                            window.draw_title(display, &rect, i == 0, if i == 0 {
+                                &mut self.scheme.window_max
+                            } else {
+                                &mut self.scheme.window_max_unfocused
+                            }, if i == 0 {
+                                &mut self.scheme.window_close
+                            } else {
+                                &mut self.scheme.window_close_unfocused
+                            });
+                            window.draw(display, &rect);
+                        }
                     }
-                }
 
-                let cursor_intersect = rect.intersection(&cursor_rect);
-                if ! cursor_intersect.is_empty() {
-                    if let Some(cursor) = self.scheme.cursors.get_mut(&self.scheme.cursor_i) {
-                        self.orb.image_mut()
-                            .roi(&cursor_intersect)
-                            .blend(
-                                &cursor.roi(
-                                    &cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())
-                                )
-                            );
+                    let cursor_intersect = rect.intersection(&cursor_rect);
+                    if ! cursor_intersect.is_empty() {
+                        if let Some(cursor) = self.scheme.cursors.get_mut(&self.scheme.cursor_i) {
+                            display.roi(&cursor_intersect)
+                                .blend(
+                                    &cursor.roi(
+                                        &cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())
+                                    )
+                                );
+                        }
                     }
                 }
             }
@@ -867,8 +870,25 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         }
 
-        let x = cmp::max(0, cmp::min(self.orb.image().width(), self.scheme.cursor_x + event.dx));
-        let y = cmp::max(0, cmp::min(self.orb.image().height(), self.scheme.cursor_y + event.dy));
+        //TODO: more advanced logic for keeping mouse on screen.
+        // This logic assumes horizontal and touching, but not overlapping, screens
+        let mut max_x = 0;
+        let mut max_y = 0;
+        for display in self.orb.displays.iter() {
+            let rect = display.screen_rect();
+            max_x = cmp::max(max_x, rect.right() - 1);
+            max_y = cmp::max(max_y, rect.bottom() - 1);
+        }
+
+        let mut x = cmp::max(0, cmp::min(max_x, self.scheme.cursor_x + event.dx));
+        let mut y = cmp::max(0, cmp::min(max_y, self.scheme.cursor_y + event.dy));
+        for display in self.orb.displays.iter() {
+            let rect = display.screen_rect();
+            if x >= rect.left() && x <= rect.right() - 1 {
+                y = cmp::max(rect.top(), cmp::min(rect.bottom() - 1, y));
+            }
+        }
+
         self.mouse_event(MouseEvent { x, y });
     }
 

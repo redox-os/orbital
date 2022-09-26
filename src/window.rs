@@ -2,7 +2,8 @@ use orbclient::{Color, Event, Renderer};
 use orbfont::Font;
 use orbital_core::{
     Properties,
-    image::{Image, ImageAligned, ImageRef},
+    display::Display,
+    image::{Image, ImageAligned},
     rect::Rect,
     self
 };
@@ -137,13 +138,11 @@ impl Window {
         ! self.borderless && x >= max(self.x + 6 * self.scale, self.x + self.width() - 18 * self.scale)  && y >= self.y - 28 * self.scale && x < self.x + self.width() && y < self.y
     }
 
-    pub fn draw_title(&mut self, image: &mut ImageRef, rect: &Rect, focused: bool, window_max: &mut Image, window_close: &mut Image) {
+    pub fn draw_title(&mut self, display: &mut Display, rect: &Rect, focused: bool, window_max: &mut Image, window_close: &mut Image) {
         let title_rect = self.title_rect();
         let title_intersect = rect.intersection(&title_rect);
         if ! title_intersect.is_empty() {
-            image.rect(title_intersect.left(), title_intersect.top(),
-                       title_intersect.width() as u32, title_intersect.height() as u32,
-                       if focused { BAR_HIGHLIGHT_COLOR } else { BAR_COLOR });
+            display.rect(&title_intersect, if focused { BAR_HIGHLIGHT_COLOR } else { BAR_COLOR });
 
             let mut x = self.x + 6 * self.scale;
             let w = max(self.x + 6 * self.scale, self.x + self.width() - 18 * self.scale) - x;
@@ -152,7 +151,7 @@ impl Window {
                 let image_rect = Rect::new(x, title_rect.top() + 6 * self.scale, min(w, title_image.width()), title_image.height());
                 let image_intersect = rect.intersection(&image_rect);
                 if ! image_intersect.is_empty() {
-                    image.roi(&image_intersect).blend(&title_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+                    display.roi(&image_intersect).blend(&title_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
                 }
             }
 
@@ -162,7 +161,7 @@ impl Window {
                     let image_rect = Rect::new(x, title_rect.top() + 7 * self.scale, window_max.width(), window_max.height());
                     let image_intersect = rect.intersection(&image_rect);
                     if ! image_intersect.is_empty() {
-                        image.roi(&image_intersect).blend(&window_max.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+                        display.roi(&image_intersect).blend(&window_max.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
                     }
                 }
             }
@@ -173,21 +172,21 @@ impl Window {
                     let image_rect = Rect::new(x, title_rect.top() + 7 * self.scale, window_close.width(), window_close.height());
                     let image_intersect = rect.intersection(&image_rect);
                     if ! image_intersect.is_empty() {
-                        image.roi(&image_intersect).blend(&window_close.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+                        display.roi(&image_intersect).blend(&window_close.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
                     }
                 }
             }
         }
     }
 
-    pub fn draw(&mut self, image: &mut ImageRef, rect: &Rect) {
+    pub fn draw(&mut self, display: &mut Display, rect: &Rect) {
         let self_rect = self.rect();
         let intersect = self_rect.intersection(&rect);
         if ! intersect.is_empty() {
             if self.transparent {
-                image.roi(&intersect).blend(&self.image.roi(&intersect.offset(-self_rect.left(), -self_rect.top())));
+                display.roi(&intersect).blend(&self.image.roi(&intersect.offset(-self_rect.left(), -self_rect.top())));
             } else {
-                image.roi(&intersect).blit(&self.image.roi(&intersect.offset(-self_rect.left(), -self_rect.top())));
+                display.roi(&intersect).blit(&self.image.roi(&intersect.offset(-self_rect.left(), -self_rect.top())));
             }
         }
     }
