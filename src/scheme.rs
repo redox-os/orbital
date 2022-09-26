@@ -389,7 +389,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             rect = rect.intersection(&screen_rect);
 
             if ! rect.is_empty() {
-                self.orb.image.rect(rect.left(), rect.top(),
+                self.orb.image_mut().rect(rect.left(), rect.top(),
                                 rect.width() as u32, rect.height() as u32,
                                 BACKGROUND_COLOR);
 
@@ -397,7 +397,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                     let id = entry.0;
                     let i = entry.2;
                     if let Some(window) = self.scheme.windows.get_mut(&id) {
-                        window.draw_title(&mut self.orb.image, &rect, i == 0, if i == 0 {
+                        window.draw_title(self.orb.image_mut(), &rect, i == 0, if i == 0 {
                             &mut self.scheme.window_max
                         } else {
                             &mut self.scheme.window_max_unfocused
@@ -406,14 +406,20 @@ impl<'a> OrbitalSchemeEvent<'a> {
                         } else {
                             &mut self.scheme.window_close_unfocused
                         });
-                        window.draw(&mut self.orb.image, &rect);
+                        window.draw(self.orb.image_mut(), &rect);
                     }
                 }
 
                 let cursor_intersect = rect.intersection(&cursor_rect);
                 if ! cursor_intersect.is_empty() {
                     if let Some(cursor) = self.scheme.cursors.get_mut(&self.scheme.cursor_i) {
-                        self.orb.image.roi(&cursor_intersect).blend(&cursor.roi(&cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())));
+                        self.orb.image_mut()
+                            .roi(&cursor_intersect)
+                            .blend(
+                                &cursor.roi(
+                                    &cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())
+                                )
+                            );
                     }
                 }
             }
@@ -472,8 +478,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         let list_h = rendered_text.len() as i32 * 20 + 4;
         let list_w = 400;
-        let target_rect = Rect::new(self.orb.image.width()/2 - list_w/2,
-                                    self.orb.image.height()/2 - list_h/2,
+        let target_rect = Rect::new(self.orb.image().width()/2 - list_w/2,
+                                    self.orb.image().height()/2 - list_h/2,
                                     list_w, list_h);
         // Color copied over from orbtk's window background
         let mut image = Image::from_color(list_w, list_h, BAR_COLOR);
@@ -485,7 +491,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 text.draw(&mut image, 4, i as i32 * 20 + 4, TEXT_COLOR);
             }
         }
-        self.orb.image.roi(&target_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
+        self.orb.image_mut().roi(&target_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
         schedule(&mut self.scheme.redraws, target_rect);
     }
 
@@ -537,14 +543,14 @@ impl<'a> OrbitalSchemeEvent<'a> {
                                 window.x = cmp::max(
                                     -window.width() + grid_size,
                                     cmp::min(
-                                        self.orb.image.width() - grid_size,
+                                        self.orb.image().width() - grid_size,
                                         window.x
                                     )
                                 );
                                 window.y = cmp::max(
                                     -window.height() + grid_size,
                                     cmp::min(
-                                        self.orb.image.height() - grid_size,
+                                        self.orb.image().height() - grid_size,
                                         window.y
                                     )
                                 );
@@ -861,8 +867,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         }
 
-        let x = cmp::max(0, cmp::min(self.orb.image.width(), self.scheme.cursor_x + event.dx));
-        let y = cmp::max(0, cmp::min(self.orb.image.height(), self.scheme.cursor_y + event.dy));
+        let x = cmp::max(0, cmp::min(self.orb.image().width(), self.scheme.cursor_x + event.dx));
+        let y = cmp::max(0, cmp::min(self.orb.image().height(), self.scheme.cursor_y + event.dy));
         self.mouse_event(MouseEvent { x, y });
     }
 
@@ -926,7 +932,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                                     let (width, height) = if let Some(max_restore) = max_restore_opt {
                                         (max_restore.width(), max_restore.height())
                                     } else {
-                                        (self.orb.image.width(), self.orb.image.height() - window.y)
+                                        (self.orb.image().width(), self.orb.image().height() - window.y)
                                     };
                                     let resize_event = ResizeEvent {
                                         width: width as u32,
@@ -1031,8 +1037,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
         schedule(&mut self.scheme.redraws, screen_rect);
 
         let screen_event = ScreenEvent {
-            width: self.orb.image.width() as u32,
-            height: self.orb.image.height() as u32,
+            width: self.orb.image().width() as u32,
+            height: self.orb.image().height() as u32,
         }.to_event();
         for (_window_id, window) in self.scheme.windows.iter_mut() {
             window.event(screen_event);
@@ -1129,8 +1135,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         if x < 0 && y < 0 {
             // Automatic placement
-            x = cmp::max(0, (self.orb.image.width() - width)/2);
-            y = cmp::max(28, (self.orb.image.height() - height)/2);
+            x = cmp::max(0, (self.orb.image().width() - width)/2);
+            y = cmp::max(28, (self.orb.image().height() - height)/2);
         }
 
         if let Some(id) = self.scheme.order.front() {

@@ -164,14 +164,41 @@ pub trait Handler {
     fn handle_clipboard_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
 }
 
+pub struct Display {
+    x: i32,
+    y: i32,
+    file: File,
+    image: ImageRef<'static>,
+}
+impl Display {
+    fn new(x: i32, y: i32, width: i32, height: i32, file: File) -> io::Result<Self> {
+        let image = unsafe {
+            display_fd_map(width, height, file.as_raw_fd() as usize)
+                .map_err(|err| {
+                    eprintln!("orbital: failed to map display: {}", err);
+                    io::Error::from_raw_os_error(err.errno)
+                })?
+        };
+        Ok(Self {
+            x,
+            y,
+            file,
+            image,
+        })
+    }
+}
+impl Drop for Display {
+    fn drop(&mut self) {
+        unsafe {
+            display_fd_unmap(&mut self.image);
+        }
+    }
+}
+
 pub struct Orbital {
     pub scheme: File,
-    pub display: File,
-    pub image: ImageRef<'static>,
     pub todo: Vec<Packet>,
-
-    pub width: i32,
-    pub height: i32
+    pub displays: Vec<Display>,
 }
 impl Orbital {
     /// Open an orbital display and connect to the scheme
@@ -208,6 +235,8 @@ impl Orbital {
         let width = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
         let height = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
 
+        let mut displays = vec![Display::new(0, 0, width, height, display)?];
+
         // If display server supports multiple displays in a VT
         if vt_screen.contains('.') {
             // Look for other screens in the same VT
@@ -237,29 +266,57 @@ impl Orbital {
                 let width = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
                 let height = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
 
-                println!("TODO: SCREEN {}: {}x{}", screen_i, width, height);
+                let x = if let Some(last) = displays.last() {
+                    last.x + last.image.width()
+                } else {
+                    0
+                };
+                let y = 0;
+
+                println!(
+                    "orbital: Extra display {} at {}, {}, {}, {}",
+                    screen_i,
+                    x,
+                    y,
+                    width,
+                    height
+                );
+
+                let mut extra_display = Display::new(x, y, width, height, extra_file)?;
+                extra_display.image.set(Color::rgb(0x5f, 0xaf, 0xff));
+                extra_display.file.sync_all()?;
+                displays.push(extra_display);
             }
         }
 
-        let image = unsafe { display_fd_map(width, height, display.as_raw_fd() as usize).unwrap() };
-
         Ok(Orbital {
             scheme,
-            display,
-            image,
             todo: Vec::new(),
-
-            width,
-            height
+            displays,
         })
     }
+
+    //TODO: replace these adapter functions
+    pub fn display(&self) -> &File {
+        &self.displays[0].file
+    }
+    pub fn display_mut(&mut self) -> &mut File {
+        &mut self.displays[0].file
+    }
+    pub fn image(&self) -> &ImageRef<'static> {
+        &self.displays[0].image
+    }
+    pub fn image_mut(&mut self) -> &mut ImageRef<'static> {
+        &mut self.displays[0].image
+    }
+
     /// Write an Event to display I/O
     pub fn display_write(&mut self, event: &Event) -> io::Result<()> {
-        self.display.write(event).map(|_| ())
+        self.display_mut().write(event).map(|_| ())
     }
     /// Synchronize display I/O
     pub fn display_sync(&mut self) -> io::Result<()> {
-        self.display.sync_all()
+        self.display_mut().sync_all()
     }
     /// Write a Packet to scheme I/O
     pub fn scheme_write(&mut self, packet: &Packet) -> io::Result<()> {
@@ -271,15 +328,15 @@ impl Orbital {
     }
     /// Return the screen rectangle
     pub fn screen_rect(&self) -> Rect {
-        Rect::new(0, 0, self.image.width(), self.image.height())
+        Rect::new(0, 0, self.image().width(), self.image().height())
     }
     /// Resize the inner image buffer. You're responsible for redrawing.
     pub fn resize(&mut self, width: i32, height: i32) {
         unsafe {
-            match display_fd_map(width, height, self.display.as_raw_fd() as usize) {
+            match display_fd_map(width, height, self.display_mut().as_raw_fd() as usize) {
                 Ok(ok) => {
-                    display_fd_unmap(&mut self.image);
-                    self.image = ok;
+                    display_fd_unmap(self.image_mut());
+                    *self.image_mut() = ok;
                 },
                 Err(err) => {
                     eprintln!("orbital: failed to resize display to {}x{}: {}", width, height, err);
@@ -296,7 +353,7 @@ impl Orbital {
         //TODO: Figure out why rand: gets opened after this: syscall::setrens(0, 0)?;
 
         let scheme_fd = self.scheme.as_raw_fd();
-        let display_fd = self.display.as_raw_fd();
+        let display_fd = self.display_mut().as_raw_fd();
 
         handler.handle_startup(&mut self)?;
 
@@ -345,7 +402,7 @@ impl Orbital {
             let me = &mut *me;
             let mut events = [Event::new(); 16];
             loop {
-                match unsafe { read_to_slice(&mut me.orb.display, &mut events) }? {
+                match unsafe { read_to_slice(&mut me.orb.display(), &mut events) }? {
                     0 => break,
                     count => {
                         let events = &mut events[..count];
@@ -382,13 +439,6 @@ impl Orbital {
         event_queue.run()?;
         //TODO: Cleanup and handle TODO
         Ok(())
-    }
-}
-impl Drop for Orbital {
-    fn drop(&mut self) {
-        unsafe {
-            display_fd_unmap(&mut self.image);
-        }
     }
 }
 pub struct OrbitalHandler<H: Handler> {

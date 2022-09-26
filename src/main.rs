@@ -43,15 +43,13 @@ fn main() {
 
         orbital_core::fix_env(&display_path).unwrap();
 
-        let display = Orbital::open_display(&display_path);
-
-        match display {
-            Ok(display) => {
-                println!("orbital: found display {}x{}", display.width, display.height);
+        match Orbital::open_display(&display_path) {
+            Ok(orbital) => {
+                println!("orbital: found display {}x{}", orbital.image().width(), orbital.image().height());
                 let config = Config::from_path("/ui/orbital.toml");
                 let scheme = OrbitalScheme::new(
-                    display.width,
-                    display.height,
+                    orbital.image().width(),
+                    orbital.image().height(),
                     &config
                 );
 
@@ -60,7 +58,7 @@ fn main() {
                     .spawn()
                     .expect("orbital: failed to launch login cmd");
 
-                display.run(scheme).expect("orbital: failed to run main loop");
+                orbital.run(scheme).expect("orbital: failed to run main loop");
             },
             Err(err) => println!("orbital: could not register orbital: {}", err)
         }
