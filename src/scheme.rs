@@ -932,12 +932,23 @@ impl<'a> OrbitalSchemeEvent<'a> {
                                     schedule(&mut self.scheme.redraws, window.title_rect());
                                     schedule(&mut self.scheme.redraws, window.rect());
 
+                                    let mut max_display_i = 0;
+                                    let mut max_display_area = 0;
+                                    for (display_i, display) in self.orb.displays.iter().enumerate() {
+                                        let intersect = display.screen_rect().intersection(&window.rect());
+                                        let area = intersect.area();
+                                        if area > max_display_area {
+                                            max_display_i = display_i;
+                                            max_display_area = area;
+                                        }
+                                    }
+
                                     if let Some(max_restore) = max_restore_opt {
                                         window.x = max_restore.left();
                                         window.y = max_restore.top();
                                     } else {
-                                        window.x = 0;
-                                        window.y = window.title_rect().height();
+                                        window.x = self.orb.displays[max_display_i].x;
+                                        window.y = self.orb.displays[max_display_i].y + window.title_rect().height();
                                     }
 
                                     let move_event = MoveEvent {
@@ -952,7 +963,10 @@ impl<'a> OrbitalSchemeEvent<'a> {
                                     let (width, height) = if let Some(max_restore) = max_restore_opt {
                                         (max_restore.width(), max_restore.height())
                                     } else {
-                                        (self.orb.image().width(), self.orb.image().height() - window.y)
+                                        (
+                                            self.orb.displays[max_display_i].image.width(),
+                                            self.orb.displays[max_display_i].image.height() - window.y
+                                        )
                                     };
                                     let resize_event = ResizeEvent {
                                         width: width as u32,
