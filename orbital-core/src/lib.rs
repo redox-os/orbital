@@ -118,6 +118,8 @@ pub trait Handler {
                          flags: &str, title: String) -> syscall::Result<usize>;
     /// Called when the scheme is read for events
     fn handle_window_read(&mut self, orb: &mut Orbital, id: usize, buf: &mut [Event]) -> syscall::Result<usize>;
+    /// Called when the window asks to set async
+    fn handle_window_async(&mut self, orb: &mut Orbital, id: usize, is_async: bool) -> syscall::Result<()>;
     /// Called when the window asks to set mouse cursor visibility
     fn handle_window_mouse_cursor(&mut self, orb: &mut Orbital, id: usize, visible: bool) -> syscall::Result<()>;
     /// Called when the window asks to set mouse grabbing
@@ -444,6 +446,17 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
                 (kind, data)
             };
             match kind {
+                "A" => match data {
+                    "0" => {
+                        self.handler.handle_window_async(&mut self.orb, id, false)?;
+                        Ok(buf.len())
+                    },
+                    "1" => {
+                        self.handler.handle_window_async(&mut self.orb, id, true)?;
+                        Ok(buf.len())
+                    },
+                    _ => Err(syscall::Error::new(EINVAL)),
+                },
                 "M" => match data {
                     "C,0" => {
                         self.handler.handle_window_mouse_cursor(&mut self.orb, id, false)?;

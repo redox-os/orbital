@@ -209,6 +209,14 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
+    fn handle_window_async(&mut self, _orb: &mut Orbital, id: usize, is_async: bool) -> syscall::Result<()> {
+        if let Some(window) = self.windows.get_mut(&id) {
+            window.async = is_async;
+            Ok(())
+        } else {
+            Err(Error::new(EBADF))
+        }
+    }
     fn handle_window_mouse_cursor(&mut self, _orb: &mut Orbital, id: usize, visible: bool) -> syscall::Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             window.mouse_cursor = visible;
