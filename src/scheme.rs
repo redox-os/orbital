@@ -176,6 +176,34 @@ impl OrbitalScheme {
 
         self.zbuffer.sort_by(|a, b| b.1.cmp(&a.1));
     }
+
+    //TODO: update cursor in more places to ensure consistency:
+    // - Window resizes
+    // - Window sets cursor on/off
+    // - Window moves
+    fn update_cursor(&mut self, x: i32, y: i32, kind: CursorKind) {
+        if kind != self.cursor_i {
+            let cursor_rect = self.cursor_rect();
+            schedule(&mut self.redraws, cursor_rect);
+
+            self.cursor_i = kind;
+
+            let cursor_rect = self.cursor_rect();
+            schedule(&mut self.redraws, cursor_rect);
+        }
+
+        // Update saved mouse information
+        if x != self.cursor_x || y != self.cursor_y {
+            let cursor_rect = self.cursor_rect();
+            schedule(&mut self.redraws, cursor_rect);
+
+            self.cursor_x = x;
+            self.cursor_y = y;
+
+            let cursor_rect = self.cursor_rect();
+            schedule(&mut self.redraws, cursor_rect);
+        }
+    }
 }
 impl Handler for OrbitalScheme {
     fn should_delay(&mut self, packet: &Packet) -> bool {
@@ -317,7 +345,7 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_close(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
+    fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
         self.order.retain(|&e| e != id);
 
         if let Some(id) = self.order.front() {
@@ -334,6 +362,13 @@ impl Handler for OrbitalScheme {
         } else {
             Err(Error::new(EBADF))
         };
+
+        // Ensure mouse cursor is correct
+        let event = MouseEvent {
+            x: self.cursor_x,
+            y: self.cursor_y,
+        };
+        self.with_orbital(orb).mouse_event(event);
 
         res
     }
@@ -845,37 +880,33 @@ impl<'a> OrbitalSchemeEvent<'a> {
             self.scheme.hover = new_hover;
         }
 
-        if new_cursor != self.scheme.cursor_i {
-            let cursor_rect = self.scheme.cursor_rect();
-            schedule(&mut self.scheme.redraws, cursor_rect);
-
-            self.scheme.cursor_i = new_cursor;
-
-            let cursor_rect = self.scheme.cursor_rect();
-            schedule(&mut self.scheme.redraws, cursor_rect);
-        }
-
-        // Update saved mouse information
-        if event.x != self.scheme.cursor_x || event.y != self.scheme.cursor_y {
-            let cursor_rect = self.scheme.cursor_rect();
-            schedule(&mut self.scheme.redraws, cursor_rect);
-
-            self.scheme.cursor_x = event.x;
-            self.scheme.cursor_y = event.y;
-
-            let cursor_rect = self.scheme.cursor_rect();
-            schedule(&mut self.scheme.redraws, cursor_rect);
-        }
+        self.scheme.update_cursor(event.x, event.y, new_cursor);
     }
 
     fn mouse_relative_event(&mut self, event: MouseRelativeEvent) {
+        let mut relative_cursor_opt = None;
         if let Some(id) = self.scheme.order.front() {
             if let Some(window) = self.scheme.windows.get_mut(&id) {
+                //TODO: handle grab?
                 if window.mouse_relative {
+                    // Send relative event
                     window.event(event.to_event());
-                    return;
+
+                    // Update cursor to center of this window
+                    relative_cursor_opt = Some((
+                        window.x + window.width() / 2,
+                        window.y + window.height() / 2,
+                        //TODO: allow cursors on relative windows?
+                        CursorKind::None
+                    ));
                 }
             }
+        }
+
+        // Handle relative window cursor
+        if let Some((x, y, kind)) = relative_cursor_opt {
+            self.scheme.update_cursor(x, y, kind);
+            return;
         }
 
         //TODO: more advanced logic for keeping mouse on screen.
@@ -1219,6 +1250,13 @@ impl<'a> OrbitalSchemeEvent<'a> {
         }
 
         self.scheme.windows.insert(id, window);
+
+        // Ensure mouse cursor is correct
+        let event = MouseEvent {
+            x: self.scheme.cursor_x,
+            y: self.scheme.cursor_y,
+        };
+        self.mouse_event(event);
 
         Ok(id)
     }
