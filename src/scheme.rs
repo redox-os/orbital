@@ -20,6 +20,7 @@ use std::{
         BTreeMap,
         VecDeque
     },
+    fs,
     io,
     mem,
     str
@@ -70,6 +71,12 @@ enum DragMode {
     BottomRightBorder(usize, i32, i32),
 }
 
+enum Volume {
+    Down,
+    Up,
+    Toggle,
+}
+
 pub struct OrbitalScheme {
     window_max: Image,
     window_max_unfocused: Image,
@@ -85,6 +92,9 @@ pub struct OrbitalScheme {
     dragging: DragMode,
     win_key: bool,
     win_tabbing: bool,
+    volume_value: i32,
+    volume_toggle: i32,
+    volume_osd: bool,
     next_id: isize,
     hover: Option<usize>,
     order: VecDeque<usize>,
@@ -132,6 +142,9 @@ impl OrbitalScheme {
             // Set true when win-tab is pressed, set false when win is released.
             // While it is true, redraw() calls draw_window_list()
             win_tabbing: false,
+            volume_value: 0,
+            volume_toggle: 0,
+            volume_osd: false,
             next_id: 1,
             hover: None,
             order: VecDeque::new(),
@@ -475,7 +488,48 @@ impl<'a> OrbitalSchemeEvent<'a> {
             self.draw_window_list();
         }
 
+        if self.scheme.volume_osd {
+            self.draw_volume_osd();
+        }
+
         self.orb.display_sync().unwrap();
+    }
+
+    fn volume(&mut self, volume: Volume) {
+        let value = match fs::read_to_string("audio:volume") {
+            Ok(string) => match string.parse::<i32>() {
+                Ok(value) => value,
+                Err(err) => {
+                    log::error!("failed to parse volume '{}': {}", string, err);
+                    return;
+                }
+            },
+            Err(err) => {
+                log::error!("failed to read volume: {}", err);
+                return;
+            }
+        };
+
+        self.scheme.volume_value = match volume {
+            Volume::Down => cmp::max(0, value - 5),
+            Volume::Up => cmp::min(100, value + 5),
+            Volume::Toggle => if value == 0 {
+                self.scheme.volume_toggle
+            } else {
+                self.scheme.volume_toggle = value;
+                0
+            }
+        };
+
+        match fs::write("audio:volume", &format!("{}", self.scheme.volume_value)) {
+            Ok(()) => (),
+            Err(err) => {
+                log::error!("failed to write volume {}: {}", self.scheme.volume_value, err);
+                return;
+            }
+        }
+
+        self.scheme.volume_osd = true;
     }
 
     fn win_tab(&mut self) {
@@ -541,12 +595,27 @@ impl<'a> OrbitalSchemeEvent<'a> {
         schedule(&mut self.scheme.redraws, target_rect);
     }
 
+    fn draw_volume_osd(&mut self) {
+        //TODO: HiDPI
+        let list_h = 20 + 4;
+        let list_w = 100 + 4;
+        let target_rect = Rect::new(self.orb.image().width()/2 - list_w/2,
+                                    self.orb.image().height()/2 - list_h/2,
+                                    list_w, list_h);
+        // Color copied over from orbtk's window background
+        let mut image = Image::from_color(list_w, list_h, BAR_COLOR);
+        image.rect(2, 2, self.scheme.volume_value as u32, 20, BAR_HIGHLIGHT_COLOR);
+        self.orb.image_mut().roi(&target_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
+        schedule(&mut self.scheme.redraws, target_rect);
+    }
+
     fn key_event(&mut self, event: KeyEvent) {
         if event.scancode == 0x5B {
             self.scheme.win_key = event.pressed;
             // If the win key was released, stop drawing the win-tab window switcher
             if !self.scheme.win_key {
                 self.scheme.win_tabbing = false;
+                self.scheme.volume_osd = false;
             }
         } else if self.scheme.win_key {
             match event.scancode {
@@ -561,6 +630,15 @@ impl<'a> OrbitalSchemeEvent<'a> {
                     // Start drawing the window switcher. It's drawn by redraw()
                     self.scheme.win_tabbing = true;
                     self.win_tab();
+                },
+                orbclient::K_BRACE_OPEN => if event.pressed {
+                    self.volume(Volume::Down);
+                },
+                orbclient::K_BRACE_CLOSE => if event.pressed {
+                    self.volume(Volume::Up);
+                },
+                orbclient::K_BACKSLASH => if event.pressed {
+                    self.volume(Volume::Toggle);
                 },
                 orbclient::K_UP |
                 orbclient::K_DOWN |
