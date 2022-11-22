@@ -617,6 +617,24 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 self.scheme.win_tabbing = false;
                 self.scheme.volume_osd = false;
             }
+        } else if event.scancode == 0x80 + 0x20 {
+            if event.pressed {
+                self.volume(Volume::Toggle);
+            } else {
+                self.scheme.volume_osd = false;
+            }
+        } else if event.scancode == 0x80 + 0x2E {
+            if event.pressed {
+                self.volume(Volume::Down);
+            } else {
+                self.scheme.volume_osd = false;
+            }
+        } else if event.scancode == 0x80 + 0x30 {
+            if event.pressed {
+                self.volume(Volume::Up);
+            } else {
+                self.scheme.volume_osd = false;
+            }
         } else if self.scheme.win_key {
             match event.scancode {
                 orbclient::K_Q => if event.pressed {
