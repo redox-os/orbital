@@ -21,8 +21,9 @@ use std::{
         VecDeque
     },
     fs,
-    io,
+    io::{self, Write},
     mem,
+    slice,
     str
 };
 use syscall::data::Packet;
@@ -446,7 +447,15 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         let cursor_rect = self.scheme.cursor_rect();
 
+        let mut total_redraw_opt: Option<Rect> = None;
         for original_rect in self.scheme.redraws.drain(..) {
+            if ! original_rect.is_empty() {
+                total_redraw_opt = match total_redraw_opt {
+                    Some(total_redraw) => Some(total_redraw.container(&original_rect)),
+                    None => Some(original_rect),
+                };
+            }
+
             for display in self.orb.displays.iter_mut() {
                 let rect = original_rect.intersection(&display.screen_rect());
                 if ! rect.is_empty() {
@@ -485,14 +494,62 @@ impl<'a> OrbitalSchemeEvent<'a> {
         }
 
         if self.scheme.win_tabbing {
+            //TODO: add to total_redraw?
             self.draw_window_list();
         }
 
         if self.scheme.volume_osd {
+            //TODO: add to total_redraw?
             self.draw_volume_osd();
         }
 
-        self.orb.display_sync().unwrap();
+        // Add any redraws from OSD's
+        for original_rect in self.scheme.redraws.drain(..) {
+            if ! original_rect.is_empty() {
+                total_redraw_opt = match total_redraw_opt {
+                    Some(total_redraw) => Some(total_redraw.container(&original_rect)),
+                    None => Some(original_rect),
+                };
+            }
+        }
+
+        // Sync any parts of displays that changed
+        match total_redraw_opt {
+            Some(total_redraw) => {
+                for (i, display) in self.orb.displays.iter_mut().enumerate() {
+                    let display_redraw = total_redraw.intersection(&display.screen_rect());
+                    if ! display_redraw.is_empty() {
+                        // Keep synced with vesad
+                        #[allow(dead_code)]
+                        #[repr(packed)]
+                        struct SyncRect {
+                            x: i32,
+                            y: i32,
+                            w: i32,
+                            h: i32,
+                        }
+
+                        let sync_rect = SyncRect {
+                            x: display_redraw.left() - display.x,
+                            y: display_redraw.top() - display.y,
+                            w: display_redraw.width(),
+                            h: display_redraw.height(),
+                        };
+
+                        match display.file.write(unsafe {
+                            slice::from_raw_parts(
+                                &sync_rect as *const SyncRect as *const u8,
+                                mem::size_of::<SyncRect>()
+                            )
+                        }) {
+                            Ok(_) => (),
+                            Err(err) => log::error!("failed to sync display {}: {}", i, err),
+                        }
+                    }
+                }
+            },
+            None => (),
+        }
     }
 
     fn volume(&mut self, volume: Volume) {

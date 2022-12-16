@@ -264,24 +264,9 @@ impl Orbital {
         self.displays[0].screen_rect()
     }
 
-    /// Write an Event to display I/O
-    pub fn display_write(&mut self, event: &Event) -> io::Result<()> {
-        self.displays[0].file.write(event).map(|_| ())
-    }
-    /// Synchronize display I/O
-    pub fn display_sync(&mut self) -> io::Result<()> {
-        for display in self.displays.iter_mut() {
-            display.file.sync_all()?;
-        }
-        Ok(())
-    }
     /// Write a Packet to scheme I/O
     pub fn scheme_write(&mut self, packet: &Packet) -> io::Result<()> {
         self.scheme.write(packet).map(|_| ())
-    }
-    /// Synchronize the scheme I/O
-    pub fn scheme_sync(&mut self) -> io::Result<()> {
-        self.scheme.sync_all()
     }
     /// Resize the inner image buffer. You're responsible for redrawing.
     pub fn resize(&mut self, width: i32, height: i32) {
