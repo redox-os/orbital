@@ -348,7 +348,7 @@ impl Handler for OrbitalScheme {
     fn handle_window_unmap(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             if window.maps > 0 {
-                window.maps += 1;
+                window.maps -= 1;
             } else {
                 log::warn!("orbital: attempted unmap when there are no mappings");
             }
