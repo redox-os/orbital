@@ -41,6 +41,7 @@ pub struct Window {
     pub mouse_cursor: bool,
     pub mouse_grab: bool,
     pub mouse_relative: bool,
+    pub maps: usize,
 }
 
 impl Window {
@@ -67,6 +68,7 @@ impl Window {
             mouse_cursor: true,
             mouse_grab: false,
             mouse_relative: false,
+            maps: 0,
         }
     }
 
@@ -241,6 +243,10 @@ impl Window {
     }
 
     pub fn set_size(&mut self, w: i32, h: i32) {
+        if self.maps > 0 {
+            log::warn!("orbital: resized while {} mapping(s) still held", self.maps);
+        }
+
         //TODO: Invalidate old mappings
         let mut new_image = unsafe { ImageAligned::new(w, h, 4096) };
         let new_rect = Rect::new(0, 0, w, h);

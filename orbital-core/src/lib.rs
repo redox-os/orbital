@@ -16,6 +16,7 @@ use orbclient::{Color, Event};
 use rect::Rect;
 use std::{
     cell::RefCell,
+    collections::BTreeMap,
     env,
     fs::File,
     io::{self, ErrorKind, Read, Write},
@@ -137,6 +138,8 @@ pub trait Handler {
     fn handle_window_clear_notified(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<()>;
     /// Return a reference the window's image that will be mapped in the scheme's fmap function
     fn handle_window_map(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<&mut [Color]>;
+    /// Free a reference to the window's image, for use by funmap
+    fn handle_window_unmap(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<()>;
     /// Called to get window properties
     fn handle_window_properties(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<Properties>;
     /// Called to flush a window. It's usually a good idea to redraw here.
@@ -158,6 +161,7 @@ pub struct Orbital {
     pub scheme: File,
     pub todo: Vec<Packet>,
     pub displays: Vec<Display>,
+    pub maps: BTreeMap<usize, (usize, usize)>,
 }
 impl Orbital {
     /// Open an orbital display and connect to the scheme
@@ -249,6 +253,7 @@ impl Orbital {
             scheme,
             todo: Vec::new(),
             displays,
+            maps: BTreeMap::new(),
         })
     }
 
@@ -511,8 +516,11 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         let data_size = data.len() * mem::size_of::<Color>();
         // Do not allow leaking data before or after window to the user
         if data_addr & (page_size - 1) == 0 && map_pages * page_size <= data_size {
-            Ok(data_addr + map.offset)
+            let address = data_addr + map.offset;
+            self.orb.maps.insert(address, (id, map.size));
+            Ok(address)
         } else {
+            self.handler.handle_window_unmap(&mut self.orb, id)?;
             Err(syscall::Error::new(EINVAL))
         }
     }
@@ -524,12 +532,30 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             address: 0,
         })
     }
-    fn funmap(&mut self, _address: usize, _size: usize) -> syscall::Result<usize> {
-        // TODO
+    fn funmap(&mut self, address: usize, size: usize) -> syscall::Result<usize> {
+        match self.orb.maps.remove(&address) {
+            Some((id, map_size)) => {
+                if size != map_size {
+                    log::warn!("orbital: mapping 0x{:x} has size {} instead of {}", address, map_size, size);
+                }
+                self.handler.handle_window_unmap(&mut self.orb, id)?;
+            },
+            None => {
+                log::error!("orbital: failed to found mapping 0x{:x}", address);
+            }
+        }
         Ok(0)
     }
-    fn funmap_old(&mut self, _address: usize) -> syscall::Result<usize> {
-        // TODO
+    fn funmap_old(&mut self, address: usize) -> syscall::Result<usize> {
+        match self.orb.maps.remove(&address) {
+            Some((id, _map_size)) => {
+                log::info!("orbital: funmap_old 0x{:x} = {}", address, id);
+                self.handler.handle_window_unmap(&mut self.orb, id)?;
+            },
+            None => {
+                log::error!("orbital: failed to found mapping 0x{:x}", address);
+            }
+        }
         Ok(0)
     }
     fn fpath(&mut self, id: usize, mut buf: &mut [u8]) -> syscall::Result<usize> {
