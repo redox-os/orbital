@@ -2,7 +2,9 @@ use std::fs::File;
 use std::io::Read;
 use toml;
 
-#[derive(Default, Deserialize)]
+use orbclient::Color;
+
+#[derive(Default, Deserialize, Clone)]
 #[serde(default)]
 pub struct Config {
     pub cursor: String,
@@ -14,7 +16,13 @@ pub struct Config {
     pub window_max: String,
     pub window_max_unfocused: String,
     pub window_close: String,
-    pub window_close_unfocused: String
+    pub window_close_unfocused: String,
+    
+    pub background_color: Color,
+    pub bar_color: Color,
+    pub bar_highlight_color: Color,
+    pub text_color: Color,
+    pub text_highlight_color: Color
 }
 
 impl Config {
