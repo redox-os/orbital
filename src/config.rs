@@ -14,7 +14,7 @@ pub struct Config {
     pub window_max: String,
     pub window_max_unfocused: String,
     pub window_close: String,
-    pub window_close_unfocused: String,
+    pub window_close_unfocused: String
 }
 
 impl Config {
