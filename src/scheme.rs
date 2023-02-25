@@ -652,7 +652,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         }
 
-        let crate::config::Config { bar_color, bar_highlight_color, text_color, text_highlight_color, .. } = self.scheme.config;
+        let crate::config::Config { bar_color, bar_highlight_color, text_color, text_highlight_color, .. } = *self.scheme.config;
 
         let list_h = rendered_text.len() as i32 * 20 + 4;
         let list_w = 400;
@@ -675,7 +675,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
     }
 
     fn draw_volume_osd(&mut self) {
-        let crate::config::Config { bar_color, bar_highlight_color, .. } = self.scheme.config;
+        let crate::config::Config { bar_color, bar_highlight_color, .. } = *self.scheme.config;
 
         //TODO: HiDPI
         let list_h = 20 + 4;

@@ -23,7 +23,6 @@ use scheme::OrbitalScheme;
 
 mod config;
 mod scheme;
-mod theme;
 mod window;
 
 fn main() {
