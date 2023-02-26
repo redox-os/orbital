@@ -33,7 +33,7 @@ use syscall::error::{Error, Result, EBADF};
 use syscall::number::SYS_READ;
 
 use config::Config;
-use theme::{BACKGROUND_COLOR, BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
+// use theme::{BACKGROUND_COLOR, BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 use window::{Window, WindowZOrder};
 
 fn schedule(redraws: &mut Vec<Rect>, request: Rect) {

@@ -96,6 +96,7 @@ impl Config {
     }
 }
 
+/// Parse ARGB colours from TOML file
 fn parse_colour(colour: &str) -> Result<orbclient::Color, String> {
     let chars: Vec<char> = colour.chars().collect();
     
@@ -114,10 +115,10 @@ fn parse_colour(colour: &str) -> Result<orbclient::Color, String> {
         ];
 
         Ok(orbclient::Color::rgba(
-            channels[0],
             channels[1],
             channels[2],
             channels[3],
+            channels[0],
         ))
     } else {
         Err(format!("{} is not a valid colour", colour))
