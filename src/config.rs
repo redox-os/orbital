@@ -39,11 +39,11 @@ impl Into<Config> for TmpConfig {
             window_close: self.window_close.clone(),
             window_close_unfocused: self.window_close_unfocused.clone(),
 
-            background_color: parse_colour(&self.background_color).unwrap_or(orbclient::Color::rgba(0, 0, 0, 0xff)),
-            bar_color: parse_colour(&self.bar_color).unwrap_or(orbclient::Color::rgba(0, 0, 0, 0xff)),
-            bar_highlight_color: parse_colour(&self.bar_highlight_color).unwrap_or(orbclient::Color::rgba(0, 0, 0, 0xff)),
-            text_color: parse_colour(&self.text_color).unwrap_or(orbclient::Color::rgba(0, 0, 0, 0xff)),
-            text_highlight_color: parse_colour(&self.text_highlight_color).unwrap_or(orbclient::Color::rgba(0, 0, 0, 0xff)),
+            background_color: parse_colour(&self.background_color).unwrap_or(orbclient::Color::rgb(0, 0, 0)),
+            bar_color: parse_colour(&self.bar_color).unwrap_or(orbclient::Color::rgba(47, 52, 63, 224)),
+            bar_highlight_color: parse_colour(&self.bar_highlight_color).unwrap_or(orbclient::Color::rgba(80, 86, 102, 224)),
+            text_color: parse_colour(&self.text_color).unwrap_or(orbclient::Color::rgb(204, 210, 224)),
+            text_highlight_color: parse_colour(&self.text_highlight_color).unwrap_or(orbclient::Color::rgb(204, 210, 224)),
         }
     }
 }
