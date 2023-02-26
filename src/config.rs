@@ -2,44 +2,6 @@ use std::fs::File;
 use std::io::Read;
 use toml;
 
-#[derive(Default, Debug, Copy, Clone)]
-struct TmpColor {
-    pub data: u32,
-}
-
-struct TmpColorVisitor;
-impl<'de> serde::de::Visitor<'de> for TmpColorVisitor {
-    type Value = TmpColor;
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: serde::de::Error {
-        if v.len() == 9 && v.chars().next().unwrap() == '#' {
-            let chars: &[char] = v.chars().collect();
-            let parts: [String;4] = [
-                &chars[1..3].into_iter.collect(), 
-                &chars[3..5].into_iter.collect(), 
-                &chars[5..7].into_iter.collect(), 
-                &chars[7..9].into_iter.collect()
-            ];
-
-            Ok(TmpColor::default)
-        } else {
-            Err(serde::de::Error::invalid_value())
-        }
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for TmpColor {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: serde::Deserializer<'de> {
-        deserializer.deserialize_string()
-    }
-}
-
-impl Into<orbclient::Color> for TmpColor {
-    fn into(self) -> orbclient::Color {
-        orbclient::Color { data: self.data }
-    }
-}
-
 #[derive(Default, Deserialize, Clone)]
 #[serde(default)]
 struct TmpConfig {
@@ -54,11 +16,11 @@ struct TmpConfig {
     pub window_close: String,
     pub window_close_unfocused: String,
 
-    pub background_color: TmpColor,
-    pub bar_color: TmpColor,
-    pub bar_highlight_color: TmpColor,
-    pub text_color: TmpColor,
-    pub text_highlight_color: TmpColor,
+    pub background_color: String,
+    pub bar_color: String,
+    pub bar_highlight_color: String,
+    pub text_color: String,
+    pub text_highlight_color: String,
 }
 
 impl Into<Config> for TmpConfig {
@@ -77,11 +39,11 @@ impl Into<Config> for TmpConfig {
             window_close: self.window_close.clone(),
             window_close_unfocused: self.window_close_unfocused.clone(),
 
-            background_color: self.background_color.into(),
-            bar_color: self.bar_color.into(),
-            bar_highlight_color: self.bar_highlight_color.into(),
-            text_color: self.text_color.into(),
-            text_highlight_color: self.text_highlight_color.into()
+            background_color: parse_colour(&self.background_color).unwrap_or(orbclient::Color::rgba(0, 0, 0, 0xff)),
+            bar_color: parse_colour(&self.bar_color).unwrap_or(orbclient::Color::rgba(0, 0, 0, 0xff)),
+            bar_highlight_color: parse_colour(&self.bar_highlight_color).unwrap_or(orbclient::Color::rgba(0, 0, 0, 0xff)),
+            text_color: parse_colour(&self.text_color).unwrap_or(orbclient::Color::rgba(0, 0, 0, 0xff)),
+            text_highlight_color: parse_colour(&self.text_highlight_color).unwrap_or(orbclient::Color::rgba(0, 0, 0, 0xff)),
         }
     }
 }
@@ -131,5 +93,33 @@ impl TmpConfig {
 impl Config {
     pub fn from_path(path: &str) -> Config {
         TmpConfig::from_path(path).into()
+    }
+}
+
+fn parse_colour(colour: &str) -> Result<orbclient::Color, String> {
+    let chars: Vec<char> = colour.chars().collect();
+    
+    if chars.len() == 9 && chars[0] == '#' {
+        let channels: &[String; 4] = &[
+            chars[1..3].into_iter().collect(),
+            chars[3..5].into_iter().collect(),
+            chars[5..7].into_iter().collect(),
+            chars[7..9].into_iter().collect(),
+        ];
+        let channels: &[u8;4] = &[
+            u8::from_str_radix(&channels[0], 16).map_err(|err| err.to_string())?,
+            u8::from_str_radix(&channels[1], 16).map_err(|err| err.to_string())?,
+            u8::from_str_radix(&channels[2], 16).map_err(|err| err.to_string())?,
+            u8::from_str_radix(&channels[3], 16).map_err(|err| err.to_string())?,
+        ];
+
+        Ok(orbclient::Color::rgba(
+            channels[0],
+            channels[1],
+            channels[2],
+            channels[3],
+        ))
+    } else {
+        Err(format!("{} is not a valid colour", colour))
     }
 }
