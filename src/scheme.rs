@@ -1085,7 +1085,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             max_y = cmp::max(max_y, rect.bottom() - 1);
         }
 
-        let mut x = cmp::max(0, cmp::min(max_x, self.scheme.cursor_x + event.dx));
+        let x = cmp::max(0, cmp::min(max_x, self.scheme.cursor_x + event.dx));
         let mut y = cmp::max(0, cmp::min(max_y, self.scheme.cursor_y + event.dy));
         for display in self.orb.displays.iter() {
             let rect = display.screen_rect();
