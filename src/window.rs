@@ -10,7 +10,10 @@ use orbital_core::{
 use std::cmp::{min, max};
 use std::collections::VecDeque;
 
-use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
+use std::rc::Rc;
+
+// use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
+use crate::config::Config;
 
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum WindowZOrder {
@@ -42,10 +45,12 @@ pub struct Window {
     pub mouse_grab: bool,
     pub mouse_relative: bool,
     pub maps: usize,
+
+    config: Rc<Config>
 }
 
 impl Window {
-    pub fn new(x: i32, y: i32, w: i32, h: i32, scale: i32) -> Window {
+    pub fn new(x: i32, y: i32, w: i32, h: i32, scale: i32, config: Rc<Config>) -> Window {
         Window {
             x,
             y,
@@ -69,6 +74,8 @@ impl Window {
             mouse_grab: false,
             mouse_relative: false,
             maps: 0,
+
+            config
         }
     }
 
@@ -141,10 +148,13 @@ impl Window {
     }
 
     pub fn draw_title(&mut self, display: &mut Display, rect: &Rect, focused: bool, window_max: &mut Image, window_close: &mut Image) {
+        let bar_color = self.config.bar_color;
+        let bar_highlight_color = self.config.bar_highlight_color;
+
         let title_rect = self.title_rect();
         let title_intersect = rect.intersection(&title_rect);
         if ! title_intersect.is_empty() {
-            display.rect(&title_intersect, if focused { BAR_HIGHLIGHT_COLOR } else { BAR_COLOR });
+            display.rect(&title_intersect, if focused { bar_highlight_color } else { bar_color });
 
             let mut x = self.x + 6 * self.scale;
             let w = max(self.x + 6 * self.scale, self.x + self.width() - 18 * self.scale) - x;
@@ -229,17 +239,20 @@ impl Window {
     }
 
     pub fn render_title(&mut self, font: &Font) {
+        let text_color = self.config.text_color;
+        let text_highlight_color = self.config.text_highlight_color;
+
         let title_render = font.render(&self.title, (16 * self.scale) as f32);
 
         let color_blank = Color::rgba(0, 0, 0, 0);
 
         self.title_image = Image::from_color(title_render.width() as i32, title_render.height() as i32, color_blank);
         self.title_image.mode().set(orbclient::Mode::Overwrite);
-        title_render.draw(&mut self.title_image, 0, 0, TEXT_HIGHLIGHT_COLOR);
+        title_render.draw(&mut self.title_image, 0, 0, text_highlight_color);
 
         self.title_image_unfocused = Image::from_color(title_render.width() as i32, title_render.height() as i32, color_blank);
         self.title_image_unfocused.mode().set(orbclient::Mode::Overwrite);
-        title_render.draw(&mut self.title_image_unfocused, 0, 0, TEXT_COLOR);
+        title_render.draw(&mut self.title_image_unfocused, 0, 0, text_color);
     }
 
     pub fn set_size(&mut self, w: i32, h: i32) {

@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use orbclient::{
     self, Color, Event, EventOption, KeyEvent, MouseEvent, MouseRelativeEvent, ButtonEvent,
     ClipboardEvent, FocusEvent, HoverEvent, QuitEvent, MoveEvent, ResizeEvent, Renderer,
@@ -31,7 +33,7 @@ use syscall::error::{Error, Result, EBADF};
 use syscall::number::SYS_READ;
 
 use config::Config;
-use theme::{BACKGROUND_COLOR, BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
+// use theme::{BACKGROUND_COLOR, BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 use window::{Window, WindowZOrder};
 
 fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
@@ -105,10 +107,12 @@ pub struct OrbitalScheme {
     font: orbfont::Font,
     clipboard: Vec<u8>,
     scale: i32,
+
+    config: Rc<Config>
 }
 
 impl OrbitalScheme {
-    pub fn new(displays: &[Display], config: &Config) -> OrbitalScheme {
+    pub fn new(displays: &[Display], config: Rc<Config>) -> OrbitalScheme {
         let mut redraws = Vec::new();
         let mut scale = 1;
         for display in displays.iter() {
@@ -155,6 +159,8 @@ impl OrbitalScheme {
             font: orbfont::Font::find(Some("Sans"), None, None).unwrap(),
             clipboard: Vec::new(),
             scale,
+
+            config: Rc::clone(&config)
         }
     }
 
@@ -472,7 +478,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             for display in self.orb.displays.iter_mut() {
                 let rect = original_rect.intersection(&display.screen_rect());
                 if ! rect.is_empty() {
-                    display.rect(&rect, BACKGROUND_COLOR);
+                    display.rect(&rect, self.scheme.config.background_color);
 
                     for entry in self.scheme.zbuffer.iter().rev() {
                         let id = entry.0;
@@ -646,19 +652,22 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         }
 
+        let crate::config::Config { bar_color, bar_highlight_color, text_color, text_highlight_color, .. } = *self.scheme.config;
+
         let list_h = rendered_text.len() as i32 * 20 + 4;
         let list_w = 400;
         let target_rect = Rect::new(self.orb.image().width()/2 - list_w/2,
                                     self.orb.image().height()/2 - list_h/2,
                                     list_w, list_h);
         // Color copied over from orbtk's window background
-        let mut image = Image::from_color(list_w, list_h, BAR_COLOR);
+        let mut image = Image::from_color(list_w, list_h, bar_color);
+
         for (i, text) in rendered_text.iter().enumerate() {
             if i == 0 {
-                image.rect(0, i as i32 * 20 + 2, list_w as u32, 20, BAR_HIGHLIGHT_COLOR);
-                text.draw(&mut image, 4, i as i32 * 20 + 4, TEXT_HIGHLIGHT_COLOR);
+                image.rect(0, i as i32 * 20 + 2, list_w as u32, 20, bar_highlight_color);
+                text.draw(&mut image, 4, i as i32 * 20 + 4, text_highlight_color);
             } else {
-                text.draw(&mut image, 4, i as i32 * 20 + 4, TEXT_COLOR);
+                text.draw(&mut image, 4, i as i32 * 20 + 4, text_color);
             }
         }
         self.orb.image_mut().roi(&target_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
@@ -666,6 +675,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
     }
 
     fn draw_volume_osd(&mut self) {
+        let crate::config::Config { bar_color, bar_highlight_color, .. } = *self.scheme.config;
+
         //TODO: HiDPI
         let list_h = 20 + 4;
         let list_w = 100 + 4;
@@ -673,8 +684,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
                                     self.orb.image().height()/2 - list_h/2,
                                     list_w, list_h);
         // Color copied over from orbtk's window background
-        let mut image = Image::from_color(list_w, list_h, BAR_COLOR);
-        image.rect(2, 2, self.scheme.volume_value as u32, 20, BAR_HIGHLIGHT_COLOR);
+        let mut image = Image::from_color(list_w, list_h, bar_color);
+        image.rect(2, 2, self.scheme.volume_value as u32, 20, bar_highlight_color);
         self.orb.image_mut().roi(&target_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
         schedule(&mut self.scheme.redraws, target_rect);
     }
@@ -1385,7 +1396,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         }
 
-        let mut window = Window::new(x, y, width, height, self.scheme.scale);
+        let mut window = Window::new(x, y, width, height, self.scheme.scale, Rc::clone(&self.scheme.config));
 
         for flag in flags.chars() {
             match flag {

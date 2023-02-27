@@ -14,7 +14,8 @@ extern crate toml;
 use orbital_core::Orbital;
 use std::{
     env,
-    process::Command
+    process::Command,
+    rc::Rc
 };
 
 use config::Config;
@@ -22,7 +23,6 @@ use scheme::OrbitalScheme;
 
 mod config;
 mod scheme;
-mod theme;
 mod window;
 
 fn main() {
@@ -46,10 +46,10 @@ fn main() {
         match Orbital::open_display(&display_path) {
             Ok(orbital) => {
                 println!("orbital: found display {}x{}", orbital.image().width(), orbital.image().height());
-                let config = Config::from_path("/ui/orbital.toml");
+                let config = Rc::new(Config::from_path("/ui/orbital.toml"));
                 let scheme = OrbitalScheme::new(
                     &orbital.displays,
-                    &config
+                    config
                 );
 
                 Command::new(&login_cmd)
