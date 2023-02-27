@@ -48,7 +48,7 @@ impl Into<Config> for TmpConfig {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct Config {
     pub cursor: String,
     pub bottom_left_corner: String,
