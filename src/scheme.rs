@@ -130,7 +130,7 @@ impl OrbitalScheme {
             window_max_unfocused: Image::from_path_scale(&config.window_max_unfocused, scale).unwrap_or(Image::new(0, 0)),
             window_close: Image::from_path_scale(&config.window_close, scale).unwrap_or(Image::new(0, 0)),
             window_close_unfocused: Image::from_path_scale(&config.window_close_unfocused, scale).unwrap_or(Image::new(0, 0)),
-            cursors: cursors,
+            cursors,
             cursor_i: CursorKind::LeftPtr,
             cursor_x: 0,
             cursor_y: 0,
@@ -161,7 +161,7 @@ impl OrbitalScheme {
     pub fn with_orbital<'a>(&'a mut self, orb: &'a mut Orbital) -> OrbitalSchemeEvent<'a> {
         OrbitalSchemeEvent {
             scheme: self,
-            orb: orb
+            orb
         }
     }
 
@@ -240,10 +240,10 @@ impl Handler for OrbitalScheme {
 
     fn handle_window_new(&mut self, orb: &mut Orbital,
                          x: i32, y: i32, width: i32, height: i32,
-                         parts: &str, title: String) -> syscall::Result<usize> {
+                         parts: &str, title: String) -> Result<usize> {
         self.with_orbital(orb).window_new(x, y, width, height, parts, title)
     }
-    fn handle_window_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [Event]) -> syscall::Result<usize>
+    fn handle_window_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [Event]) -> Result<usize>
     {
         if let Some(window) = self.windows.get_mut(&id) {
             Ok(window.read(buf))
@@ -251,7 +251,7 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_async(&mut self, _orb: &mut Orbital, id: usize, is_async: bool) -> syscall::Result<()> {
+    fn handle_window_async(&mut self, _orb: &mut Orbital, id: usize, is_async: bool) -> Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             window.async = is_async;
             Ok(())
@@ -259,7 +259,7 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_mouse_cursor(&mut self, _orb: &mut Orbital, id: usize, visible: bool) -> syscall::Result<()> {
+    fn handle_window_mouse_cursor(&mut self, _orb: &mut Orbital, id: usize, visible: bool) -> Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             window.mouse_cursor = visible;
             Ok(())
@@ -267,7 +267,7 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_mouse_grab(&mut self, _orb: &mut Orbital, id: usize, grab: bool) -> syscall::Result<()> {
+    fn handle_window_mouse_grab(&mut self, _orb: &mut Orbital, id: usize, grab: bool) -> Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             window.mouse_grab = grab;
             Ok(())
@@ -275,7 +275,7 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_mouse_relative(&mut self, _orb: &mut Orbital, id: usize, relative: bool) -> syscall::Result<()> {
+    fn handle_window_mouse_relative(&mut self, _orb: &mut Orbital, id: usize, relative: bool) -> Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             window.mouse_relative = relative;
             Ok(())
@@ -283,7 +283,7 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_position(&mut self, _orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> syscall::Result<()> {
+    fn handle_window_position(&mut self, _orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             schedule(&mut self.redraws, window.title_rect());
             schedule(&mut self.redraws, window.rect());
@@ -299,7 +299,7 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_resize(&mut self, _orb: &mut Orbital, id: usize, w: Option<i32>, h: Option<i32>) -> syscall::Result<()> {
+    fn handle_window_resize(&mut self, _orb: &mut Orbital, id: usize, w: Option<i32>, h: Option<i32>) -> Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             schedule(&mut self.redraws, window.title_rect());
             schedule(&mut self.redraws, window.rect());
@@ -317,7 +317,7 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_title(&mut self, _orb: &mut Orbital, id: usize, title: String) -> syscall::Result<()> {
+    fn handle_window_title(&mut self, _orb: &mut Orbital, id: usize, title: String) -> Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             window.title = title;
             window.render_title(&self.font);
@@ -329,15 +329,15 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_clear_notified(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<()> {
+    fn handle_window_clear_notified(&mut self, _orb: &mut Orbital, id: usize) -> Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             window.notified_read = false;
             Ok(())
         } else {
-            Err(syscall::Error::new(EBADF))
+            Err(Error::new(EBADF))
         }
     }
-    fn handle_window_map(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<&mut [Color]> {
+    fn handle_window_map(&mut self, _orb: &mut Orbital, id: usize) -> Result<&mut [Color]> {
         if let Some(window) = self.windows.get_mut(&id) {
             window.maps += 1;
             Ok(window.map())
@@ -345,7 +345,7 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_unmap(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<()> {
+    fn handle_window_unmap(&mut self, _orb: &mut Orbital, id: usize) -> Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
             if window.maps > 0 {
                 window.maps -= 1;
@@ -357,14 +357,14 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_properties(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<Properties> {
+    fn handle_window_properties(&mut self, _orb: &mut Orbital, id: usize) -> Result<Properties> {
         if let Some(window) = self.windows.get(&id) {
             Ok(window.properties())
         } else {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_sync(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
+    fn handle_window_sync(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
         if let Some(window) = self.windows.get(&id) {
             schedule(&mut self.redraws, window.rect());
             Ok(0)
@@ -372,7 +372,7 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-    fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
+    fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> Result<usize> {
         self.order.retain(|&e| e != id);
 
         if let Some(id) = self.order.front() {
@@ -400,7 +400,7 @@ impl Handler for OrbitalScheme {
         res
     }
 
-    fn handle_clipboard_new(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
+    fn handle_clipboard_new(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         if let Some(window) = self.windows.get_mut(&id) {
             window.clipboard_seek = 0;
@@ -410,7 +410,7 @@ impl Handler for OrbitalScheme {
         }
     }
 
-    fn handle_clipboard_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
+    fn handle_clipboard_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [u8]) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         if let Some(window) = self.windows.get_mut(&id) {
             let mut i = 0;
@@ -425,7 +425,7 @@ impl Handler for OrbitalScheme {
         }
     }
 
-    fn handle_clipboard_write(&mut self, _orb: &mut Orbital, id: usize, buf: &[u8]) -> syscall::Result<usize> {
+    fn handle_clipboard_write(&mut self, _orb: &mut Orbital, id: usize, buf: &[u8]) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         if let Some(window) = self.windows.get_mut(&id) {
             let mut i = 0;
@@ -441,7 +441,7 @@ impl Handler for OrbitalScheme {
         }
     }
 
-    fn handle_clipboard_close(&mut self, _orb: &mut Orbital, id: usize) -> syscall::Result<usize> {
+    fn handle_clipboard_close(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         if self.windows.contains_key(&id) {
             Ok(0)
@@ -928,7 +928,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
                             window.x = x;
                             let move_event = MoveEvent {
-                                x: x,
+                                x,
                                 y: window.y
                             }.to_event();
                             window.event(move_event);
@@ -994,7 +994,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
                             window.x = x;
                             let move_event = MoveEvent {
-                                x: x,
+                                x,
                                 y: window.y
                             }.to_event();
                             window.event(move_event);
@@ -1085,16 +1085,78 @@ impl<'a> OrbitalSchemeEvent<'a> {
             max_y = cmp::max(max_y, rect.bottom() - 1);
         }
 
-        let mut x = cmp::max(0, cmp::min(max_x, self.scheme.cursor_x + event.dx));
+        let x = cmp::max(0, cmp::min(max_x, self.scheme.cursor_x + event.dx));
         let mut y = cmp::max(0, cmp::min(max_y, self.scheme.cursor_y + event.dy));
         for display in self.orb.displays.iter() {
             let rect = display.screen_rect();
-            if x >= rect.left() && x <= rect.right() - 1 {
+            if x >= rect.left() && x < rect.right() {
                 y = cmp::max(rect.top(), cmp::min(rect.bottom() - 1, y));
             }
         }
 
         self.mouse_event(MouseEvent { x, y });
+    }
+
+    // the user has requested to maximize the window or to restore to the previous window size
+    // (while maximized) by clicking on max/restore icon, or double-clicking on window title bar
+    fn toggle_window_max(&mut self, window_id: usize) {
+        if let Some(window) = self.scheme.windows.get_mut(&window_id) {
+            // Find the index of the Display this window has the most overlap with
+            let mut max_display_i = 0;
+            let mut max_display_area = 0;
+            for (display_i, display) in self.orb.displays.iter().enumerate() {
+                let intersect = display.screen_rect().intersection(&window.rect());
+                let area = intersect.area();
+                if area > max_display_area {
+                    max_display_i = display_i;
+                    max_display_area = area;
+                }
+            }
+
+            schedule(&mut self.scheme.redraws, window.title_rect());
+            schedule(&mut self.scheme.redraws, window.rect());
+
+            let (move_event, resize_event) = match window.max_restore.take() {
+                None => {
+                    // we are about to maximize window, so store current size for restore later
+                    window.max_restore = Some(window.rect());
+
+                    ( // move to the corner of the display
+                        MoveEvent {
+                            x: self.orb.displays[max_display_i].x,
+                            y: self.orb.displays[max_display_i].y + window.title_rect().height()
+                        },
+                        // set window size to the maximum size of the display
+                        ResizeEvent {
+                            width: self.orb.displays[max_display_i].image.width() as u32,
+                            height: (self.orb.displays[max_display_i].image.height() - window.y) as u32
+                        }
+                    )
+                },
+                Some(max_restore) =>
+                    ( // move window to previous position
+                    MoveEvent {
+                        x: max_restore.left(),
+                        y: max_restore.top()
+                    },
+                    // restore the previous window size
+                    ResizeEvent {
+                        width: max_restore.width() as u32,
+                        height: max_restore.height() as u32
+                    }
+                )
+            };
+
+            window.x = move_event.x;
+            window.y = move_event.y;
+
+            window.event(move_event.to_event());
+
+            schedule(&mut self.scheme.redraws, window.title_rect());
+            schedule(&mut self.scheme.redraws, window.rect());
+
+            window.event(resize_event.to_event()); //resize_event() schedules a redraw
+        }
     }
 
     fn button_event(&mut self, event: ButtonEvent) {
@@ -1105,7 +1167,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 for entry in self.scheme.zbuffer.iter() {
                     let id = entry.0;
                     let i = entry.2;
-                    if let Some(window) = self.scheme.windows.get_mut(&id) {
+                    if let Some(window) = self.scheme.windows.get(&id) {
                         if window.rect().contains(self.scheme.cursor_x, self.scheme.cursor_y) {
                             if self.scheme.win_key {
                                 if event.left && ! self.scheme.cursor_left {
@@ -1115,11 +1177,13 @@ impl<'a> OrbitalSchemeEvent<'a> {
                                     }
                                 }
                             } else {
-                                window.event(event.to_event());
-                                if event.left  && ! self.scheme.cursor_left
-                                || event.middle && ! self.scheme.cursor_middle
-                                || event.right && ! self.scheme.cursor_right {
-                                    focus = i;
+                                if let Some(window) = self.scheme.windows.get_mut(&id) {
+                                    window.event(event.to_event());
+                                    if event.left && !self.scheme.cursor_left
+                                        || event.middle && !self.scheme.cursor_middle
+                                        || event.right && !self.scheme.cursor_right {
+                                        focus = i;
+                                    }
                                 }
                             }
                             break;
@@ -1128,58 +1192,11 @@ impl<'a> OrbitalSchemeEvent<'a> {
                             if event.left && ! self.scheme.cursor_left  {
                                 focus = i;
                                 if (window.max_contains(self.scheme.cursor_x, self.scheme.cursor_y)) && (window.resizable) {
-                                    let max_restore_opt = window.max_restore.take();
-
-                                    if max_restore_opt.is_none() {
-                                        window.max_restore = Some(window.rect());
-                                    }
-
-                                    schedule(&mut self.scheme.redraws, window.title_rect());
-                                    schedule(&mut self.scheme.redraws, window.rect());
-
-                                    let mut max_display_i = 0;
-                                    let mut max_display_area = 0;
-                                    for (display_i, display) in self.orb.displays.iter().enumerate() {
-                                        let intersect = display.screen_rect().intersection(&window.rect());
-                                        let area = intersect.area();
-                                        if area > max_display_area {
-                                            max_display_i = display_i;
-                                            max_display_area = area;
-                                        }
-                                    }
-
-                                    if let Some(max_restore) = max_restore_opt {
-                                        window.x = max_restore.left();
-                                        window.y = max_restore.top();
-                                    } else {
-                                        window.x = self.orb.displays[max_display_i].x;
-                                        window.y = self.orb.displays[max_display_i].y + window.title_rect().height();
-                                    }
-
-                                    let move_event = MoveEvent {
-                                        x: window.x,
-                                        y: window.y
-                                    }.to_event();
-                                    window.event(move_event);
-
-                                    schedule(&mut self.scheme.redraws, window.title_rect());
-                                    schedule(&mut self.scheme.redraws, window.rect());
-
-                                    let (width, height) = if let Some(max_restore) = max_restore_opt {
-                                        (max_restore.width(), max_restore.height())
-                                    } else {
-                                        (
-                                            self.orb.displays[max_display_i].image.width(),
-                                            self.orb.displays[max_display_i].image.height() - window.y
-                                        )
-                                    };
-                                    let resize_event = ResizeEvent {
-                                        width: width as u32,
-                                        height: height as u32,
-                                    }.to_event();
-                                    window.event(resize_event);
+                                    self.toggle_window_max(id);
                                 } else if (window.close_contains(self.scheme.cursor_x, self.scheme.cursor_y)) && (!window.unclosable) {
-                                    window.event(QuitEvent.to_event());
+                                    if let Some(window) = self.scheme.windows.get_mut(&id) {
+                                        window.event(QuitEvent.to_event());
+                                    }
                                 } else {
                                     self.scheme.dragging = DragMode::Title(id, self.scheme.cursor_x, self.scheme.cursor_y);
                                 }
@@ -1310,6 +1327,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             self.event(event);
         }
 
+        // TODO call scheme_event() here that repeats the same identical code, or factor out
         for (id, window) in self.scheme.windows.iter_mut() {
             if ! window.events.is_empty() {
                 if !window.notified_read || window.async {
