@@ -363,4 +363,18 @@ mod test {
         let code = buf[1].code; // avoid misaligned access for packed Event :-(
         assert_eq!(code, 2);
     }
+
+    #[test]
+    fn read_empty_queue_returns_zero() {
+        // create a test Window
+        let dummy_config = test_config();
+        let mut window = Window::new(0, 0, 100, 100, 1, Rc::new(dummy_config));
+
+        // Our buffer (elements must be initialized!) will have a length of 2
+        let mut buf: Vec<Event>= vec!(Event::new(), Event::new());
+        assert_eq!(buf.as_mut_slice().len(), 2, "Buffer is not of length 2 as expected");
+
+        // let's try and read events from the empty queue into the buffer
+        assert_eq!(window.read(buf.as_mut_slice()), 0, "Did not expect to read any events");
+    }
 }
