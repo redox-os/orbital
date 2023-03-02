@@ -52,7 +52,7 @@ fn main() {
                     config
                 );
 
-                Command::new(&login_cmd)
+                Command::new(login_cmd)
                     .args(args)
                     .spawn()
                     .expect("orbital: failed to launch login cmd");

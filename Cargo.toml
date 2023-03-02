@@ -21,3 +21,6 @@ toml = "0.5"
 
 [dependencies.orbital-core]
 path = "orbital-core"
+
+[dev-dependencies]
+orbclient = "0.3.30"

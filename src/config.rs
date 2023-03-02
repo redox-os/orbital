@@ -102,10 +102,10 @@ fn parse_colour(colour: &str) -> Result<orbclient::Color, String> {
     
     if chars.len() == 9 && chars[0] == '#' {
         let channels: &[String; 4] = &[
-            chars[1..3].into_iter().collect(),
-            chars[3..5].into_iter().collect(),
-            chars[5..7].into_iter().collect(),
-            chars[7..9].into_iter().collect(),
+            chars[1..3].iter().collect(),
+            chars[3..5].iter().collect(),
+            chars[5..7].iter().collect(),
+            chars[7..9].iter().collect(),
         ];
         let channels: &[u8;4] = &[
             u8::from_str_radix(&channels[0], 16).map_err(|err| err.to_string())?,
