@@ -549,8 +549,12 @@ checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
 [[package]]
 name = "orbclient"
 version = "0.3.43"
+<<<<<<< HEAD
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "974465c5e83cf9df05c1e4137b271d29035c902e39e5ad4c1939837e22160af8"
+=======
+source = "git+https://gitlab.redox-os.org/redox-os/orbclient#185c2b485372f3994c699eb89df283ba17b5bf78"
+>>>>>>> 8066432 (Update orbclient, enable serde feature)
 dependencies = [
  "cfg-if",
  "libc",
@@ -596,6 +600,7 @@ dependencies = [
  "orbfont",
  "orbital-core",
  "redox-daemon",
+ "redox_syscall 0.2.16",
  "serde",
  "serde_derive",
  "toml",
