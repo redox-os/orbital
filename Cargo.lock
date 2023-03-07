@@ -438,15 +438,17 @@ checksum = "18a6dbe30758c9f83eb00cbea4ac95966305f5a7772f3f42ebfc7fc7eddbd8e1"
 
 [[package]]
 name = "orbclient"
-version = "0.3.32"
+version = "0.3.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d3aa1482d3a9cb7547932f54a20910090073e81b3b7b236277c91698a10f83e"
+checksum = "974465c5e83cf9df05c1e4137b271d29035c902e39e5ad4c1939837e22160af8"
 dependencies = [
+ "cfg-if",
  "libc",
  "raw-window-handle 0.3.4",
  "redox_syscall",
  "sdl2",
  "sdl2-sys",
+ "serde",
  "wasm-bindgen",
  "web-sys",
 ]
