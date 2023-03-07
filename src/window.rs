@@ -212,8 +212,8 @@ impl Window {
     }
 
     pub fn read(&mut self, buf: &mut [Event]) -> usize {
-        for i in 0..buf.len() {
-            buf[i] = match self.events.pop_front() {
+        for (i, event) in buf.iter_mut().enumerate() {
+            *event = match self.events.pop_front() {
                 Some(item) => item,
                 None => return i
             };
@@ -282,6 +282,7 @@ mod test {
     use config::Config;
 
     // create a default config that can be used to create Windows for testing
+    // TODO implement or derive Default for orbclient::Color and then just use Config::default()
     fn test_config() -> Config {
         Config {
             cursor: String::default(),
