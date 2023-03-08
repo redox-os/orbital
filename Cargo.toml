@@ -14,7 +14,7 @@ log = "0.4.14"
 orbclient = { version = "0.3.43", features = ["serde"] }
 orbfont = "0.1"
 redox-daemon = "0.1"
-redox_syscall = "0.2.12"
+redox_syscall = "0.3"
 serde = "1"
 serde_derive = "1"
 toml = "0.5"

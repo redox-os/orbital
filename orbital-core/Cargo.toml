@@ -11,7 +11,7 @@ libc = "0.2.48"
 log = "0.4.14"
 orbclient = "0.3"
 orbimage = "0.1"
-redox_syscall = "0.2.1"
+redox_syscall = "0.3"
 
 [dependencies.redox_event]
 git = "https://gitlab.redox-os.org/redox-os/event.git"
