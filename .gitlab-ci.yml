@@ -1,6 +1,5 @@
 image: "redoxos/redoxer:latest"
 
-build:redox:
+test:redox:
   script:
-  - rustup show      # Print version info for debugging
-  - redoxer build --verbose
+  - redoxer test --verbose
