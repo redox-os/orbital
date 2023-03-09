@@ -4,6 +4,7 @@ use orbimage;
 use std::{cmp, mem, ptr, slice};
 use std::cell::Cell;
 use std::path::Path;
+use log::{debug, error};
 
 use rect::Rect;
 
@@ -237,12 +238,12 @@ impl Image {
                         unsafe { mem::transmute(new_data) }
                     ))
                 } else {
-                    println!("orbital Image::from_path_scale: scale {} < 1", scale);
+                    debug!("Image::from_path_scale: scale {} < 1", scale);
                     None
                 }
             },
             Err(err) => {
-                println!("orbital Image::from_path_scale: {}", err);
+                error!("Image::from_path_scale: {}", err);
                 None
             }
         }

@@ -4,6 +4,7 @@ extern crate libc;
 extern crate orbclient;
 extern crate orbimage;
 extern crate syscall;
+extern crate log;
 
 pub mod display;
 pub mod image;
@@ -35,6 +36,7 @@ use syscall::{
     flag::EventFlags,
     SchemeMut,
 };
+use log::{debug, error, info};
 
 #[cfg(target_pointer_width = "32")]
 const CLIPBOARD_FLAG: usize = 1 << 31;
@@ -171,7 +173,7 @@ impl Orbital {
                 unsafe { File::from_raw_fd(socket as RawFd) }
             })
             .map_err(|err| {
-                eprintln!("orbital: failed to open display {}: {}", display_path, err);
+                error!("failed to open display {}: {}", display_path, err);
                 io::Error::from_raw_os_error(err.errno)
             })?;
 
@@ -180,7 +182,7 @@ impl Orbital {
                 unsafe { File::from_raw_fd(socket as RawFd) }
             })
             .map_err(|err| {
-                eprintln!("orbital: failed to create :orbital: {}", err);
+                error!("failed to create :orbital: {}", err);
                 io::Error::from_raw_os_error(err.errno)
             })?;
 
@@ -236,14 +238,7 @@ impl Orbital {
                 };
                 let y = 0;
 
-                println!(
-                    "orbital: Extra display {} at {}, {}, {}, {}",
-                    screen_i,
-                    x,
-                    y,
-                    width,
-                    height
-                );
+                debug!("Extra display {} at {}, {}, {}, {}", screen_i, x, y, width, height);
 
                 displays.push(Display::new(x, y, width, height, extra_file)?);
             }
@@ -541,7 +536,7 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
                 self.handler.handle_window_unmap(&mut self.orb, id)?;
             },
             None => {
-                log::error!("orbital: failed to found mapping 0x{:x}", address);
+                error!("failed to found mapping 0x{:x}", address);
             }
         }
         Ok(0)
@@ -549,11 +544,11 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
     fn funmap_old(&mut self, address: usize) -> syscall::Result<usize> {
         match self.orb.maps.remove(&address) {
             Some((id, _map_size)) => {
-                log::info!("orbital: funmap_old 0x{:x} = {}", address, id);
+                info!("funmap_old 0x{:x} = {}", address, id);
                 self.handler.handle_window_unmap(&mut self.orb, id)?;
             },
             None => {
-                log::error!("orbital: failed to found mapping 0x{:x}", address);
+                error!("failed to found mapping 0x{:x}", address);
             }
         }
         Ok(0)

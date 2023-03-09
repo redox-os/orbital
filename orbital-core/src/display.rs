@@ -6,6 +6,7 @@ use std::{
     os::unix::io::AsRawFd,
     slice,
 };
+use log::error;
 
 use crate::{
     image::{ImageRef, ImageRoi},
@@ -40,7 +41,7 @@ impl Display {
         let image = unsafe {
             display_fd_map(width, height, file.as_raw_fd() as usize)
                 .map_err(|err| {
-                    eprintln!("orbital: failed to map display: {}", err);
+                    error!("failed to map display: {}", err);
                     io::Error::from_raw_os_error(err.errno)
                 })?
         };
@@ -70,7 +71,7 @@ impl Display {
                 self.image = ok;
             },
             Err(err) => {
-                eprintln!("orbital: failed to resize display to {}x{}: {}", width, height, err);
+                error!("failed to resize display to {}x{}: {}", width, height, err);
             }
         }
     }

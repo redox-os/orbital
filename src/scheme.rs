@@ -28,6 +28,7 @@ use std::{
     slice,
     str
 };
+use log::{error, info, warn};
 use syscall::data::Packet;
 use syscall::error::{Error, Result, EBADF};
 use syscall::number::SYS_READ;
@@ -356,7 +357,7 @@ impl Handler for OrbitalScheme {
             if window.maps > 0 {
                 window.maps -= 1;
             } else {
-                log::warn!("orbital: attempted unmap when there are no mappings");
+                warn!("attempted unmap when there are no mappings");
             }
             Ok(())
         } else {
@@ -561,7 +562,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                         )
                     }) {
                         Ok(_) => (),
-                        Err(err) => log::error!("failed to sync display {}: {}", i, err),
+                        Err(err) => error!("failed to sync display {}: {}", i, err),
                     }
                 }
             }
@@ -573,12 +574,12 @@ impl<'a> OrbitalSchemeEvent<'a> {
             Ok(string) => match string.parse::<i32>() {
                 Ok(value) => value,
                 Err(err) => {
-                    log::error!("failed to parse volume '{}': {}", string, err);
+                    error!("failed to parse volume '{}': {}", string, err);
                     return;
                 }
             },
             Err(err) => {
-                log::error!("failed to read volume: {}", err);
+                error!("failed to read volume: {}", err);
                 return;
             }
         };
@@ -597,7 +598,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         match fs::write("audio:volume", format!("{}", self.scheme.volume_value)) {
             Ok(()) => (),
             Err(err) => {
-                log::error!("failed to write volume {}: {}", self.scheme.volume_value, err);
+                error!("failed to write volume {}: {}", self.scheme.volume_value, err);
                 return;
             }
         }
@@ -649,7 +650,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         }
 
-        let crate::config::Config { bar_color, bar_highlight_color, text_color, text_highlight_color, .. } = *self.scheme.config;
+        let Config { bar_color, bar_highlight_color, text_color, text_highlight_color, .. } = *self.scheme.config;
 
         let list_h = rendered_text.len() as i32 * 20 + 4;
         let list_w = 400;
@@ -672,7 +673,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
     }
 
     fn draw_volume_osd(&mut self) {
-        let crate::config::Config { bar_color, bar_highlight_color, .. } = *self.scheme.config;
+        let Config { bar_color, bar_highlight_color, .. } = *self.scheme.config;
 
         //TODO: HiDPI
         let list_h = 20 + 4;
@@ -826,7 +827,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 _ => {
                     //TODO: remove hack for sending super events to lowest numbered window
                     if let Some((id, window)) = self.scheme.windows.iter_mut().next() {
-                        log::info!("sending super {:?} to {}", event, id);
+                        info!("sending super {:?} to {}", event, id);
                         let mut super_event = event.to_event();
                         super_event.code += 0x1000_0000;
                         window.event(super_event);
@@ -1324,7 +1325,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 }
             },
             EventOption::Resize(event) => self.resize_event(event),
-            event => log::error!("orbital: unexpected event: {:?}", event)
+            event => error!("unexpected event: {:?}", event)
         }
     }
 
