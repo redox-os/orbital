@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::Read;
+use log::{debug, error};
 use toml;
 use serde_derive::Deserialize;
 use orbclient::Color;
@@ -70,7 +71,7 @@ impl Config {
         match toml::from_str(config) {
             Ok(config) => config,
             Err(err) => {
-                println!("orbital: failed to parse config '{}'", err);
+                error!("failed to parse config '{}'", err);
                 Config::default()
             }
         }
@@ -82,10 +83,10 @@ impl Config {
 
         match File::open(path) {
             Ok(mut file) => match file.read_to_string(&mut string) {
-                Ok(_) => println!("orbital: reading config from path: '{}'", path),
-                Err(err) => println!("orbital: failed to read config '{}': {}", path, err),
+                Ok(_) => debug!("reading config from path: '{}'", path),
+                Err(err) => error!("failed to read config '{}': {}", path, err),
             },
-            Err(err) => println!("orbital: failed to open config '{}': {}", path, err),
+            Err(err) => error!("failed to open config '{}': {}", path, err),
         }
 
         Self::config_from_string(&string)
