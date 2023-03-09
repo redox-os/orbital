@@ -94,8 +94,7 @@ impl Config {
 
 #[cfg(test)]
 mod test {
-    use orbclient::Color;
-    use config::{Config, text_highlight_color_default};
+    use config::{background_color_default, Config, text_highlight_color_default};
 
     #[test]
     fn non_existent_config_file() {
@@ -105,20 +104,28 @@ mod test {
     }
 
     #[test]
-    fn partial_valid_config() {
+    fn partial_config() {
         let config_str = r##"
             background_color = "#FFFFFFFF"
         "##;
         let config = Config::config_from_string(config_str);
-        assert_eq!(config.background_color, Color::rgba(255, 255, 255, 255));
+        assert_eq!(config.background_color, background_color_default());
     }
 
     #[test]
-    fn full_valid_config() {
-    }
-
-    #[test]
-    fn invalid_config() {
-
+    fn valid_partial_config() {
+        let config_str = r##"cursor = "/ui/left_ptr.png"
+bottom_left_corner = "/ui/bottom_left_corner.png"
+bottom_right_corner = "/ui/bottom_right_corner.png"
+bottom_side = "/ui/bottom_side.png"
+left_side = "/ui/left_side.png"
+right_side = "/ui/right_side.png"
+window_max = "/ui/window_max.png"
+window_max_unfocused = "/ui/window_max_unfocused.png"
+window_close = "/ui/window_close.png"
+window_close_unfocused = "/ui/window_close_unfocused.png""##;
+        let config = Config::config_from_string(config_str);
+        assert_eq!(config.background_color, background_color_default());
+        assert_eq!(config.bottom_left_corner, "/ui/bottom_left_corner.png");
     }
 }
