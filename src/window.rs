@@ -193,7 +193,7 @@ impl Window {
 
     pub fn draw(&mut self, display: &mut Display, rect: &Rect) {
         let self_rect = self.rect();
-        let intersect = self_rect.intersection(&rect);
+        let intersect = self_rect.intersection(rect);
         if ! intersect.is_empty() {
             if self.transparent {
                 display.roi(&intersect).blend(&self.image.roi(&intersect.offset(-self_rect.left(), -self_rect.top())));
@@ -212,8 +212,8 @@ impl Window {
     }
 
     pub fn read(&mut self, buf: &mut [Event]) -> usize {
-        for i in 0..buf.len() {
-            buf[i] = match self.events.pop_front() {
+        for (i, event) in buf.iter_mut().enumerate() {
+            *event = match self.events.pop_front() {
                 Some(item) => item,
                 None => return i
             };
@@ -229,7 +229,7 @@ impl Window {
         if self.transparent { properties |= orbital_core::PROPERTY_TRANSPARENT; }
         if self.unclosable { properties |= orbital_core::PROPERTY_UNCLOSABLE; }
         Properties {
-            properties: properties,
+            properties,
             x: self.x,
             y: self.y,
             width: self.width(),
@@ -271,5 +271,111 @@ impl Window {
         }
 
         self.image = new_image;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use orbclient::{Color, Event};
+    use window::Window;
+    use std::rc::Rc;
+    use config::Config;
+
+    // create a default config that can be used to create Windows for testing
+    // TODO implement or derive Default for orbclient::Color and then just use Config::default()
+    fn test_config() -> Config {
+        Config {
+            cursor: String::default(),
+            bottom_left_corner: String::default(),
+            bottom_right_corner: String::default(),
+            bottom_side: String::default(),
+            left_side: String::default(),
+            right_side: String::default(),
+            window_max: String::default(),
+            window_max_unfocused: String::default(),
+            window_close: String::default(),
+            window_close_unfocused: String::default(),
+
+            background_color: Color::rgba(1, 2, 3, 200),
+            bar_color: Color::rgba(1, 2, 3, 200),
+            bar_highlight_color: Color::rgba(1, 2, 3, 200),
+            text_color: Color::rgba(1, 2, 3, 200),
+            text_highlight_color: Color::rgba(1, 2, 3, 200),
+        }
+    }
+
+    #[test]
+    fn read_limited_to_buffer_size() {
+        // create a test Window
+        let dummy_config = test_config();
+        let mut window = Window::new(0, 0, 100, 100, 1, Rc::new(dummy_config));
+
+        // Add three events to the window's queue of events
+        let mut event_1 = Event::new();
+        event_1.code = 1;
+        window.events.push_back(event_1);
+        let mut event_2 = Event::new();
+        event_2.code = 2;
+        window.events.push_back(event_2);
+        let mut event_3 = Event::new();
+        event_3.code = 3;
+        window.events.push_back(event_3);
+
+        // Our buffer (elements must be initialized!) will only have a length of 2
+        let mut buf: Vec<Event>= vec!(Event::new(), Event::new()); // code = 0
+        assert_eq!(buf.as_mut_slice().len(), 2, "Buffer is not of length 2 as expected");
+
+        // let's try and read three events from the queue into the buffer of size two
+        assert_eq!(window.read(buf.as_mut_slice()), 2, "Did not read two events as expected");
+        // we should not crash with an indexing error beyond the length of the vectors/slices passed to read()
+
+        // buf contains the correct events in the correct order
+        let code = buf[0].code; // avoid misaligned access for packed Event :-(
+        assert_eq!(code, 1);
+        let code = buf[1].code; // avoid misaligned access for packed Event :-(
+        assert_eq!(code, 2);
+    }
+
+    #[test]
+    fn read_limited_to_available_events() {
+        // create a test Window
+        let dummy_config = test_config();
+        let mut window = Window::new(0, 0, 100, 100, 1, Rc::new(dummy_config));
+
+        // Add two events to the window's queue of events
+        let mut event_1 = Event::new();
+        event_1.code = 1;
+        window.events.push_back(event_1);
+        let mut event_2 = Event::new();
+        event_2.code = 2;
+        window.events.push_back(event_2);
+
+        // Our buffer (elements must be initialized!) will have a length of 4
+        let mut buf: Vec<Event>= vec!(Event::new(), Event::new(), Event::new(), Event::new());
+        assert_eq!(buf.as_mut_slice().len(), 4, "Buffer is not of length 4 as expected");
+
+        // let's try and read 2 events from the queue into the buffer
+        assert_eq!(window.read(buf.as_mut_slice()), 2, "Did not read two events as expected");
+        // we should not panic with an indexing error beyond the length of the windows event queue
+
+        // buf contains the correct events in the correct order
+        let code = buf[0].code; // avoid misaligned access for packed Event :-(
+        assert_eq!(code, 1);
+        let code = buf[1].code; // avoid misaligned access for packed Event :-(
+        assert_eq!(code, 2);
+    }
+
+    #[test]
+    fn read_empty_queue_returns_zero() {
+        // create a test Window
+        let dummy_config = test_config();
+        let mut window = Window::new(0, 0, 100, 100, 1, Rc::new(dummy_config));
+
+        // Our buffer (elements must be initialized!) will have a length of 2
+        let mut buf: Vec<Event>= vec!(Event::new(), Event::new());
+        assert_eq!(buf.as_mut_slice().len(), 2, "Buffer is not of length 2 as expected");
+
+        // let's try and read events from the empty queue into the buffer
+        assert_eq!(window.read(buf.as_mut_slice()), 0, "Did not expect to read any events");
     }
 }

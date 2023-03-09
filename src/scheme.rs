@@ -382,7 +382,7 @@ impl Handler for OrbitalScheme {
         self.order.retain(|&e| e != id);
 
         if let Some(id) = self.order.front() {
-            if let Some(window) = self.windows.get(&id){
+            if let Some(window) = self.windows.get(id){
                 schedule(&mut self.redraws, window.title_rect());
                 schedule(&mut self.redraws, window.rect());
             }
@@ -533,41 +533,38 @@ impl<'a> OrbitalSchemeEvent<'a> {
         }
 
         // Sync any parts of displays that changed
-        match total_redraw_opt {
-            Some(total_redraw) => {
-                for (i, display) in self.orb.displays.iter_mut().enumerate() {
-                    let display_redraw = total_redraw.intersection(&display.screen_rect());
-                    if ! display_redraw.is_empty() {
-                        // Keep synced with vesad
-                        #[allow(dead_code)]
-                        #[repr(packed)]
-                        struct SyncRect {
-                            x: i32,
-                            y: i32,
-                            w: i32,
-                            h: i32,
-                        }
+        if let Some(total_redraw) = total_redraw_opt {
+            for (i, display) in self.orb.displays.iter_mut().enumerate() {
+                let display_redraw = total_redraw.intersection(&display.screen_rect());
+                if ! display_redraw.is_empty() {
+                    // Keep synced with vesad
+                    #[allow(dead_code)]
+                    #[repr(packed)]
+                    struct SyncRect {
+                        x: i32,
+                        y: i32,
+                        w: i32,
+                        h: i32,
+                    }
 
-                        let sync_rect = SyncRect {
-                            x: display_redraw.left() - display.x,
-                            y: display_redraw.top() - display.y,
-                            w: display_redraw.width(),
-                            h: display_redraw.height(),
-                        };
+                    let sync_rect = SyncRect {
+                        x: display_redraw.left() - display.x,
+                        y: display_redraw.top() - display.y,
+                        w: display_redraw.width(),
+                        h: display_redraw.height(),
+                    };
 
-                        match display.file.write(unsafe {
-                            slice::from_raw_parts(
-                                &sync_rect as *const SyncRect as *const u8,
-                                mem::size_of::<SyncRect>()
-                            )
-                        }) {
-                            Ok(_) => (),
-                            Err(err) => log::error!("failed to sync display {}: {}", i, err),
-                        }
+                    match display.file.write(unsafe {
+                        slice::from_raw_parts(
+                            &sync_rect as *const SyncRect as *const u8,
+                            mem::size_of::<SyncRect>()
+                        )
+                    }) {
+                        Ok(_) => (),
+                        Err(err) => log::error!("failed to sync display {}: {}", i, err),
                     }
                 }
-            },
-            None => (),
+            }
         }
     }
 
@@ -597,7 +594,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         };
 
-        match fs::write("audio:volume", &format!("{}", self.scheme.volume_value)) {
+        match fs::write("audio:volume", format!("{}", self.scheme.volume_value)) {
             Ok(()) => (),
             Err(err) => {
                 log::error!("failed to write volume {}: {}", self.scheme.volume_value, err);
@@ -626,7 +623,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
             // Redraw new focused window
             if let Some(id) = self.scheme.order.front() {
-                if let Some(window) = self.scheme.windows.get_mut(&id){
+                if let Some(window) = self.scheme.windows.get_mut(id){
                     schedule(&mut self.scheme.redraws, window.title_rect());
                     schedule(&mut self.scheme.redraws, window.rect());
                     window.event(FocusEvent {
@@ -643,11 +640,11 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         let mut rendered_text: Vec<orbfont::Text> = vec![];
         for id in self.scheme.order.iter() {
-            if let Some(window) = self.scheme.windows.get(&id) {
+            if let Some(window) = self.scheme.windows.get(id) {
                 if window.title.is_empty() {
                     rendered_text.push(self.scheme.font.render(&format!("[unnamed #{}]", id), 16.0));
                 } else {
-                    rendered_text.push(self.scheme.font.render(&format!("{}", &window.title), 16.0));
+                    rendered_text.push(self.scheme.font.render(&(window.title.to_string()), 16.0));
                 }
             }
         }
@@ -720,7 +717,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             match event.scancode {
                 orbclient::K_Q => if event.pressed {
                     if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(&id) {
+                        if let Some(window) = self.scheme.windows.get_mut(id) {
                             window.event(QuitEvent.to_event());
                         }
                     }
@@ -744,7 +741,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 orbclient::K_LEFT |
                 orbclient::K_RIGHT => if event.pressed {
                     if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(&id) {
+                        if let Some(window) = self.scheme.windows.get_mut(id) {
                             if ! window.borderless {
                                 schedule(&mut self.scheme.redraws, window.title_rect());
                                 schedule(&mut self.scheme.redraws, window.rect());
@@ -792,7 +789,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 },
                 orbclient::K_C => if event.pressed {
                     if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(&id) {
+                        if let Some(window) = self.scheme.windows.get_mut(id) {
                             //TODO: set window's clipboard to primary
                             let clipboard_event = ClipboardEvent {
                                 kind: orbclient::CLIPBOARD_COPY,
@@ -804,7 +801,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 },
                 orbclient::K_X => if event.pressed {
                     if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(&id) {
+                        if let Some(window) = self.scheme.windows.get_mut(id) {
                             //TODO: set window's clipboard to primary
                             let clipboard_event = ClipboardEvent {
                                 kind: orbclient::CLIPBOARD_CUT,
@@ -816,7 +813,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 },
                 orbclient::K_V => if event.pressed {
                     if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(&id) {
+                        if let Some(window) = self.scheme.windows.get_mut(id) {
                             //TODO: set window's clipboard to primary
                             let clipboard_event = ClipboardEvent {
                                 kind: orbclient::CLIPBOARD_PASTE,
@@ -837,7 +834,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 }
             }
         } else if let Some(id) = self.scheme.order.front() {
-            if let Some(window) = self.scheme.windows.get_mut(&id) {
+            if let Some(window) = self.scheme.windows.get_mut(id) {
                 if event.pressed && event.character != '\0' {
                     let text_input_event = TextInputEvent {
                         character: event.character,
@@ -1063,7 +1060,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
     fn mouse_relative_event(&mut self, event: MouseRelativeEvent) {
         let mut relative_cursor_opt = None;
         if let Some(id) = self.scheme.order.front() {
-            if let Some(window) = self.scheme.windows.get_mut(&id) {
+            if let Some(window) = self.scheme.windows.get_mut(id) {
                 //TODO: handle grab?
                 if window.mouse_relative {
                     // Send relative event
@@ -1187,8 +1184,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                                         self.scheme.dragging = DragMode::Title(id, self.scheme.cursor_x, self.scheme.cursor_y);
                                     }
                                 }
-                            } else {
-                                if let Some(window) = self.scheme.windows.get_mut(&id) {
+                            } else if let Some(window) = self.scheme.windows.get_mut(&id) {
                                     window.event(event.to_event());
                                     if event.left && !self.scheme.cursor_left
                                         || event.middle && !self.scheme.cursor_middle
@@ -1196,7 +1192,6 @@ impl<'a> OrbitalSchemeEvent<'a> {
                                         focus = i;
                                     }
                                 }
-                            }
                             break;
                         } else if window.title_rect().contains(self.scheme.cursor_x, self.scheme.cursor_y) {
                             //TODO: Trigger max and exit on release
@@ -1250,7 +1245,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 if focus > 0 {
                     // Redraw old focused window
                     if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(&id){
+                        if let Some(window) = self.scheme.windows.get_mut(id){
                             schedule(&mut self.scheme.redraws, window.title_rect());
                             schedule(&mut self.scheme.redraws, window.rect());
                             window.event(FocusEvent {
@@ -1277,7 +1272,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
                     // Redraw new focused window
                     if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(&id){
+                        if let Some(window) = self.scheme.windows.get_mut(id){
                             schedule(&mut self.scheme.redraws, window.title_rect());
                             schedule(&mut self.scheme.redraws, window.rect());
                             window.event(FocusEvent {
@@ -1408,7 +1403,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         }
 
         if let Some(id) = self.scheme.order.front() {
-            if let Some(window) = self.scheme.windows.get(&id) {
+            if let Some(window) = self.scheme.windows.get(id) {
                 schedule(&mut self.scheme.redraws, window.title_rect());
                 schedule(&mut self.scheme.redraws, window.rect());
             }

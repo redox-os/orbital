@@ -1,54 +1,10 @@
 use std::fs::File;
 use std::io::Read;
 use toml;
+use serde_derive::Deserialize;
+use orbclient::Color;
 
-#[derive(Default, Deserialize, Clone)]
-#[serde(default)]
-struct TmpConfig {
-    pub cursor: String,
-    pub bottom_left_corner: String,
-    pub bottom_right_corner: String,
-    pub bottom_side: String,
-    pub left_side: String,
-    pub right_side: String,
-    pub window_max: String,
-    pub window_max_unfocused: String,
-    pub window_close: String,
-    pub window_close_unfocused: String,
-
-    pub background_color: String,
-    pub bar_color: String,
-    pub bar_highlight_color: String,
-    pub text_color: String,
-    pub text_highlight_color: String,
-}
-
-impl Into<Config> for TmpConfig {
-    fn into(self) -> Config {
-        Config {
-            cursor: self.cursor.clone(),
-            bottom_left_corner: self.bottom_left_corner.clone(),
-            bottom_right_corner: self.bottom_right_corner.clone(),
-
-            left_side: self.left_side.clone(),
-            right_side: self.right_side.clone(),
-            bottom_side: self.bottom_side.clone(),
-
-            window_max: self.window_max.clone(),
-            window_max_unfocused: self.window_max_unfocused.clone(),
-            window_close: self.window_close.clone(),
-            window_close_unfocused: self.window_close_unfocused.clone(),
-
-            background_color: parse_colour(&self.background_color).unwrap_or(orbclient::Color::rgb(0, 0, 0)),
-            bar_color: parse_colour(&self.bar_color).unwrap_or(orbclient::Color::rgba(47, 52, 63, 224)),
-            bar_highlight_color: parse_colour(&self.bar_highlight_color).unwrap_or(orbclient::Color::rgba(80, 86, 102, 224)),
-            text_color: parse_colour(&self.text_color).unwrap_or(orbclient::Color::rgb(204, 210, 224)),
-            text_highlight_color: parse_colour(&self.text_highlight_color).unwrap_or(orbclient::Color::rgb(204, 210, 224)),
-        }
-    }
-}
-
-#[derive(Clone)]
+#[derive(Deserialize, Clone)]
 pub struct Config {
     pub cursor: String,
     pub bottom_left_corner: String,
@@ -61,66 +17,115 @@ pub struct Config {
     pub window_close: String,
     pub window_close_unfocused: String,
 
-    pub background_color: orbclient::Color,
-    pub bar_color: orbclient::Color,
-    pub bar_highlight_color: orbclient::Color,
-    pub text_color: orbclient::Color,
-    pub text_highlight_color: orbclient::Color,
+    #[serde(default = "background_color_default")]
+    pub background_color: Color,
+    #[serde(default = "bar_color_default")]
+    pub bar_color: Color,
+    #[serde(default = "bar_highlight_color_default")]
+    pub bar_highlight_color: Color,
+    #[serde(default = "text_color_default")]
+    pub text_color: Color,
+    #[serde(default = "text_highlight_color_default")]
+    pub text_highlight_color: Color,
 }
 
-impl TmpConfig {
-    fn from_path(path: &str) -> TmpConfig {
+fn background_color_default() -> Color { Color::rgb(0, 0, 0) }
+fn bar_color_default() -> Color { Color::rgba(47, 52, 63, 224) }
+fn bar_highlight_color_default() -> Color { Color::rgba(80, 86, 102, 224) }
+fn text_color_default() -> Color { Color::rgb(204, 210, 224) }
+fn text_highlight_color_default() -> Color { Color::rgb(204, 210, 224) }
+
+/// Create a sane default Orbital [Config] in case none is supplied or it is unreadable
+impl Default for Config {
+    fn default() -> Self {
+        // Cannot use "..Default::default() for all these fields as that is recursive, so they
+        // all have to be "defaulted" manually.
+        Config {
+            // TODO: What would be good or better defaults for these config values?
+            cursor: String::default(),
+            bottom_left_corner: String::default(),
+            bottom_right_corner: String::default(),
+            bottom_side: String::default(),
+            left_side: String::default(),
+            right_side: String::default(),
+            window_max: String::default(),
+            window_max_unfocused: String::default(),
+            window_close: String::default(),
+            window_close_unfocused: String::default(),
+
+            // These are the default colors for Orbital that have been defined
+            background_color: background_color_default(),
+            bar_color: bar_color_default(),
+            bar_highlight_color: bar_highlight_color_default(),
+            text_color: text_color_default(),
+            text_highlight_color: text_highlight_color_default(),
+        }
+    }
+}
+
+/// [Config] holds configuration information for Orbital, such as colors, cursors etc.
+impl Config {
+    // returns the default config if the string passed is not a valid config
+    fn config_from_string(config: &str) -> Config {
+        match toml::from_str(config) {
+            Ok(config) => config,
+            Err(err) => {
+                println!("orbital: failed to parse config '{}'", err);
+                Config::default()
+            }
+        }
+    }
+
+    /// Read an Orbital configuration from a toml file at `path`
+    pub fn from_path(path: &str) -> Config {
         let mut string = String::new();
 
         match File::open(path) {
             Ok(mut file) => match file.read_to_string(&mut string) {
-                Ok(_) => (),
+                Ok(_) => println!("orbital: reading config from path: '{}'", path),
                 Err(err) => println!("orbital: failed to read config '{}': {}", path, err),
             },
             Err(err) => println!("orbital: failed to open config '{}': {}", path, err),
         }
 
-        match toml::from_str(&string) {
-            Ok(config) => config,
-            Err(err) => {
-                println!("orbital: failed to parse config '{}': {}", path, err);
-                TmpConfig::default()
-            }
-        }
+        Self::config_from_string(&string)
     }
 }
 
-impl Config {
-    pub fn from_path(path: &str) -> Config {
-        TmpConfig::from_path(path).into()
+#[cfg(test)]
+mod test {
+    use config::{background_color_default, Config, text_highlight_color_default};
+
+    #[test]
+    fn non_existent_config_file() {
+        let config = Config::from_path("no-such-file.toml");
+        assert_eq!(config.cursor, "");
+        assert_eq!(config.text_highlight_color, text_highlight_color_default());
     }
-}
 
-/// Parse ARGB colours from TOML file
-fn parse_colour(colour: &str) -> Result<orbclient::Color, String> {
-    let chars: Vec<char> = colour.chars().collect();
-    
-    if chars.len() == 9 && chars[0] == '#' {
-        let channels: &[String; 4] = &[
-            chars[1..3].into_iter().collect(),
-            chars[3..5].into_iter().collect(),
-            chars[5..7].into_iter().collect(),
-            chars[7..9].into_iter().collect(),
-        ];
-        let channels: &[u8;4] = &[
-            u8::from_str_radix(&channels[0], 16).map_err(|err| err.to_string())?,
-            u8::from_str_radix(&channels[1], 16).map_err(|err| err.to_string())?,
-            u8::from_str_radix(&channels[2], 16).map_err(|err| err.to_string())?,
-            u8::from_str_radix(&channels[3], 16).map_err(|err| err.to_string())?,
-        ];
+    #[test]
+    fn partial_config() {
+        let config_str = r##"
+            background_color = "#FFFFFFFF"
+        "##;
+        let config = Config::config_from_string(config_str);
+        assert_eq!(config.background_color, background_color_default());
+    }
 
-        Ok(orbclient::Color::rgba(
-            channels[1],
-            channels[2],
-            channels[3],
-            channels[0],
-        ))
-    } else {
-        Err(format!("{} is not a valid colour", colour))
+    #[test]
+    fn valid_partial_config() {
+        let config_str = r##"cursor = "/ui/left_ptr.png"
+bottom_left_corner = "/ui/bottom_left_corner.png"
+bottom_right_corner = "/ui/bottom_right_corner.png"
+bottom_side = "/ui/bottom_side.png"
+left_side = "/ui/left_side.png"
+right_side = "/ui/right_side.png"
+window_max = "/ui/window_max.png"
+window_max_unfocused = "/ui/window_max_unfocused.png"
+window_close = "/ui/window_close.png"
+window_close_unfocused = "/ui/window_close_unfocused.png""##;
+        let config = Config::config_from_string(config_str);
+        assert_eq!(config.background_color, background_color_default());
+        assert_eq!(config.bottom_left_corner, "/ui/bottom_left_corner.png");
     }
 }

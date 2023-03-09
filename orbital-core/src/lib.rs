@@ -32,7 +32,7 @@ use syscall::{
     data::Packet,
     error::EINVAL,
     flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR},
-    EventFlags,
+    flag::EventFlags,
     SchemeMut,
 };
 
@@ -294,7 +294,7 @@ impl Orbital {
 
         let me = Rc::new(RefCell::new(OrbitalHandler {
             orb: self,
-            handler: handler,
+            handler,
         }));
         let me2 = Rc::clone(&me);
 

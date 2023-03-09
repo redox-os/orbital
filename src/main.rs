@@ -6,7 +6,6 @@ extern crate env_logger;
 extern crate log;
 extern crate orbclient;
 extern crate orbfont;
-#[macro_use]
 extern crate serde_derive;
 extern crate syscall;
 extern crate toml;
@@ -52,7 +51,7 @@ fn main() {
                     config
                 );
 
-                Command::new(&login_cmd)
+                Command::new(login_cmd)
                     .args(args)
                     .spawn()
                     .expect("orbital: failed to launch login cmd");

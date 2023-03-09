@@ -17,7 +17,14 @@ redox-daemon = "0.1"
 redox_syscall = "0.3"
 serde = "1"
 serde_derive = "1"
-toml = "0.5"
+toml = "0.7"
 
 [dependencies.orbital-core]
 path = "orbital-core"
+
+[dev-dependencies]
+orbclient = "0.3"
+
+#TODO remove before merging MR
+[patch.crates-io]
+orbclient = { git = 'https://gitlab.redox-os.org/redox-os/orbclient' }
