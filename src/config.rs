@@ -110,7 +110,7 @@ mod test {
             background_color = "#FFFFFFFF"
         "##;
         let config = Config::config_from_string(config_str);
-        assert_eq!(config.background_color, Color.rgba(255, 255, 255, 255));
+        assert_eq!(config.background_color, Color::rgba(255, 255, 255, 255));
     }
 
     #[test]
