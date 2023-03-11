@@ -18,6 +18,8 @@ redox_syscall = "0.3"
 serde = "1"
 serde_derive = "1"
 toml = "0.7"
+# Downgrade due to improper x86 CPU feature detection
+ab_glyph_rasterizer = "=0.1.5"
 
 [dependencies.orbital-core]
 path = "orbital-core"
