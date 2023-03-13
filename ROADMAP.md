@@ -78,21 +78,32 @@ Can we remove these duplicates or merge them under orbutils?
       then it would make sense to support them. But if not, then just extra effort. Supporting them can make it easier to
       develop and improve them (until redox is the main work OS for contributors) as you can dev on linux/macOS.
 * Decide what is the GUI toolkit/framework to be used going forward
-* orbital is made a workspace project
-* orbital-core is made a workspace member
-    * If it is included by crates outside the orbital workspace, then maybe make it a lib.
-* orbutils can be kept as a separate workspace project, or absorbed as part of orbital workspace
-    * Once GUI port and cleanup is done, each util can just be a workspace member (shares dependencies in target and
-      faster compiles) and we can remove the two-tiers in this crate at the moment.
-    * All "utils" are combined into one "orbutils" package, and they are all ported to use the same UI toolkit
-      (slint, iced, egui, whatever). i.e. orbterm is moved into utils.
-    * Such utils (i.e. other apps) should be able to be written by anyone. Any dependencies they _require_ on orbital should be exposed
-      public API, via a lib of orbital. They depend on "orbital" (but just the lib part).
-    * orbclient should be part of orbital and the API for client apps, and exposed as a lib.
-        * That would allow some internal re-org between orbclient and orbital-core (e.g. "core" structs such as Color
-          are IMHO part of orbital-core). Backwards compatibility for any app _outside_ combined orbital and orbutils
-          can be taken care of by re-exports.
-* All crates have CI/CD added to them to make sure they compile at least
-    * Remove all obsolete references to travis CI?
-    * TBD (see above) on which OSes
+* Review code organization to make development easier and remove confusion and duplication
+  * orbital is made a workspace project
+  * orbital-core is made a workspace member
+      * If it is included by crates outside the orbital workspace, then maybe make it a lib.
+  * orbutils can be kept as a separate workspace project, or absorbed as part of orbital workspace
+      * Once GUI port and cleanup is done, each util can just be a workspace member (shares dependencies in target and
+        faster compiles) and we can remove the two-tiers in this crate at the moment.
+      * All "utils" are combined into one "orbutils" package, and they are all ported to use the same UI toolkit
+        (slint, iced, egui, whatever). i.e. orbterm is moved into utils.
+      * Such utils (i.e. other apps) should be able to be written by anyone. Any dependencies they _require_ on orbital should be exposed
+        public API, via a lib of orbital. They depend on "orbital" (but just the lib part).
+      * orbclient should be part of orbital and the API for client apps, and exposed as a lib.
+          * That would allow some internal re-org between orbclient and orbital-core (e.g. "core" structs such as Color
+            are IMHO part of orbital-core). Backwards compatibility for any app _outside_ combined orbital and orbutils
+            can be taken care of by re-exports.
+* Improve testing, stability and ease contributions
+  * Improve test coverage, have the tests run in CI and don't merge if not green
+    * More extensive test coverage makes contributions easier and mroe reliable for all, but especially for new developers
+  * All crates have CI/CD added to them to make sure they compile at least
+      * Remove all obsolete references to travis CI?
+      * TBD (see above) on which OSes
 * Would we consider bundling other utils in their place, if we find good rust-based alternatives?
+* Ease adoption of redox via more feature parity of orbital
+  * Make it easier for users to work with redox, coming from macos and linux (windows?) by implementing more desktop
+features
+* Provide a compelling reason to use redox
+  * Add advanced features to orbital to help make using redox a standout experience
+* Let users adapt redox to them, not force them to adapt to redox
+  * More configurability, less hard coded (config files, settings apps, themes)
