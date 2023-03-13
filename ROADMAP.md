@@ -92,6 +92,7 @@ Can we remove these duplicates or merge them under orbutils?
           * That would allow some internal re-org between orbclient and orbital-core (e.g. "core" structs such as Color
             are IMHO part of orbital-core). Backwards compatibility for any app _outside_ combined orbital and orbutils
             can be taken care of by re-exports.
+* Update all components/crates to the latest edition (2021?)
 * Improve testing, stability and ease contributions
   * Improve test coverage, have the tests run in CI and don't merge if not green
     * More extensive test coverage makes contributions easier and mroe reliable for all, but especially for new developers
