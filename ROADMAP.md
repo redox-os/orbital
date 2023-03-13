@@ -7,7 +7,6 @@ That doesn't prevent using it for quite a while and making improvements and addi
 where we want to go eventually can help take decisions along the way.
 
 * Should we continue to invest in orbital as the main (only?) compositor and window manager and desktop of redox?
-    * Should compositor and window manager continue to be the same thing?
 
 ## Functionalities
 * Compositor
