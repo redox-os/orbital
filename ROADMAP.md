@@ -60,6 +60,8 @@ Continue work to move off orbtk, until the point we can remove it entirely?
     * orblogin and orbutils / orblogin
     * orblauncher and orbutils / launcher
     * orbackground and orbutils / orb background
+* The builds on all the orbutils-* variants fail for me
+  * Are they expected to build? Or are they deprecated? Could they be deleted and left to gitlab memory?
 
 Can we remove these duplicates or merge them under orbutils?
 * Can we make orbterm a part of orbutils, as "just one more" orbutil app?
