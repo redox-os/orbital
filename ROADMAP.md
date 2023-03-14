@@ -92,10 +92,14 @@ Can we remove these duplicates or merge them under orbutils?
           * That would allow some internal re-org between orbclient and orbital-core (e.g. "core" structs such as Color
             are IMHO part of orbital-core). Backwards compatibility for any app _outside_ combined orbital and orbutils
             can be taken care of by re-exports.
+* Examples in orbital and some other places are not compiled in CI. If what they show is covered in orbutils, 
+consider deleting them and just referring people to orbutils
 * Update all components/crates to the latest edition (2021?)
+* Add doc comments and doc tests to API methods for use by application developers
+  * Deploy "cargo doc" generated docs somewhere
 * Improve testing, stability and ease contributions
   * Improve test coverage, have the tests run in CI and don't merge if not green
-    * More extensive test coverage makes contributions easier and mroe reliable for all, but especially for new developers
+    * More extensive test coverage makes contributions easier and more reliable for all, but especially for new developers
   * All crates have CI/CD added to them to make sure they compile at least
       * Remove all obsolete references to travis CI?
       * TBD (see above) on which OSes
