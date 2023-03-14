@@ -96,7 +96,8 @@ Can we remove these duplicates or merge them under orbutils?
             can be taken care of by re-exports.
 * Examples in orbital and some other places are not compiled in CI. If what they show is covered in orbutils, 
 consider deleting them and just referring people to orbutils
-* Update all components/crates to the latest edition (2021?)
+* Update all components/crates to the latest edition (2021)
+  * I see fields named "async" that is a reserved keyword and will need changing
 * Add doc comments and doc tests to API methods for use by application developers
   * Deploy "cargo doc" generated docs somewhere
 * Improve testing, stability and ease contributions
