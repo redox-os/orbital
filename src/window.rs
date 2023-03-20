@@ -49,7 +49,12 @@ pub struct Window {
     config: Rc<Config>
 }
 
+const TITLE_HEIGHT : i32 = 28;
+const TITLE_TEXT_HEIGHT : i32 = 16;
+
 impl Window {
+    // TODO Consider creating Rect for the title area, max and close areas and removing a lot
+    // of the inline size calculations below
     pub fn new(x: i32, y: i32, w: i32, h: i32, scale: i32, config: Rc<Config>) -> Window {
         Window {
             x,
@@ -74,7 +79,6 @@ impl Window {
             mouse_grab: false,
             mouse_relative: false,
             maps: 0,
-
             config
         }
     }
@@ -95,7 +99,7 @@ impl Window {
         if self.borderless {
             Rect::new(-1, -1, 0, 0)
         } else {
-            Rect::new(self.x, self.y - 28 * self.scale, self.width(), 28 * self.scale)
+            Rect::new(self.x, self.y - TITLE_HEIGHT * self.scale, self.width(), TITLE_HEIGHT * self.scale)
         }
     }
 
@@ -140,11 +144,11 @@ impl Window {
     }
 
     pub fn max_contains(&self, x: i32, y: i32) -> bool {
-        ! self.borderless && x >= max(self.x + 6 * self.scale, self.x + self.width() - 36 * self.scale)  && y >= self.y - 28 * self.scale && x < self.x + self.width() - 18 * self.scale && y < self.y
+        ! self.borderless && x >= max(self.x + 6 * self.scale, self.x + self.width() - 36 * self.scale)  && y >= self.y - TITLE_HEIGHT * self.scale && x < self.x + self.width() - 18 * self.scale && y < self.y
     }
 
     pub fn close_contains(&self, x: i32, y: i32) -> bool {
-        ! self.borderless && x >= max(self.x + 6 * self.scale, self.x + self.width() - 18 * self.scale)  && y >= self.y - 28 * self.scale && x < self.x + self.width() && y < self.y
+        ! self.borderless && x >= max(self.x + 6 * self.scale, self.x + self.width() - 18 * self.scale)  && y >= self.y - TITLE_HEIGHT * self.scale && x < self.x + self.width() && y < self.y
     }
 
     pub fn draw_title(&mut self, display: &mut Display, rect: &Rect, focused: bool, window_max: &mut Image, window_close: &mut Image) {
@@ -242,7 +246,7 @@ impl Window {
         let text_color = self.config.text_color;
         let text_highlight_color = self.config.text_highlight_color;
 
-        let title_render = font.render(&self.title, (16 * self.scale) as f32);
+        let title_render = font.render(&self.title, (TITLE_TEXT_HEIGHT * self.scale) as f32);
 
         let color_blank = Color::rgba(0, 0, 0, 0);
 
@@ -257,7 +261,7 @@ impl Window {
 
     pub fn set_size(&mut self, w: i32, h: i32) {
         if self.maps > 0 {
-            log::warn!("orbital: resized while {} mapping(s) still held", self.maps);
+            log::warn!("resized while {} mapping(s) still held", self.maps);
         }
 
         //TODO: Invalidate old mappings

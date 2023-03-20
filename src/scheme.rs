@@ -233,7 +233,6 @@ impl Handler for OrbitalScheme {
                 .map(|window| !window.async)
                 .unwrap_or(true)
     }
-
     fn handle_scheme(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()> {
         self.with_orbital(orb).scheme_event(packets)
     }
@@ -244,14 +243,12 @@ impl Handler for OrbitalScheme {
         self.with_orbital(orb).redraw();
         Ok(())
     }
-
     fn handle_window_new(&mut self, orb: &mut Orbital,
                          x: i32, y: i32, width: i32, height: i32,
                          parts: &str, title: String) -> Result<usize> {
         self.with_orbital(orb).window_new(x, y, width, height, parts, title)
     }
-    fn handle_window_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [Event]) -> Result<usize>
-    {
+    fn handle_window_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [Event]) -> Result<usize> {
         if let Some(window) = self.windows.get_mut(&id) {
             Ok(window.read(buf))
         } else {
@@ -406,7 +403,6 @@ impl Handler for OrbitalScheme {
 
         res
     }
-
     fn handle_clipboard_new(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         if let Some(window) = self.windows.get_mut(&id) {
@@ -416,7 +412,6 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-
     fn handle_clipboard_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [u8]) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         if let Some(window) = self.windows.get_mut(&id) {
@@ -431,7 +426,6 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-
     fn handle_clipboard_write(&mut self, _orb: &mut Orbital, id: usize, buf: &[u8]) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         if let Some(window) = self.windows.get_mut(&id) {
@@ -447,7 +441,6 @@ impl Handler for OrbitalScheme {
             Err(Error::new(EBADF))
         }
     }
-
     fn handle_clipboard_close(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         if self.windows.contains_key(&id) {
@@ -1111,14 +1104,14 @@ impl<'a> OrbitalSchemeEvent<'a> {
     fn toggle_window_max(&mut self, window_id: usize) {
         if let Some(window) = self.scheme.windows.get_mut(&window_id) {
             // Find the index of the Display this window has the most overlap with
-            let mut max_display_i = 0;
-            let mut max_display_area = 0;
+            let mut display_index = 0;
+            let mut max_intersection_area = 0;
             for (display_i, display) in self.orb.displays.iter().enumerate() {
                 let intersect = display.screen_rect().intersection(&window.rect());
                 let area = intersect.area();
-                if area > max_display_area {
-                    max_display_i = display_i;
-                    max_display_area = area;
+                if area > max_intersection_area {
+                    display_index = display_i;
+                    max_intersection_area = area;
                 }
             }
 
@@ -1132,13 +1125,14 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
                     ( // move to the corner of the display
                         MoveEvent {
-                            x: self.orb.displays[max_display_i].x,
-                            y: self.orb.displays[max_display_i].y + window.title_rect().height()
+                            x: self.orb.displays[display_index].x,
+                            y: self.orb.displays[display_index].y + window.title_rect().height()
                         },
                         // set window size to the maximum size of the display
                         ResizeEvent {
-                            width: self.orb.displays[max_display_i].image.width() as u32,
-                            height: (self.orb.displays[max_display_i].image.height() - window.y) as u32
+                            width: self.orb.displays[display_index].image.width() as u32,
+                            height: (self.orb.displays[display_index].image.height() -
+                                window.title_rect().height()) as u32
                         }
                     )
                 },
@@ -1158,7 +1152,6 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
             window.x = move_event.x;
             window.y = move_event.y;
-
             window.event(move_event.to_event());
 
             schedule(&mut self.scheme.redraws, window.title_rect());
