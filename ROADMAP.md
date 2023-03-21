@@ -94,6 +94,7 @@ Can we remove these duplicates or merge them under orbutils?
           * That would allow some internal re-org between orbclient and orbital-core (e.g. "core" structs such as Color
             are IMHO part of orbital-core). Backwards compatibility for any app _outside_ combined orbital and orbutils
             can be taken care of by re-exports.
+  * It looks like the simple example in Orbital, is a duplication of an example in orbclient
 * Examples in orbital and some other places are not compiled in CI. If what they show is covered in orbutils, 
 consider deleting them and just referring people to orbutils
 * Update all components/crates to the latest edition (2021)
