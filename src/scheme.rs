@@ -29,12 +29,12 @@ use std::{
     str
 };
 use log::{error, info, warn};
+use orbital_core::image::ImageRef;
 use syscall::data::Packet;
 use syscall::error::{Error, Result, EBADF};
 use syscall::number::SYS_READ;
 
 use config::Config;
-// use theme::{BACKGROUND_COLOR, BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 use window::{Window, WindowZOrder};
 
 fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
@@ -108,8 +108,7 @@ pub struct OrbitalScheme {
     font: orbfont::Font,
     clipboard: Vec<u8>,
     scale: i32,
-
-    config: Rc<Config>
+    config: Rc<Config>,
 }
 
 impl OrbitalScheme {
@@ -160,8 +159,7 @@ impl OrbitalScheme {
             font: orbfont::Font::find(Some("Sans"), None, None).unwrap(),
             clipboard: Vec::new(),
             scale,
-
-            config: Rc::clone(&config)
+            config: Rc::clone(&config),
         }
     }
 
@@ -452,7 +450,7 @@ impl Handler for OrbitalScheme {
 }
 pub struct OrbitalSchemeEvent<'a> {
     scheme: &'a mut OrbitalScheme,
-    orb: &'a mut Orbital
+    orb: &'a mut Orbital,
 }
 impl<'a> OrbitalSchemeEvent<'a> {
     pub fn redraw(&mut self) {
@@ -460,6 +458,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         let cursor_rect = self.scheme.cursor_rect();
 
+        // go through the list of rectangles pending a redraw and expand the total redraw rectangle
+        // to encompass all of them
         let mut total_redraw_opt: Option<Rect> = None;
         for original_rect in self.scheme.redraws.drain(..) {
             if ! original_rect.is_empty() {
@@ -599,6 +599,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
         self.scheme.volume_osd = true;
     }
 
+    // Either start drawing the win_tabbing window, or move to the next option in the list
+    // The window is drawn by redraw()
     fn win_tab(&mut self) {
         if self.scheme.order.len() > 1 {
             // Disable dragging
@@ -628,41 +630,48 @@ impl<'a> OrbitalSchemeEvent<'a> {
         }
     }
 
-    /// Draws a list of currently open windows in the middle of the screen
+    /// Create a [Rect][orbital-core::rect::Rect] that places a popup in the middle of the display
+    fn popup_rect(image: &ImageRef, width: i32, height: i32) -> Rect {
+        Rect::new(image.width()/2 - width/2,
+                                    image.height()/2 - height/2,
+                                    width, height)
+    }
+
+    /// Called by redraw() to draw the list of currently open windows in the middle of the screen.
+    /// Filter out app windows with no title.
+    /// If there are no windows to select, nothing is drawn.
     fn draw_window_list(&mut self) {
         //TODO: HiDPI
 
-        let mut rendered_text: Vec<orbfont::Text> = vec![];
+        let mut selectable_windows: Vec<orbfont::Text> = vec![];
         for id in self.scheme.order.iter() {
             if let Some(window) = self.scheme.windows.get(id) {
-                if window.title.is_empty() {
-                    rendered_text.push(self.scheme.font.render(&format!("[unnamed #{}]", id), 16.0));
-                } else {
-                    rendered_text.push(self.scheme.font.render(&(window.title.to_string()), 16.0));
+                if !window.title.is_empty() {
+                    selectable_windows.push(self.scheme.font.render(&(window.title.to_string()), 16.0));
                 }
             }
         }
 
-        let Config { bar_color, bar_highlight_color, text_color, text_highlight_color, .. } = *self.scheme.config;
+        if !selectable_windows.is_empty() {
+            let Config { bar_color, bar_highlight_color, text_color, text_highlight_color, .. } = *self.scheme.config;
 
-        let list_h = rendered_text.len() as i32 * 20 + 4;
-        let list_w = 400;
-        let target_rect = Rect::new(self.orb.image().width()/2 - list_w/2,
-                                    self.orb.image().height()/2 - list_h/2,
-                                    list_w, list_h);
-        // Color copied over from orbtk's window background
-        let mut image = Image::from_color(list_w, list_h, bar_color);
+            let list_h = selectable_windows.len() as i32 * 20 + 4;
+            let list_w = 400;
+            let target_rect = Self::popup_rect(&self.orb.image(), list_w, list_h);
+            // Color copied over from orbtk's window background
+            let mut image = Image::from_color(list_w, list_h, bar_color);
 
-        for (i, text) in rendered_text.iter().enumerate() {
-            if i == 0 {
-                image.rect(0, i as i32 * 20 + 2, list_w as u32, 20, bar_highlight_color);
-                text.draw(&mut image, 4, i as i32 * 20 + 4, text_highlight_color);
-            } else {
-                text.draw(&mut image, 4, i as i32 * 20 + 4, text_color);
+            for (i, text) in selectable_windows.iter().enumerate() {
+                if i == 0 {
+                    image.rect(0, i as i32 * 20 + 2, list_w as u32, 20, bar_highlight_color);
+                    text.draw(&mut image, 4, i as i32 * 20 + 4, text_highlight_color);
+                } else {
+                    text.draw(&mut image, 4, i as i32 * 20 + 4, text_color);
+                }
             }
+            self.orb.image_mut().roi(&target_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
+            schedule(&mut self.scheme.redraws, target_rect);
         }
-        self.orb.image_mut().roi(&target_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
-        schedule(&mut self.scheme.redraws, target_rect);
     }
 
     fn draw_volume_osd(&mut self) {
@@ -671,9 +680,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         //TODO: HiDPI
         let list_h = 20 + 4;
         let list_w = 100 + 4;
-        let target_rect = Rect::new(self.orb.image().width()/2 - list_w/2,
-                                    self.orb.image().height()/2 - list_h/2,
-                                    list_w, list_h);
+        let target_rect = Self::popup_rect(&self.orb.image(), list_w, list_h);
         // Color copied over from orbtk's window background
         let mut image = Image::from_color(list_w, list_h, bar_color);
         image.rect(2, 2, self.scheme.volume_value as u32, 20, bar_highlight_color);
@@ -686,6 +693,9 @@ impl<'a> OrbitalSchemeEvent<'a> {
             self.scheme.win_key = event.pressed;
             // If the win key was released, stop drawing the win-tab window switcher
             if !self.scheme.win_key {
+                if self.scheme.win_tabbing {
+                    // ADM we were win_tabbing, it should be closed and undrawn
+                }
                 self.scheme.win_tabbing = false;
                 self.scheme.volume_osd = false;
             }
@@ -717,8 +727,9 @@ impl<'a> OrbitalSchemeEvent<'a> {
                     }
                 },
                 orbclient::K_TAB => if event.pressed {
-                    // Start drawing the window switcher. It's drawn by redraw()
+                    // Enter win_tabbing mode
                     self.scheme.win_tabbing = true;
+                    // Start drawing the window switcher, or move to next window in the list
                     self.win_tab();
                 },
                 orbclient::K_BRACE_OPEN => if event.pressed {
