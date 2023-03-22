@@ -121,7 +121,7 @@ impl<'a> ImageRef<'a> {
         ImageRef {
             w: width,
             h: height,
-            data: data,
+            data,
             mode: Cell::new(Mode::Blend),
         }
     }
@@ -156,7 +156,7 @@ impl<'a> Renderer for ImageRef<'a> {
 
     /// Return a reference to a slice of colors making up the image
     fn data(&self) -> &[Color] {
-        &self.data
+        self.data
     }
 
     /// Return a mutable reference to a slice of colors making up the image
@@ -194,7 +194,7 @@ impl Image {
         Image {
             w: width,
             h: height,
-            data: data,
+            data,
             mode: Cell::new(Mode::Blend),
         }
     }
@@ -339,7 +339,7 @@ impl ImageAligned {
         ImageRoi {
             rect: *rect,
             w: self.w,
-            data: &mut self.data
+            data: self.data
         }
     }
 }
@@ -357,12 +357,12 @@ impl Renderer for ImageAligned {
 
     /// Return a reference to a slice of colors making up the image
     fn data(&self) -> &[Color] {
-        &self.data
+        self.data
     }
 
     /// Return a mutable reference to a slice of colors making up the image
     fn data_mut(&mut self) -> &mut [Color] {
-        &mut self.data
+        self.data
     }
 
     fn mode(&self) -> &Cell<Mode> {
