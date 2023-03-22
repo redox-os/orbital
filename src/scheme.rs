@@ -112,7 +112,7 @@ pub struct OrbitalScheme {
 }
 
 impl OrbitalScheme {
-    pub fn new(displays: &[Display], config: Rc<Config>) -> OrbitalScheme {
+    pub(crate) fn new(displays: &[Display], config: Rc<Config>) -> Result<OrbitalScheme, String> {
         let mut redraws = Vec::new();
         let mut scale = 1;
         for display in displays.iter() {
@@ -129,7 +129,9 @@ impl OrbitalScheme {
         cursors.insert(CursorKind::LeftSide, Image::from_path_scale(&config.left_side, scale).unwrap_or(Image::new(0, 0)));
         cursors.insert(CursorKind::RightSide, Image::from_path_scale(&config.right_side, scale).unwrap_or(Image::new(0, 0)));
 
-        OrbitalScheme {
+        let font = orbfont::Font::find(Some("Sans"), None, None)?;
+
+        Ok(OrbitalScheme {
             window_max: Image::from_path_scale(&config.window_max, scale).unwrap_or(Image::new(0, 0)),
             window_max_unfocused: Image::from_path_scale(&config.window_max_unfocused, scale).unwrap_or(Image::new(0, 0)),
             window_close: Image::from_path_scale(&config.window_close, scale).unwrap_or(Image::new(0, 0)),
@@ -156,11 +158,11 @@ impl OrbitalScheme {
             zbuffer: Vec::new(),
             windows: BTreeMap::new(),
             redraws,
-            font: orbfont::Font::find(Some("Sans"), None, None).unwrap(),
+            font,
             clipboard: Vec::new(),
             scale,
             config: Rc::clone(&config),
-        }
+        })
     }
 
     pub fn with_orbital<'a>(&'a mut self, orb: &'a mut Orbital) -> OrbitalSchemeEvent<'a> {

@@ -13,12 +13,7 @@ impl Rect {
         assert!(w >= 0);
         assert!(h >= 0);
 
-        Rect{
-            x: x,
-            y: y,
-            w: w,
-            h: h
-        }
+        Rect{ x, y, w, h }
     }
 
     pub fn area(&self) -> i32 {

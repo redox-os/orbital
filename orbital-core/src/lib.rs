@@ -1,3 +1,5 @@
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
 #[macro_use] extern crate failure;
 extern crate event;
 extern crate libc;
@@ -62,13 +64,13 @@ impl From<syscall::Error> for Error {
 pub fn fix_env(display_path: &str) -> io::Result<()> {
     env::set_current_dir("file:")?;
 
-    env::set_var("DISPLAY", &display_path);
+    env::set_var("DISPLAY", display_path);
 
     let path = env::var("PATH").unwrap_or(String::new());
     let new_path = env::join_paths(
         env::split_paths(&path)
             .chain(iter::once(PathBuf::from("/ui/bin")))
-    ).unwrap();
+    ).map_err(|_| io::Error::new(ErrorKind::Other, "Could not join paths"))?;
     env::set_var("PATH", new_path);
     Ok(())
 }
@@ -165,10 +167,32 @@ pub struct Orbital {
     pub displays: Vec<Display>,
     pub maps: BTreeMap<usize, (usize, usize)>,
 }
+
 impl Orbital {
+    // TODO: Consider using the Url crate and it's types? A broader question for Redox maybe.
+    fn url_parts(url: &str) -> io::Result<(&str, &str)> {
+        let mut url_parts = url.split(':');
+        let scheme_name = url_parts.next()
+            .ok_or(io::Error::new(ErrorKind::Other,
+                                  "Could not get scheme name from url"))?;
+        let path = url_parts.next()
+            .ok_or(io::Error::new(ErrorKind::Other,
+                                  "Could not get path from url"))?;
+        Ok((scheme_name, path))
+    }
+
+    fn parse_display_path(path: &str) -> (&str, i32, i32) {
+        let mut path_parts = path.split('/');
+        let vt_screen = path_parts.next().unwrap_or("");
+        let width = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+        let height = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+
+        (vt_screen, width, height)
+    }
+
     /// Open an orbital display and connect to the scheme
     pub fn open_display(display_path: &str) -> io::Result<Self> {
-        let display = syscall::open(&display_path, O_CLOEXEC | O_NONBLOCK | O_RDWR)
+        let display = syscall::open(display_path, O_CLOEXEC | O_NONBLOCK | O_RDWR)
             .map(|socket| {
                 unsafe { File::from_raw_fd(socket as RawFd) }
             })
@@ -187,19 +211,13 @@ impl Orbital {
             })?;
 
         let mut buf: [u8; 4096] = [0; 4096];
-        let count = syscall::fpath(display.as_raw_fd() as usize, &mut buf).unwrap();
+        let count = syscall::fpath(display.as_raw_fd() as usize, &mut buf)
+            .map_err(|_| io::Error::new(ErrorKind::Other,
+                                        "Could not open display as_raw_fd()"))?;
 
         let url = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
-
-        let mut url_parts = url.split(':');
-        let scheme_name = url_parts.next().unwrap();
-        let path = url_parts.next().unwrap();
-
-        let mut path_parts = path.split('/');
-        let vt_screen = path_parts.next().unwrap_or("");
-        let width = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-        let height = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-
+        let (scheme_name, path) = Self::url_parts(&url)?;
+        let (vt_screen, width, height) = Self::parse_display_path(path);
         let mut displays = vec![Display::new(0, 0, width, height, display)?];
 
         // If display server supports multiple displays in a VT
@@ -214,22 +232,17 @@ impl Orbital {
                 let extra_file = match syscall::open(&extra_path, O_CLOEXEC | O_NONBLOCK | O_RDWR) {
                     Ok(socket) => unsafe { File::from_raw_fd(socket as RawFd) },
                     Err(_err) => break,
-
                 };
 
                 let mut buf: [u8; 4096] = [0; 4096];
-                let count = syscall::fpath(extra_file.as_raw_fd() as usize, &mut buf).unwrap();
+                let count = syscall::fpath(extra_file.as_raw_fd() as usize, &mut buf)
+                    .map_err(|_| io::Error::new(ErrorKind::Other,
+                                                "Could not open extra_file as_raw_fd()"))?;
 
                 let url = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
 
-                let mut url_parts = url.split(':');
-                let _scheme_name = url_parts.next().unwrap();
-                let path = url_parts.next().unwrap();
-
-                let mut path_parts = path.split('/');
-                let _vt_screen = path_parts.next().unwrap_or("");
-                let width = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-                let height = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+                let (_scheme_name, path) = Self::url_parts(&url)?;
+                let (_vt_screen, width, height) = Self::parse_display_path(path);
 
                 let x = if let Some(last) = displays.last() {
                     last.x + last.image.width()
@@ -310,7 +323,7 @@ impl Orbital {
                             if delay && packet.a == 0 {
                                 me.orb.todo.push(*packet);
                             } else {
-                                me.orb.scheme_write(&packet)?;
+                                me.orb.scheme_write(packet)?;
                             }
                         }
                         me.handler.handle_scheme(&mut me.orb, packets)?;
@@ -377,7 +390,7 @@ pub struct OrbitalHandler<H: Handler> {
 }
 impl<H: Handler> SchemeMut for OrbitalHandler<H> {
     fn open(&mut self, path: &str, _: usize, _: u32, _: u32) -> syscall::Result<usize> {
-        let mut parts = path.split("/");
+        let mut parts = path.split('/');
 
         let flags = parts.next().unwrap_or("");
 
@@ -556,7 +569,7 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
     fn fpath(&mut self, id: usize, mut buf: &mut [u8]) -> syscall::Result<usize> {
         let props = self.handler.handle_window_properties(&mut self.orb, id)?;
         let original_len = buf.len();
-        write!(buf,
+        let _ = write!(buf,
             "orbital:{}{}{}{}{}{}/{}/{}/{}/{}/{}",
             if props.properties & PROPERTY_ASYNC == PROPERTY_ASYNC { "a" } else { "" },
             "", // TODO: Z order
@@ -565,7 +578,7 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             if props.properties & PROPERTY_TRANSPARENT == PROPERTY_TRANSPARENT { "t" } else { "" },
             if props.properties & PROPERTY_UNCLOSABLE == PROPERTY_UNCLOSABLE { "u" } else { "" },
             props.x, props.y, props.width, props.height, props.title
-        ).unwrap();
+        );
         Ok(original_len - buf.len())
     }
     fn fsync(&mut self, id: usize) -> syscall::Result<usize> {
@@ -578,5 +591,41 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         }
 
         self.handler.handle_window_close(&mut self.orb, id)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use Orbital;
+
+    #[test]
+    fn invalid_url_no_colon() {
+        assert!(Orbital::url_parts("foo-no-colon").is_err());
+    }
+
+    #[test]
+    fn valid_url_empty_scheme() {
+        // until we throw an error for an empty scheme_name...
+        let (scheme_name, path) = Orbital::url_parts(":path")
+            .expect("Could not parse url");
+        assert!(scheme_name.is_empty());
+        assert_eq!(path, "path");
+    }
+
+    #[test]
+    fn valid_url_empty_path() {
+        // until we throw an error for an empty scheme_name...
+        let (scheme_name, path) = Orbital::url_parts("scheme:")
+            .expect("Could not parse url");
+        assert_eq!(scheme_name, "scheme");
+        assert!(path.is_empty());
+    }
+
+    #[test]
+    fn valid_url() {
+        let (scheme_name, path) = Orbital::url_parts("scheme:path")
+            .expect("Could not parse url");
+        assert_eq!(scheme_name, "scheme");
+        assert_eq!(path, "path");
     }
 }
