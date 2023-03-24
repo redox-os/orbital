@@ -660,29 +660,18 @@ version = "0.1.0"
 dependencies = [
  "ab_glyph_rasterizer",
  "failure",
+ "libc",
  "log",
  "orbclient",
  "orbfont",
- "orbital-core",
+ "orbimage",
  "redox-daemon",
  "redox-log",
+ "redox_event",
  "redox_syscall 0.3.4",
  "serde",
  "serde_derive",
  "toml",
-]
-
-[[package]]
-name = "orbital-core"
-version = "0.1.0"
-dependencies = [
- "failure",
- "libc",
- "log",
- "orbclient",
- "orbimage",
- "redox_event",
- "redox_syscall 0.3.4",
 ]
 
 [[package]]

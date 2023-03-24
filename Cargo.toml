@@ -6,6 +6,7 @@ name = "orbital"
 readme = "README.md"
 repository = "https://gitlab.redox-os.org/redox-os/orbital"
 version = "0.1.0"
+edition = "2021"
 
 [dependencies]
 redox-log = "0.1"
@@ -18,11 +19,13 @@ redox_syscall = "0.3"
 serde = "1"
 serde_derive = "1"
 toml = "0.7"
+libc = "0.2.48"
+orbimage = "0.1"
 # Downgrade due to improper x86 CPU feature detection
 ab_glyph_rasterizer = "=0.1.5"
 
-[dependencies.orbital-core]
-path = "orbital-core"
-
 [dev-dependencies]
 orbclient = "0.3"
+
+[dependencies.redox_event]
+git = "https://gitlab.redox-os.org/redox-os/event.git"

@@ -8,7 +8,7 @@ use std::{
 };
 use log::error;
 
-use crate::{
+use crate::core::{
     image::{ImageRef, ImageRoi},
     rect::Rect,
 };
@@ -64,14 +64,16 @@ impl Display {
         );
     }
 
-    pub unsafe fn resize(&mut self, width: i32, height: i32) {
-        match display_fd_map(width, height, self.file.as_raw_fd() as usize) {
-            Ok(ok) => {
-                display_fd_unmap(&mut self.image);
-                self.image = ok;
-            },
-            Err(err) => {
-                error!("failed to resize display to {}x{}: {}", width, height, err);
+    pub fn resize(&mut self, width: i32, height: i32) {
+        unsafe {
+            match display_fd_map(width, height, self.file.as_raw_fd() as usize) {
+                Ok(ok) => {
+                    display_fd_unmap(&mut self.image);
+                    self.image = ok;
+                },
+                Err(err) => {
+                    error!("failed to resize display to {}x{}: {}", width, height, err);
+                }
             }
         }
     }

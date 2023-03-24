@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::io::Read;
 use log::{debug, error};
-use toml;
 use serde_derive::Deserialize;
 use orbclient::Color;
 
@@ -95,7 +94,7 @@ impl Config {
 
 #[cfg(test)]
 mod test {
-    use config::{background_color_default, Config, text_highlight_color_default};
+    use crate::config::{background_color_default, Config, text_highlight_color_default};
 
     #[test]
     fn non_existent_config_file() {

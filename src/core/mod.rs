@@ -1,22 +1,3 @@
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
-#[macro_use] extern crate failure;
-extern crate event;
-extern crate libc;
-extern crate orbclient;
-extern crate orbimage;
-extern crate syscall;
-extern crate log;
-
-pub mod display;
-pub mod image;
-pub mod rect;
-
-use display::Display;
-use event::EventQueue;
-use image::{ImageRef};
-use orbclient::{Color, Event};
-use rect::Rect;
 use std::{
     cell::RefCell,
     collections::BTreeMap,
@@ -31,6 +12,11 @@ use std::{
     slice,
     str,
 };
+
+use event::EventQueue;
+use failure::Fail;
+use log::{debug, error, info};
+use orbclient::{Color, Event};
 use syscall::{
     data::Packet,
     error::EINVAL,
@@ -38,7 +24,14 @@ use syscall::{
     flag::EventFlags,
     SchemeMut,
 };
-use log::{debug, error, info};
+
+use display::Display;
+use image::ImageRef;
+use rect::Rect;
+
+pub(crate) mod display;
+pub(crate) mod image;
+pub(crate) mod rect;
 
 #[cfg(target_pointer_width = "32")]
 const CLIPBOARD_FLAG: usize = 1 << 31;
@@ -118,6 +111,7 @@ pub trait Handler {
 
     /// Called when a new window is requested by the scheme.
     /// Return a window ID that will be used to identify it later.
+    #[allow(clippy::too_many_arguments)]
     fn handle_window_new(&mut self, orb: &mut Orbital,
                          x: i32, y: i32, width: i32, height: i32,
                          flags: &str, title: String) -> syscall::Result<usize>;
@@ -169,7 +163,6 @@ pub struct Orbital {
 }
 
 impl Orbital {
-    // TODO: Consider using the Url crate and it's types? A broader question for Redox maybe.
     fn url_parts(url: &str) -> io::Result<(&str, &str)> {
         let mut url_parts = url.split(':');
         let scheme_name = url_parts.next()
@@ -285,7 +278,7 @@ impl Orbital {
     pub fn resize(&mut self, width: i32, height: i32) {
         //TODO: should other screens be moved after a resize?
         //TODO: support resizing other screens?
-        unsafe { self.displays[0].resize(width, height); }
+        self.displays[0].resize(width, height);
     }
     /// Start the main loop
     pub fn run<H>(mut self, mut handler: H) -> Result<(), Error>
@@ -511,10 +504,18 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             Err(syscall::Error::new(EINVAL))
         }
     }
-    fn fevent(&mut self, id: usize, _flags: syscall::EventFlags) -> syscall::Result<syscall::EventFlags> {
+    fn fevent(&mut self, id: usize, _flags: EventFlags) -> syscall::Result<EventFlags> {
         self.handler
             .handle_window_clear_notified(&mut self.orb, id)
-            .and(Ok(syscall::EventFlags::empty()))
+            .and(Ok(EventFlags::empty()))
+    }
+    fn fmap_old(&mut self, id: usize, map: &syscall::OldMap) -> syscall::Result<usize> {
+        self.fmap(id, &syscall::Map {
+            offset: map.offset,
+            size: map.size,
+            flags: map.flags,
+            address: 0,
+        })
     }
     fn fmap(&mut self, id: usize, map: &syscall::Map) -> syscall::Result<usize> {
         let page_size = 4096;
@@ -532,13 +533,17 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             Err(syscall::Error::new(EINVAL))
         }
     }
-    fn fmap_old(&mut self, id: usize, map: &syscall::OldMap) -> syscall::Result<usize> {
-        self.fmap(id, &syscall::Map {
-            offset: map.offset,
-            size: map.size,
-            flags: map.flags,
-            address: 0,
-        })
+    fn funmap_old(&mut self, address: usize) -> syscall::Result<usize> {
+        match self.orb.maps.remove(&address) {
+            Some((id, _map_size)) => {
+                info!("funmap_old 0x{:x} = {}", address, id);
+                self.handler.handle_window_unmap(&mut self.orb, id)?;
+            },
+            None => {
+                error!("failed to found mapping 0x{:x}", address);
+            }
+        }
+        Ok(0)
     }
     fn funmap(&mut self, address: usize, size: usize) -> syscall::Result<usize> {
         match self.orb.maps.remove(&address) {
@@ -554,21 +559,10 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         }
         Ok(0)
     }
-    fn funmap_old(&mut self, address: usize) -> syscall::Result<usize> {
-        match self.orb.maps.remove(&address) {
-            Some((id, _map_size)) => {
-                info!("funmap_old 0x{:x} = {}", address, id);
-                self.handler.handle_window_unmap(&mut self.orb, id)?;
-            },
-            None => {
-                error!("failed to found mapping 0x{:x}", address);
-            }
-        }
-        Ok(0)
-    }
     fn fpath(&mut self, id: usize, mut buf: &mut [u8]) -> syscall::Result<usize> {
         let props = self.handler.handle_window_properties(&mut self.orb, id)?;
         let original_len = buf.len();
+        #[allow(clippy::write_literal)] // TODO: Z order
         let _ = write!(buf,
             "orbital:{}{}{}{}{}{}/{}/{}/{}/{}/{}",
             if props.properties & PROPERTY_ASYNC == PROPERTY_ASYNC { "a" } else { "" },
@@ -595,8 +589,9 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod test {
-    use Orbital;
+    use crate::core::Orbital;
 
     #[test]
     fn invalid_url_no_colon() {
