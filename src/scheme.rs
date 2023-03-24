@@ -1,21 +1,3 @@
-use std::rc::Rc;
-
-use orbclient::{
-    self, Color, Event, EventOption, KeyEvent, MouseEvent, MouseRelativeEvent, ButtonEvent,
-    ClipboardEvent, FocusEvent, HoverEvent, QuitEvent, MoveEvent, ResizeEvent, Renderer,
-    ScreenEvent, TextInputEvent,
-};
-use orbfont;
-use syscall;
-
-use orbital_core::{
-    Handler,
-    Orbital,
-    Properties,
-    display::Display,
-    image::{Image},
-    rect::Rect
-};
 use std::{
     cmp,
     collections::{
@@ -28,14 +10,30 @@ use std::{
     slice,
     str
 };
+use std::rc::Rc;
+
 use log::{error, info, warn};
-use orbital_core::image::ImageRef;
+use orbclient::{
+    self, ButtonEvent, ClipboardEvent, Color, Event, EventOption, FocusEvent, HoverEvent,
+    KeyEvent, MouseEvent, MouseRelativeEvent, MoveEvent, QuitEvent, Renderer, ResizeEvent,
+    ScreenEvent, TextInputEvent,
+};
 use syscall::data::Packet;
-use syscall::error::{Error, Result, EBADF};
+use syscall::error::{EBADF, Error, Result};
 use syscall::number::SYS_READ;
 
-use config::Config;
-use window::{Window, WindowZOrder};
+use crate::config::Config;
+use crate::core::{
+    display::Display,
+    Handler,
+    image::Image,
+    Orbital,
+    Properties,
+    rect::Rect
+};
+use crate::core::image::ImageRef;
+// use theme::{BACKGROUND_COLOR, BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
+use crate::window::{Window, WindowZOrder};
 
 fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
     let mut push = true;
@@ -230,7 +228,7 @@ impl Handler for OrbitalScheme {
     fn should_delay(&mut self, packet: &Packet) -> bool {
         packet.a == SYS_READ &&
             self.windows.get(&packet.b)
-                .map(|window| !window.async)
+                .map(|window| !window.asynchronous)
                 .unwrap_or(true)
     }
     fn handle_scheme(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()> {
@@ -257,7 +255,7 @@ impl Handler for OrbitalScheme {
     }
     fn handle_window_async(&mut self, _orb: &mut Orbital, id: usize, is_async: bool) -> Result<()> {
         if let Some(window) = self.windows.get_mut(&id) {
-            window.async = is_async;
+            window.asynchronous = is_async;
             Ok(())
         } else {
             Err(Error::new(EBADF))
@@ -659,7 +657,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
             let list_h = selectable_windows.len() as i32 * 20 + 4;
             let list_w = 400;
-            let target_rect = Self::popup_rect(&self.orb.image(), list_w, list_h);
+            let target_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
             // Color copied over from orbtk's window background
             let mut image = Image::from_color(list_w, list_h, bar_color);
 
@@ -682,7 +680,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         //TODO: HiDPI
         let list_h = 20 + 4;
         let list_w = 100 + 4;
-        let target_rect = Self::popup_rect(&self.orb.image(), list_w, list_h);
+        let target_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
         // Color copied over from orbtk's window background
         let mut image = Image::from_color(list_w, list_h, bar_color);
         image.rect(2, 2, self.scheme.volume_value as u32, 20, bar_highlight_color);
@@ -1343,7 +1341,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         // TODO call scheme_event() here that repeats the same identical code, or factor out
         for (id, window) in self.scheme.windows.iter_mut() {
             if ! window.events.is_empty() {
-                if !window.notified_read || window.async {
+                if !window.notified_read || window.asynchronous {
                     window.notified_read = true;
                     self.orb.scheme_write(&Packet {
                         id: 0,
@@ -1369,7 +1367,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
     pub fn scheme_event(&mut self, _packets: &mut [Packet]) -> io::Result<()> {
         for (id, window) in self.scheme.windows.iter_mut() {
             if ! window.events.is_empty() {
-                if !window.notified_read || window.async {
+                if !window.notified_read || window.asynchronous {
                     window.notified_read = true;
                     self.orb.scheme_write(&Packet {
                         id: 0,
@@ -1420,7 +1418,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         for flag in flags.chars() {
             match flag {
-                'a' => window.async = true,
+                'a' => window.asynchronous = true,
                 'b' => window.zorder = WindowZOrder::Back,
                 'f' => window.zorder = WindowZOrder::Front,
                 'l' => window.borderless = true,

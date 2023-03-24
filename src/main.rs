@@ -1,16 +1,7 @@
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
-extern crate orbital_core;
-extern crate log;
-extern crate orbclient;
-extern crate orbfont;
-extern crate serde_derive;
-extern crate syscall;
-extern crate toml;
-extern crate redox_log;
-extern crate redox_daemon;
 
-use orbital_core::Orbital;
+use crate::core::Orbital;
 use std::{
     env,
     process::Command,
@@ -23,6 +14,7 @@ use redox_daemon::Daemon;
 use config::Config;
 use scheme::OrbitalScheme;
 
+mod core;
 mod config;
 mod scheme;
 mod window;
@@ -31,7 +23,7 @@ mod window;
 enum OrbitalStatusCode {
     /// main() was able to start the [Daemon][redox_daemon::Daemon] without an error
     Success = 0,
-    /// An error occured when starting the [Daemon][redox_daemon::Daemon]
+    /// An error occurred when starting the [Daemon][redox_daemon::Daemon]
     EStartingDaemon = 1,
 }
 
@@ -74,7 +66,7 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
     let display_path = args.next().ok_or("no display argument")?;
     let login_cmd = args.next().ok_or("no login manager argument")?;
 
-    orbital_core::fix_env(&display_path).map_err(|_| "error setting env vars")?;
+    core::fix_env(&display_path).map_err(|_| "error setting env vars")?;
 
     let orbital = Orbital::open_display(&display_path)
         .map_err(|e| format!("could not open display, caused by: {}", e))?;

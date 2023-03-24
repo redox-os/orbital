@@ -1,12 +1,10 @@
-use libc;
 use orbclient::{Color, Mode, Renderer};
-use orbimage;
 use std::{cmp, mem, ptr, slice};
 use std::cell::Cell;
+use std::cmp::Ordering;
 use std::path::Path;
+use crate::core::rect::Rect;
 use log::{debug, error};
-
-use rect::Rect;
 
 pub struct ImageRoiRows<'a> {
     rect: Rect,
@@ -117,13 +115,8 @@ pub struct ImageRef<'a> {
 }
 
 impl<'a> ImageRef<'a> {
-    pub fn from_data(width: i32, height: i32, data: &'a mut [Color]) -> ImageRef {
-        ImageRef {
-            w: width,
-            h: height,
-            data,
-            mode: Cell::new(Mode::Blend),
-        }
+    pub fn from_data(w: i32, h: i32, data: &'a mut [Color]) -> ImageRef {
+        ImageRef { w, h, data, mode: Cell::new(Mode::Blend) }
     }
 
     pub fn width(&self) -> i32 {
@@ -161,15 +154,15 @@ impl<'a> Renderer for ImageRef<'a> {
 
     /// Return a mutable reference to a slice of colors making up the image
     fn data_mut(&mut self) -> &mut [Color] {
-        &mut self.data
-    }
-
-    fn mode(&self) -> &Cell<Mode> {
-        &self.mode
+        self.data
     }
 
     fn sync(&mut self) -> bool {
         true
+    }
+
+    fn mode(&self) -> &Cell<Mode> {
+        &self.mode
     }
 }
 
@@ -190,17 +183,8 @@ impl Image {
         Image::from_data(width, height, vec![color; width as usize * height as usize].into_boxed_slice())
     }
 
-    pub fn from_data(width: i32, height: i32, data: Box<[Color]>) -> Image {
-        Image {
-            w: width,
-            h: height,
-            data,
-            mode: Cell::new(Mode::Blend),
-        }
-    }
-
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Option<Image> {
-        Image::from_path_scale(path, 1)
+    pub fn from_data(w: i32, h: i32, data: Box<[Color]>) -> Image {
+        Image { w, h, data, mode: Cell::new(Mode::Blend) }
     }
 
     pub fn from_path_scale<P: AsRef<Path>>(path: P, scale: i32) -> Option<Image> {
@@ -209,37 +193,37 @@ impl Image {
                 let width = orb_image.width();
                 let height = orb_image.height();
                 let data = orb_image.into_data();
-                if scale == 1 {
-                    Some(Image::from_data(
-                        width as i32, height as i32,
-                        unsafe { mem::transmute(data) }
-                    ))
-                } else if scale > 1 {
-                    let mut new_data = vec![
-                        Color::rgb(0, 0, 0);
-                        data.len() * (scale * scale) as usize
-                    ].into_boxed_slice();
+                match scale.cmp(&1) {
+                    Ordering::Equal => Some(Image::from_data(
+                        width as i32, height as i32, data
+                    )),
+                    Ordering::Greater => {
+                        let mut new_data = vec![
+                            Color::rgb(0, 0, 0);
+                            data.len() * (scale * scale) as usize
+                        ].into_boxed_slice();
 
-                    for y in 0..height as i32 {
-                        for x in 0..width as i32 {
-                            let i = y * width as i32 + x;
-                            let value = data[i as usize].data;
-                            for y_s in 0..scale {
-                                for x_s in 0..scale {
-                                    let new_i = (y * scale + y_s) * width as i32 * scale + x * scale + x_s;
-                                    new_data[new_i as usize].data = value;
+                        for y in 0..height as i32 {
+                            for x in 0..width as i32 {
+                                let i = y * width as i32 + x;
+                                let value = data[i as usize].data;
+                                for y_s in 0..scale {
+                                    for x_s in 0..scale {
+                                        let new_i = (y * scale + y_s) * width as i32 * scale + x * scale + x_s;
+                                        new_data[new_i as usize].data = value;
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    Some(Image::from_data(
-                        width as i32 * scale, height as i32 * scale,
-                        unsafe { mem::transmute(new_data) }
-                    ))
-                } else {
-                    debug!("Image::from_path_scale: scale {} < 1", scale);
-                    None
+                        Some(Image::from_data(
+                            width as i32 * scale, height as i32 * scale, new_data
+                        ))
+                    },
+                    Ordering::Less => {
+                        debug!("Image::from_path_scale: scale {} < 1", scale);
+                        None
+                    }
                 }
             },
             Err(err) => {
@@ -286,12 +270,12 @@ impl Renderer for Image {
         &mut self.data
     }
 
-    fn mode(&self) -> &Cell<Mode> {
-        &self.mode
-    }
-
     fn sync(&mut self) -> bool {
         true
+    }
+
+    fn mode(&self) -> &Cell<Mode> {
+        &self.mode
     }
 }
 
@@ -309,22 +293,21 @@ impl Drop for ImageAligned {
 }
 
 impl ImageAligned {
-    pub unsafe fn new(width: i32, height: i32, align: usize) -> ImageAligned {
-        let size = (width * height) as usize;
+    pub fn new(w: i32, h: i32, align: usize) -> ImageAligned {
+        let size = (w * h) as usize;
         let size_bytes = size * mem::size_of::<Color>();
         let size_alignments = (size_bytes + align - 1) / align;
         let size_aligned = size_alignments * align;
-        let ptr = libc::memalign(align, size_aligned);
-        libc::memset(ptr, 0, size_aligned);
-        ImageAligned {
-            w: width,
-            h: height,
-            data: slice::from_raw_parts_mut(
+        let data;
+        unsafe {
+            let ptr = libc::memalign(align, size_aligned);
+            libc::memset(ptr, 0, size_aligned);
+            data = slice::from_raw_parts_mut(
                 ptr as *mut Color,
                 size_aligned / mem::size_of::<Color>()
-            ),
-            mode: Cell::new(Mode::Blend),
+            );
         }
+        ImageAligned { w, h, data, mode: Cell::new(Mode::Blend) }
     }
 
     pub fn width(&self) -> i32 {
@@ -365,11 +348,11 @@ impl Renderer for ImageAligned {
         self.data
     }
 
-    fn mode(&self) -> &Cell<Mode> {
-        &self.mode
-    }
-
     fn sync(&mut self) -> bool {
         true
+    }
+
+    fn mode(&self) -> &Cell<Mode> {
+        &self.mode
     }
 }

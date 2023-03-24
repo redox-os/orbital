@@ -1,12 +1,13 @@
 use orbclient::{Color, Event, Renderer};
 use orbfont::Font;
-use orbital_core::{
+use crate::core::{
     Properties,
     display::Display,
     image::{Image, ImageAligned},
     rect::Rect,
     self
 };
+
 use std::cmp::{min, max};
 use std::collections::VecDeque;
 
@@ -27,7 +28,7 @@ pub struct Window {
     pub y: i32,
     pub scale: i32,
     pub title: String,
-    pub async: bool,
+    pub asynchronous: bool,
     pub borderless: bool,
     pub resizable: bool,
     pub transparent: bool,
@@ -61,14 +62,15 @@ impl Window {
             y,
             scale,
             title: String::new(),
-            async: false,
+            asynchronous: false,
             borderless: false,
             resizable: false,
             transparent: false,
             unclosable: false,
             zorder: WindowZOrder::Normal,
             max_restore: None,
-            image: unsafe { ImageAligned::new(w, h, 4096) }, // Ensure that image data is page aligned at beginning and end
+            // TODO: get a system constant for the page size
+            image: ImageAligned::new(w, h, 4096), // Ensure that image data is page aligned at beginning and end
             title_image: Image::new(0, 0),
             title_image_unfocused: Image::new(0, 0),
             events: VecDeque::new(),
@@ -227,11 +229,11 @@ impl Window {
 
     pub fn properties(&self) -> Properties {
         let mut properties = 0;
-        if self.async { properties |= orbital_core::PROPERTY_ASYNC; }
-        if self.borderless { properties |= orbital_core::PROPERTY_BORDERLESS; }
-        if self.resizable { properties |= orbital_core::PROPERTY_RESIZABLE; }
-        if self.transparent { properties |= orbital_core::PROPERTY_TRANSPARENT; }
-        if self.unclosable { properties |= orbital_core::PROPERTY_UNCLOSABLE; }
+        if self.asynchronous { properties |= core::PROPERTY_ASYNC; }
+        if self.borderless { properties |= core::PROPERTY_BORDERLESS; }
+        if self.resizable { properties |= core::PROPERTY_RESIZABLE; }
+        if self.transparent { properties |= core::PROPERTY_TRANSPARENT; }
+        if self.unclosable { properties |= core::PROPERTY_UNCLOSABLE; }
         Properties {
             properties,
             x: self.x,
@@ -265,7 +267,7 @@ impl Window {
         }
 
         //TODO: Invalidate old mappings
-        let mut new_image = unsafe { ImageAligned::new(w, h, 4096) };
+        let mut new_image = ImageAligned::new(w, h, 4096);
         let new_rect = Rect::new(0, 0, w, h);
 
         let rect = Rect::new(0, 0, self.image.width(), self.image.height());
@@ -281,9 +283,9 @@ impl Window {
 #[cfg(test)]
 mod test {
     use orbclient::{Color, Event};
-    use window::Window;
+    use crate::window::Window;
     use std::rc::Rc;
-    use config::Config;
+    use crate::config::Config;
 
     // create a default config that can be used to create Windows for testing
     // TODO implement or derive Default for orbclient::Color and then just use Config::default()
