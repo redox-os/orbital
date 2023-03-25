@@ -107,6 +107,7 @@ pub struct OrbitalScheme {
     clipboard: Vec<u8>,
     scale: i32,
     config: Rc<Config>,
+    popup_rect: Rect,
 }
 
 impl OrbitalScheme {
@@ -160,6 +161,7 @@ impl OrbitalScheme {
             clipboard: Vec::new(),
             scale,
             config: Rc::clone(&config),
+            popup_rect: Rect::default(),
         })
     }
 
@@ -599,77 +601,101 @@ impl<'a> OrbitalSchemeEvent<'a> {
         self.scheme.volume_osd = true;
     }
 
-    // Either start drawing the win_tabbing window, or move to the next option in the list
-    // The window is drawn by redraw()
-    fn win_tab(&mut self) {
-        if self.scheme.order.len() > 1 {
+    // set the focus to be on a window by id, and redraw it
+    fn focus(&mut self, id: usize, focused: bool) {
+        if let Some(window) = self.scheme.windows.get_mut(&id) {
+            schedule(&mut self.scheme.redraws, window.title_rect());
+            schedule(&mut self.scheme.redraws, window.rect());
+            window.event(FocusEvent { focused }.to_event());
+        }
+    }
+
+    // Tab through the list of selectable windows, changing window order and focus to bring
+    // the next one to the front and push the previous one to the back.
+    // Note that the selectable windows maybe interlaced in the stack with non-selectable windows,
+    // the first selectable window may not be the first in the stack and the bottom selectable
+    // window may not be the last in the stack
+    fn super_tab(&mut self) {
+        let mut selectable_window_indexes: Vec<usize> = vec![];
+        for (index, id) in self.scheme.order.iter().enumerate() {
+            if let Some(window) = self.scheme.windows.get(id) {
+                if !window.title.is_empty() {
+                    selectable_window_indexes.push(index);
+                }
+            }
+        }
+
+        if selectable_window_indexes.len() > 1 {
             // Disable dragging
             self.scheme.dragging = DragMode::None;
 
-            // Redraw old focused window
-            if let Some(id) = self.scheme.order.pop_front() {
-                if let Some(window) = self.scheme.windows.get_mut(&id) {
-                    schedule(&mut self.scheme.redraws, window.title_rect());
-                    schedule(&mut self.scheme.redraws, window.rect());
-                    window.event(FocusEvent {
-                        focused: false
-                    }.to_event());
-                }
-                self.scheme.order.push_back(id);
-            }
-            // Redraw new focused window
-            if let Some(id) = self.scheme.order.front() {
-                if let Some(window) = self.scheme.windows.get_mut(id){
-                    schedule(&mut self.scheme.redraws, window.title_rect());
-                    schedule(&mut self.scheme.redraws, window.rect());
-                    window.event(FocusEvent {
-                        focused: true
-                    }.to_event());
+            // remove focus from the first selectable window in the window stack and make it
+            // the last selectable window in the stack. Indexes are the indexes of windows
+            // in self.scheme.order
+            let front_index = selectable_window_indexes[0];
+            let next_index = selectable_window_indexes[1];
+            let last_index = selectable_window_indexes[selectable_window_indexes.len()-1];
+            if let Some(front_id) = self.scheme.order.remove(front_index) {
+                self.scheme.order.insert(last_index, front_id);
+                self.focus(front_id, false); // remove focus from it
+
+                // move to the front and give focus to the next selectable window in the stack
+                if let Some(next_id) = self.scheme.order.get(next_index) {
+                    self.focus(*next_id, true); // move focus to next in stack
                 }
             }
         }
     }
 
-    /// Create a [Rect][orbital-core::rect::Rect] that places a popup in the middle of the display
+    // Create a [Rect][orbital-core::rect::Rect] that places a popup in the middle of the display
     fn popup_rect(image: &ImageRef, width: i32, height: i32) -> Rect {
         Rect::new(image.width()/2 - width/2,
                                     image.height()/2 - height/2,
                                     width, height)
     }
 
-    /// Called by redraw() to draw the list of currently open windows in the middle of the screen.
-    /// Filter out app windows with no title.
-    /// If there are no windows to select, nothing is drawn.
+    // Called by redraw() to draw the list of currently open windows in the middle of the screen.
+    // Filter out app windows with no title.
+    // If there are no windows to select, nothing is drawn.
     fn draw_window_list(&mut self) {
+        const SELECT_POPUP_TOP_BOTTOM_MARGIN: u32 = 2;
+        const SELECT_POPUP_SIDE_MARGIN: i32 = 4;
+        const SELECT_ROW_HEIGHT: u32 = 20;
+        const SELECT_ROW_WIDTH: i32 = 400;
+
         //TODO: HiDPI
 
-        let mut selectable_windows: Vec<orbfont::Text> = vec![];
-        for id in self.scheme.order.iter() {
+        let selectable_window_ids: Vec<usize>= self.scheme.order.iter().filter(|id| {
             if let Some(window) = self.scheme.windows.get(id) {
-                if !window.title.is_empty() {
-                    selectable_windows.push(self.scheme.font.render(&(window.title.to_string()), 16.0));
-                }
+                !window.title.is_empty()
+            } else {
+                false
             }
-        }
+        }).copied().collect();
 
-        if !selectable_windows.is_empty() {
+        if selectable_window_ids.len() > 1 {
+            // follow the look of the current config - in terms of colors
             let Config { bar_color, bar_highlight_color, text_color, text_highlight_color, .. } = *self.scheme.config;
 
-            let list_h = selectable_windows.len() as i32 * 20 + 4;
-            let list_w = 400;
+            let list_h = (selectable_window_ids.len() as u32 * SELECT_ROW_HEIGHT + (SELECT_POPUP_TOP_BOTTOM_MARGIN * 2)) as i32;
+            let list_w = SELECT_ROW_WIDTH;
             let target_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
-            // Color copied over from orbtk's window background
             let mut image = Image::from_color(list_w, list_h, bar_color);
 
-            for (i, text) in selectable_windows.iter().enumerate() {
-                if i == 0 {
-                    image.rect(0, i as i32 * 20 + 2, list_w as u32, 20, bar_highlight_color);
-                    text.draw(&mut image, 4, i as i32 * 20 + 4, text_highlight_color);
-                } else {
-                    text.draw(&mut image, 4, i as i32 * 20 + 4, text_color);
+            for (selectable_index, window_id) in selectable_window_ids.iter().enumerate() {
+                if let Some(window) = self.scheme.windows.get(window_id) {
+                    let vertical_offset = selectable_index as i32 * SELECT_ROW_HEIGHT as i32 + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32;
+                    let text = self.scheme.font.render(&window.title, 16.0);
+                    if selectable_index == 0 {
+                        image.rect(0, vertical_offset, list_w as u32, SELECT_ROW_HEIGHT, bar_highlight_color);
+                        text.draw(&mut image, SELECT_POPUP_SIDE_MARGIN, vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32, text_highlight_color);
+                    } else {
+                        text.draw(&mut image, SELECT_POPUP_SIDE_MARGIN, vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32, text_color);
+                    }
                 }
             }
             self.orb.image_mut().roi(&target_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
+            self.scheme.popup_rect = target_rect;
             schedule(&mut self.scheme.redraws, target_rect);
         }
     }
@@ -694,7 +720,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
             // If the win key was released, stop drawing the win-tab window switcher
             if !self.scheme.win_key {
                 if self.scheme.win_tabbing {
-                    // ADM we were win_tabbing, it should be closed and undrawn
+                    // redraw the area where the popup window was
+                    schedule(&mut self.scheme.redraws, self.scheme.popup_rect);
                 }
                 self.scheme.win_tabbing = false;
                 self.scheme.volume_osd = false;
@@ -730,7 +757,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                     // Enter win_tabbing mode
                     self.scheme.win_tabbing = true;
                     // Start drawing the window switcher, or move to next window in the list
-                    self.win_tab();
+                    self.super_tab();
                 },
                 orbclient::K_BRACE_OPEN => if event.pressed {
                     self.volume(Volume::Down);
