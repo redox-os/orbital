@@ -95,12 +95,12 @@ Can we remove these duplicates or merge them under orbutils?
             are IMHO part of orbital-core). Backwards compatibility for any app _outside_ combined orbital and orbutils
             can be taken care of by re-exports.
 * Examples
-  * Examples are not compiled in CI. If what they show is covered in orbutils, consider deleting them and just 
-referring people to orbutils
-  * It looks like the simple example in Orbital, is a duplication of an example in orbclient. If so, remove it and 
-add a reference in the README.md to the other repo and it's examples
+  * ~~Examples are not compiled in CI. If what they show is covered in orbutils, consider deleting them and just 
+referring people to orbutils~~ DONE
+  * ~~It looks like the simple example in Orbital, is a duplication of an example in orbclient. If so, remove it and 
+add a reference in the README.md to the other repo and it's examples~~ DONE
 * Update all components/crates to the latest edition (2021)
-  * I see fields named "async" that is a reserved keyword and will need changing
+  * ~~I see fields named "async" that is a reserved keyword and will need changing~~ DONE
 * Add doc comments and doc tests to API methods for use by application developers
   * Deploy "cargo doc" generated docs somewhere
 * Improve testing, stability and ease contributions
