@@ -678,51 +678,53 @@ impl<'a> OrbitalSchemeEvent<'a> {
             let Config { bar_color, bar_highlight_color, text_color, text_highlight_color, .. } = *self.scheme.config;
 
             let list_h = (selectable_window_ids.len() as u32 * SELECT_ROW_HEIGHT + (SELECT_POPUP_TOP_BOTTOM_MARGIN * 2)) as i32;
-            let list_w = SELECT_ROW_WIDTH;
-            let target_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
-            let mut image = Image::from_color(list_w, list_h, bar_color);
+            let popup_rect = Self::popup_rect(self.orb.image(), SELECT_ROW_WIDTH, list_h);
+            let mut image = Image::from_color(SELECT_ROW_WIDTH, list_h, bar_color);
 
             for (selectable_index, window_id) in selectable_window_ids.iter().enumerate() {
                 if let Some(window) = self.scheme.windows.get(window_id) {
                     let vertical_offset = selectable_index as i32 * SELECT_ROW_HEIGHT as i32 + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32;
                     let text = self.scheme.font.render(&window.title, 16.0);
                     if selectable_index == 0 {
-                        image.rect(0, vertical_offset, list_w as u32, SELECT_ROW_HEIGHT, bar_highlight_color);
+                        image.rect(0, vertical_offset, SELECT_ROW_WIDTH as u32, SELECT_ROW_HEIGHT, bar_highlight_color);
                         text.draw(&mut image, SELECT_POPUP_SIDE_MARGIN, vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32, text_highlight_color);
                     } else {
                         text.draw(&mut image, SELECT_POPUP_SIDE_MARGIN, vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32, text_color);
                     }
                 }
             }
-            self.orb.image_mut().roi(&target_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
-            self.scheme.popup_rect = target_rect;
-            schedule(&mut self.scheme.redraws, target_rect);
+            self.orb.image_mut().roi(&popup_rect).blit(&image.roi(&Rect::new(0, 0, SELECT_ROW_WIDTH, list_h)));
+            self.scheme.popup_rect = popup_rect;
+            schedule(&mut self.scheme.redraws, popup_rect);
         }
     }
 
+    // Draw a volume control feedback bar in the middle of the screen. It will have a small border areas around it
     fn draw_volume_osd(&mut self) {
         let Config { bar_color, bar_highlight_color, .. } = *self.scheme.config;
 
         //TODO: HiDPI
-        let list_h = 20 + 4;
-        let list_w = 100 + 4;
-        let target_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
-        // Color copied over from orbtk's window background
-        let mut image = Image::from_color(list_w, list_h, bar_color);
-        image.rect(2, 2, self.scheme.volume_value as u32, 20, bar_highlight_color);
-        self.orb.image_mut().roi(&target_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
-        schedule(&mut self.scheme.redraws, target_rect);
+        const VOLUME_MARGIN : i32 = 2;
+        const VOLUME_HEIGHT : i32 = 20;
+        const VOLUME_WIDTH : i32 = 100;
+        const POPUP_HEIGHT : i32 = VOLUME_HEIGHT + (VOLUME_MARGIN * 2);
+        const POPUP_WIDTH : i32 = VOLUME_WIDTH + (VOLUME_MARGIN * 2);
+        let popup_rect = Self::popup_rect(self.orb.image(), POPUP_WIDTH, POPUP_HEIGHT);
+        let mut volume_bar = Image::from_color(POPUP_WIDTH, POPUP_HEIGHT, bar_color);
+        volume_bar.rect(VOLUME_MARGIN, VOLUME_MARGIN, self.scheme.volume_value as u32, VOLUME_HEIGHT as u32, bar_highlight_color);
+        self.orb.image_mut().roi(&popup_rect).blit(&volume_bar.roi(&Rect::new(0, 0, VOLUME_WIDTH, VOLUME_HEIGHT)));
+        self.scheme.popup_rect = popup_rect;
+        schedule(&mut self.scheme.redraws, popup_rect);
     }
 
     fn key_event(&mut self, event: KeyEvent) {
         if event.scancode == 0x5B {
             self.scheme.win_key = event.pressed;
-            // If the win key was released, stop drawing the win-tab window switcher
+
+            // If the win key was released, stop drawing any popup
             if !self.scheme.win_key {
-                if self.scheme.win_tabbing {
-                    // redraw the area where the popup window was
-                    schedule(&mut self.scheme.redraws, self.scheme.popup_rect);
-                }
+                // redraw the area where the popup window was
+                schedule(&mut self.scheme.redraws, self.scheme.popup_rect);
                 self.scheme.win_tabbing = false;
                 self.scheme.volume_osd = false;
             }
@@ -744,7 +746,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             } else {
                 self.scheme.volume_osd = false;
             }
-        } else if self.scheme.win_key {
+        } else if self.scheme.win_key { // super was already pressed and continues to be
             match event.scancode {
                 orbclient::K_Q => if event.pressed {
                     if let Some(id) = self.scheme.order.front() {
