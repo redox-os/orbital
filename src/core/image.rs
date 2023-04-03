@@ -20,7 +20,7 @@ impl<'a> Iterator for ImageRoiRows<'a> {
             let start = (self.rect.top() + self.i) * self.w + self.rect.left();
             let end = start + self.rect.width();
             self.i += 1;
-            Some(unsafe { mem::transmute(& self.data[start as usize .. end as usize]) })
+            Some(& self.data[start as usize .. end as usize])
         } else {
             None
         }
@@ -38,21 +38,45 @@ impl<'a> Iterator for ImageRoiRowsMut<'a> {
     type Item = &'a mut [Color];
     fn next(&mut self) -> Option<Self::Item> {
         if self.i < self.rect.height() {
-            let start = (self.rect.top() + self.i) * self.w + self.rect.left();
-            let end = start + self.rect.width();
+            let mut data = mem::take(&mut self.data);
+
+            // skip section of data above top of rect
+            if self.i == 0 {
+                data = data.split_at_mut(self.rect.top() as usize * self.w as usize).1
+            };
+
+            // split after next row
+            let (row, tail) = data.split_at_mut(self.w as usize);
+            self.data = tail;                            // make data point to the remaining rows
+            let start = self.rect.left() as usize;
+            let end = self.rect.left() as usize + self.rect.width() as usize;
             self.i += 1;
-            // it does not appear to be possible to do this in safe rust
-            Some(unsafe { mem::transmute(&mut self.data[start as usize .. end as usize]) })
+            Some(&mut row[start .. end]) // return the rect part of the row
         } else {
             None
         }
     }
 }
 
+// ImageRoi seems to be a "window" onto an image, i.e. a Rectangular part of an image.
+// `rect` defined the area within the larger image, we need to know the width of the image (`w`)
+// to move through the data by rows, and `data` is a reference to the data in the actual image
 pub struct ImageRoi<'a> {
     rect: Rect,
     w: i32,
     data: &'a mut [Color]
+}
+
+
+impl<'a> IntoIterator for ImageRoi<'a> {
+    type Item = &'a [Color];
+    type IntoIter = ImageRoiRows<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let Self { rect, w, data } = self;
+        let data = &mut data[rect.top() as usize * w as usize..][..rect.height() as usize * w as usize];
+        ImageRoiRows { rect, w, data, i: 0}
+    }
 }
 
 impl<'a> ImageRoi<'a> {
@@ -240,6 +264,7 @@ impl Image {
     pub fn height(&self) -> i32 {
         self.h
     }
+
     pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
         ImageRoi {
             rect: *rect,
