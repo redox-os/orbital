@@ -1,5 +1,5 @@
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
+#![forbid(clippy::unwrap_used)]
+#![forbid(clippy::expect_used)]
 
 use crate::core::Orbital;
 use std::{

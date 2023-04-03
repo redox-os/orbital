@@ -68,11 +68,11 @@ pub fn fix_env(display_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-unsafe fn read_to_slice<R: Read, T: Copy>(mut r: R, buf: &mut [T]) -> io::Result<usize> {
-    r.read(slice::from_raw_parts_mut(
-        buf.as_mut_ptr() as *mut u8,
-        buf.len() * mem::size_of::<T>())
-    ).map(|count| count/mem::size_of::<T>())
+fn read_to_slice<R: Read, T: Copy>(mut r: R, buf: &mut [T]) -> io::Result<usize> {
+    unsafe {
+        r.read(slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut u8, buf.len() * mem::size_of::<T>()))
+            .map(|count| count / mem::size_of::<T>())
+    }
 }
 
 pub const PROPERTY_ASYNC:      u8 = 1 << 0;
@@ -199,16 +199,18 @@ impl Orbital {
                 unsafe { File::from_raw_fd(socket as RawFd) }
             })
             .map_err(|err| {
-                error!("failed to create :orbital: {}", err);
+                error!("failed to open ':orbital': {}", err);
                 io::Error::from_raw_os_error(err.errno)
             })?;
 
         let mut buf: [u8; 4096] = [0; 4096];
         let count = syscall::fpath(display.as_raw_fd() as usize, &mut buf)
             .map_err(|_| io::Error::new(ErrorKind::Other,
-                                        "Could not open display as_raw_fd()"))?;
+                                        "Could not read display path with fpath()"))?;
 
-        let url = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
+        let url = String::from_utf8(Vec::from(&buf[..count]))
+            .map_err(|_| io::Error::new(ErrorKind::Other,
+                                        "Could not create Utf8 Url String"))?;
         let (scheme_name, path) = Self::url_parts(&url)?;
         let (vt_screen, width, height) = Self::parse_display_path(path);
         let mut displays = vec![Display::new(0, 0, width, height, display)?];
@@ -232,7 +234,9 @@ impl Orbital {
                     .map_err(|_| io::Error::new(ErrorKind::Other,
                                                 "Could not open extra_file as_raw_fd()"))?;
 
-                let url = unsafe { String::from_utf8_unchecked(Vec::from(&buf[..count])) };
+                let url = String::from_utf8(Vec::from(&buf[..count]))
+                    .map_err(|_| io::Error::new(ErrorKind::Other,
+                                                "Could not create Utf8 Url String"))?;
 
                 let (_scheme_name, path) = Self::url_parts(&url)?;
                 let (_vt_screen, width, height) = Self::parse_display_path(path);
@@ -304,7 +308,7 @@ impl Orbital {
             let me = &mut *me;
             let mut packets = [Packet::default(); 16];
             let result = loop {
-                match unsafe { read_to_slice(&mut me.orb.scheme, &mut packets) } {
+                match read_to_slice(&mut me.orb.scheme, &mut packets) {
                     Ok(0) => break Some(()),
                     Ok(count) => {
                         let packets = &mut packets[..count];
@@ -338,7 +342,7 @@ impl Orbital {
             let me = &mut *me;
             let mut events = [Event::new(); 16];
             loop {
-                match unsafe { read_to_slice(&mut me.orb.displays[0].file, &mut events) }? {
+                match read_to_slice(&mut me.orb.displays[0].file, &mut events)? {
                     0 => break,
                     count => {
                         let events = &mut events[..count];
@@ -589,7 +593,6 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 mod test {
     use crate::core::Orbital;
 
@@ -601,26 +604,35 @@ mod test {
     #[test]
     fn valid_url_empty_scheme() {
         // until we throw an error for an empty scheme_name...
-        let (scheme_name, path) = Orbital::url_parts(":path")
-            .expect("Could not parse url");
-        assert!(scheme_name.is_empty());
-        assert_eq!(path, "path");
+        match Orbital::url_parts(":path") {
+            Ok((scheme_name, path)) => {
+                assert!(scheme_name.is_empty());
+                assert_eq!(path, "path");
+            },
+            _ => panic!("Could not parse url")
+        }
     }
 
     #[test]
     fn valid_url_empty_path() {
         // until we throw an error for an empty scheme_name...
-        let (scheme_name, path) = Orbital::url_parts("scheme:")
-            .expect("Could not parse url");
-        assert_eq!(scheme_name, "scheme");
-        assert!(path.is_empty());
+        match Orbital::url_parts("scheme:") {
+            Ok((scheme_name, path)) => {
+                assert_eq!(scheme_name, "scheme");
+                assert!(path.is_empty());
+            },
+            _ => panic!("Could not parse url")
+        }
     }
 
     #[test]
     fn valid_url() {
-        let (scheme_name, path) = Orbital::url_parts("scheme:path")
-            .expect("Could not parse url");
-        assert_eq!(scheme_name, "scheme");
-        assert_eq!(path, "path");
+        match Orbital::url_parts("scheme:path") {
+            Ok((scheme_name, path)) => {
+                assert_eq!(scheme_name, "scheme");
+                assert_eq!(path, "path");
+            },
+            _ => panic!("Could not parse url")
+        }
     }
 }
