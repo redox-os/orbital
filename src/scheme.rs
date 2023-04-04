@@ -13,11 +13,7 @@ use std::{
 use std::rc::Rc;
 
 use log::{error, info, warn};
-use orbclient::{
-    self, ButtonEvent, ClipboardEvent, Color, Event, EventOption, FocusEvent, HoverEvent,
-    KeyEvent, MouseEvent, MouseRelativeEvent, MoveEvent, QuitEvent, Renderer, ResizeEvent,
-    ScreenEvent, TextInputEvent,
-};
+use orbclient::{self, ButtonEvent, ClipboardEvent, Color, Event, EventOption, FocusEvent, HoverEvent, K_ALT, K_ALT_GR, K_CTRL, K_LEFT_SHIFT, K_RIGHT_SHIFT, KeyEvent, MouseEvent, MouseRelativeEvent, MoveEvent, QuitEvent, Renderer, ResizeEvent, ScreenEvent, TextInputEvent};
 use syscall::data::Packet;
 use syscall::error::{EBADF, Error, Result};
 use syscall::number::SYS_READ;
@@ -79,6 +75,27 @@ enum Volume {
     Toggle,
 }
 
+// TODO ADM - pending other MR to be merged...
+/// SUPER/META/WIN Key
+pub const K_SUPER : u8 = 0x5B;
+/// Media Key for Volume toggle (mute/unmute)
+pub const K_VOLUME_TOGGLE : u8 = 0x80 + 0x20;
+/// Media Key for Volume Down
+pub const K_VOLUME_DOWN : u8 = 0x80 + 0x2E;
+/// Media Key for Volume Up
+pub const K_VOLUME_UP : u8 = 0x80 + 0x30;
+
+const GRID_SIZE: i32 = 16;
+
+const SHIFT_LEFT_MODIFIER : u8 = 1 << 0;
+const SHIFT_RIGHT_MODIFIER : u8 = 1 << 1;
+const SHIFT_ANY_MODIFIER : u8 = 1 << 2;
+const CONTROL_MODIFIER : u8 = 1 << 3;
+const ALT_MODIFIER : u8 = 1 << 4;
+const ALT_GR_MODIFIER : u8 = 1 << 5;
+const ALT_ANY_MODIFIER : u8 = 1 << 6;
+const SUPER_MODIFIER : u8 = 1 << 7;
+
 pub struct OrbitalScheme {
     window_max: Image,
     window_max_unfocused: Image,
@@ -92,11 +109,9 @@ pub struct OrbitalScheme {
     cursor_middle: bool,
     cursor_right: bool,
     dragging: DragMode,
-    win_key: bool,
-    win_tabbing: bool,
+    modifier_state: u8,
     volume_value: i32,
     volume_toggle: i32,
-    volume_osd: bool,
     next_id: isize,
     hover: Option<usize>,
     order: VecDeque<usize>,
@@ -107,6 +122,12 @@ pub struct OrbitalScheme {
     clipboard: Vec<u8>,
     scale: i32,
     config: Rc<Config>,
+    // Is the user currently switching windows with win-tab
+    // Set true when win-tab is pressed, set false when win is released.
+    // While it is true, redraw() calls draw_window_list()
+    win_tabbing: bool,
+    volume_osd: bool,
+    shortcuts_osd: bool,
     popup_rect: Rect,
 }
 
@@ -143,14 +164,9 @@ impl OrbitalScheme {
             cursor_middle: false,
             cursor_right: false,
             dragging: DragMode::None,
-            win_key: false,
-            // Is the user currently switching windows with win-tab
-            // Set true when win-tab is pressed, set false when win is released.
-            // While it is true, redraw() calls draw_window_list()
-            win_tabbing: false,
+            modifier_state: 0,
             volume_value: 0,
             volume_toggle: 0,
-            volume_osd: false,
             next_id: 1,
             hover: None,
             order: VecDeque::new(),
@@ -161,6 +177,9 @@ impl OrbitalScheme {
             clipboard: Vec::new(),
             scale,
             config: Rc::clone(&config),
+            win_tabbing: false,
+            volume_osd: false,
+            shortcuts_osd: false,
             popup_rect: Rect::default(),
         })
     }
@@ -226,6 +245,7 @@ impl OrbitalScheme {
         }
     }
 }
+
 impl Handler for OrbitalScheme {
     fn should_delay(&mut self, packet: &Packet) -> bool {
         packet.a == SYS_READ &&
@@ -454,6 +474,7 @@ pub struct OrbitalSchemeEvent<'a> {
     scheme: &'a mut OrbitalScheme,
     orb: &'a mut Orbital,
 }
+
 impl<'a> OrbitalSchemeEvent<'a> {
     pub fn redraw(&mut self) {
         self.scheme.rezbuffer();
@@ -510,12 +531,17 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         if self.scheme.win_tabbing {
             //TODO: add to total_redraw?
-            self.draw_window_list();
+            self.draw_window_list_osd();
         }
 
         if self.scheme.volume_osd {
             //TODO: add to total_redraw?
             self.draw_volume_osd();
+        }
+
+        if self.scheme.shortcuts_osd {
+            //TODO: add to total_redraw?
+            self.draw_shortcuts_osd();
         }
 
         // Add any redraws from OSD's
@@ -593,7 +619,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         match fs::write("audio:volume", format!("{}", self.scheme.volume_value)) {
             Ok(()) => (),
             Err(err) => {
-                error!("failed to write volume {}: {}", self.scheme.volume_value, err);
+                error!("failed to write volume: {}", err);
                 return;
             }
         }
@@ -616,6 +642,9 @@ impl<'a> OrbitalSchemeEvent<'a> {
     // the first selectable window may not be the first in the stack and the bottom selectable
     // window may not be the last in the stack
     fn super_tab(&mut self) {
+        // Enter win_tabbing mode
+        self.scheme.win_tabbing = true;
+
         let mut selectable_window_indexes: Vec<usize> = vec![];
         for (index, id) in self.scheme.order.iter().enumerate() {
             if let Some(window) = self.scheme.windows.get(id) {
@@ -657,11 +686,12 @@ impl<'a> OrbitalSchemeEvent<'a> {
     // Called by redraw() to draw the list of currently open windows in the middle of the screen.
     // Filter out app windows with no title.
     // If there are no windows to select, nothing is drawn.
-    fn draw_window_list(&mut self) {
+    fn draw_window_list_osd(&mut self) {
         const SELECT_POPUP_TOP_BOTTOM_MARGIN: u32 = 2;
         const SELECT_POPUP_SIDE_MARGIN: i32 = 4;
         const SELECT_ROW_HEIGHT: u32 = 20;
         const SELECT_ROW_WIDTH: i32 = 400;
+        const FONT_HEIGHT : f32 = 16.0;
 
         //TODO: HiDPI
 
@@ -678,204 +708,263 @@ impl<'a> OrbitalSchemeEvent<'a> {
             let Config { bar_color, bar_highlight_color, text_color, text_highlight_color, .. } = *self.scheme.config;
 
             let list_h = (selectable_window_ids.len() as u32 * SELECT_ROW_HEIGHT + (SELECT_POPUP_TOP_BOTTOM_MARGIN * 2)) as i32;
-            let popup_rect = Self::popup_rect(self.orb.image(), SELECT_ROW_WIDTH, list_h);
-            let mut image = Image::from_color(SELECT_ROW_WIDTH, list_h, bar_color);
+            let list_w = SELECT_ROW_WIDTH;
+            let popup_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
+            let mut image = Image::from_color(list_w, list_h, bar_color);
 
             for (selectable_index, window_id) in selectable_window_ids.iter().enumerate() {
                 if let Some(window) = self.scheme.windows.get(window_id) {
                     let vertical_offset = selectable_index as i32 * SELECT_ROW_HEIGHT as i32 + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32;
-                    let text = self.scheme.font.render(&window.title, 16.0);
+                    let text = self.scheme.font.render(&window.title, FONT_HEIGHT);
                     if selectable_index == 0 {
-                        image.rect(0, vertical_offset, SELECT_ROW_WIDTH as u32, SELECT_ROW_HEIGHT, bar_highlight_color);
+                        image.rect(0, vertical_offset, list_w as u32, SELECT_ROW_HEIGHT, bar_highlight_color);
                         text.draw(&mut image, SELECT_POPUP_SIDE_MARGIN, vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32, text_highlight_color);
                     } else {
                         text.draw(&mut image, SELECT_POPUP_SIDE_MARGIN, vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32, text_color);
                     }
                 }
             }
-            self.orb.image_mut().roi(&popup_rect).blit(&image.roi(&Rect::new(0, 0, SELECT_ROW_WIDTH, list_h)));
+            self.orb.image_mut().roi(&popup_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
             self.scheme.popup_rect = popup_rect;
             schedule(&mut self.scheme.redraws, popup_rect);
         }
     }
 
-    // Draw a volume control feedback bar in the middle of the screen. It will have a small border areas around it
+    // Draw an on screen display (overlay) for volume control
     fn draw_volume_osd(&mut self) {
         let Config { bar_color, bar_highlight_color, .. } = *self.scheme.config;
 
+        const BAR_HEIGHT : i32 = 20;
+        const BAR_WIDTH : i32 = 100;
+        const POPUP_MARGIN: i32 = 2;
+
         //TODO: HiDPI
-        const VOLUME_MARGIN : i32 = 2;
-        const VOLUME_HEIGHT : i32 = 20;
-        const VOLUME_WIDTH : i32 = 100;
-        const POPUP_HEIGHT : i32 = VOLUME_HEIGHT + (VOLUME_MARGIN * 2);
-        const POPUP_WIDTH : i32 = VOLUME_WIDTH + (VOLUME_MARGIN * 2);
-        let popup_rect = Self::popup_rect(self.orb.image(), POPUP_WIDTH, POPUP_HEIGHT);
-        let mut volume_bar = Image::from_color(POPUP_WIDTH, POPUP_HEIGHT, bar_color);
-        volume_bar.rect(VOLUME_MARGIN, VOLUME_MARGIN, self.scheme.volume_value as u32, VOLUME_HEIGHT as u32, bar_highlight_color);
-        self.orb.image_mut().roi(&popup_rect).blit(&volume_bar.roi(&Rect::new(0, 0, VOLUME_WIDTH, VOLUME_HEIGHT)));
+        let list_h = BAR_HEIGHT + (2 * POPUP_MARGIN);
+        let list_w = BAR_WIDTH + (2 * POPUP_MARGIN);
+        let popup_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
+        // Color copied over from orbtk's window background
+        let mut image = Image::from_color(list_w, list_h, bar_color);
+        image.rect(POPUP_MARGIN, POPUP_MARGIN, self.scheme.volume_value as u32, BAR_HEIGHT as u32, bar_highlight_color);
+        self.orb.image_mut().roi(&popup_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
         self.scheme.popup_rect = popup_rect;
         schedule(&mut self.scheme.redraws, popup_rect);
     }
 
+    const SHORTCUTS_LIST: &'static [&'static str] = &[
+        "Super-Q: Quit current window",
+        "Super-TAB: Cycle through active windows bringing to the front of the stack",
+        "Super-{: Volume down",
+        "Super-}: Volume up",
+        "Super-\\: Volume toggle (mute / unmute)",
+        "Super-left_arrow: Move window left grid_size pixels",
+        "Super-right_arrow: Move window right grid_size pixels",
+        "Super-up_arrow: Move window up grid_size pixels",
+        "Super-down_arrow: Move window down grid_size pixels",
+        "Super-C: Copy to copy buffer",
+        "Super-X: Cut to copy buffer",
+        "Super-V: Paste from the copy buffer",
+        "Super-M: Toggle window max (maximize or restore)",
+        "Super-ENTER: Toggle window max (maximize or restore)",
+    ];
+
+    // Draw an on screen display (overlay) of available SUPER keyboard shortcuts
+    fn draw_shortcuts_osd(&mut self) {
+        const ROW_HEIGHT: u32 = 20;
+        const ROW_WIDTH: i32 = 400;
+        const POPUP_BORDER: u32 = 2;
+        const FONT_HEIGHT : f32 = 16.0;
+
+        // follow the look of the current config - in terms of colors
+        let Config { bar_color, bar_highlight_color, text_highlight_color, .. } = *self.scheme.config;
+
+        let list_h = (Self::SHORTCUTS_LIST.len() as u32 * ROW_HEIGHT + (POPUP_BORDER * 2)) as i32;
+        let list_w = ROW_WIDTH;
+        let popup_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
+        let mut image = Image::from_color(list_w, list_h, bar_color);
+
+        for (index, shortcut) in Self::SHORTCUTS_LIST.iter().enumerate() {
+            let vertical_offset = index as i32 * ROW_HEIGHT as i32 + POPUP_BORDER as i32;
+            let text = self.scheme.font.render(shortcut, FONT_HEIGHT);
+            image.rect(0, vertical_offset, list_w as u32, ROW_HEIGHT, bar_highlight_color);
+            text.draw(&mut image, POPUP_BORDER as i32, vertical_offset + POPUP_BORDER as i32, text_highlight_color);
+        }
+
+        self.orb.image_mut().roi(&popup_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
+        self.scheme.popup_rect = popup_rect;
+        schedule(&mut self.scheme.redraws, popup_rect);
+    }
+
+    // Keep track of the modifier keys state based on past keydown/keyup events
+    fn track_modifier_state(&mut self, scancode: u8, pressed: bool) {
+        match (scancode, pressed) {
+            (K_SUPER, true) => self.scheme.modifier_state |= SUPER_MODIFIER,
+            (K_SUPER, false) => self.scheme.modifier_state &= !SUPER_MODIFIER,
+            (K_LEFT_SHIFT, true) => self.scheme.modifier_state |= SHIFT_LEFT_MODIFIER,
+            (K_LEFT_SHIFT, false) => self.scheme.modifier_state &= !SHIFT_LEFT_MODIFIER,
+            (K_RIGHT_SHIFT, true) => self.scheme.modifier_state |= SHIFT_RIGHT_MODIFIER,
+            (K_RIGHT_SHIFT, false) => self.scheme.modifier_state &= !SHIFT_RIGHT_MODIFIER,
+            (K_CTRL, true) => self.scheme.modifier_state |= CONTROL_MODIFIER,
+            (K_CTRL, false) => self.scheme.modifier_state &= !CONTROL_MODIFIER,
+            (K_ALT, true) => self.scheme.modifier_state |= ALT_MODIFIER,
+            (K_ALT, false) => self.scheme.modifier_state &= !ALT_MODIFIER,
+            (K_ALT_GR, true) => self.scheme.modifier_state |= ALT_GR_MODIFIER,
+            (K_ALT_GR, false) => self.scheme.modifier_state &= !ALT_GR_MODIFIER,
+            _ => {}
+        }
+
+        if self.scheme.modifier_state & SHIFT_LEFT_MODIFIER != 0 ||
+            self.scheme.modifier_state & SHIFT_RIGHT_MODIFIER != 0 {
+            self.scheme.modifier_state |= SHIFT_ANY_MODIFIER;
+        } else {
+            self.scheme.modifier_state &= !SHIFT_ANY_MODIFIER;
+        }
+
+        if self.scheme.modifier_state & ALT_MODIFIER != 0 ||
+            self.scheme.modifier_state & ALT_GR_MODIFIER != 0 {
+            self.scheme.modifier_state |= ALT_ANY_MODIFIER;
+        } else {
+            self.scheme.modifier_state &= !ALT_ANY_MODIFIER;
+        }
+    }
+
+    // Move the front-most window horizontally and vertically by the number of pixels passed
+    fn move_front_window(&mut self, h_movement: i32, v_movement: i32) {
+        if let Some(id) = self.scheme.order.front() {
+            if let Some(window) = self.scheme.windows.get_mut(id) {
+                if ! window.borderless {
+                    schedule(&mut self.scheme.redraws, window.title_rect());
+                    schedule(&mut self.scheme.redraws, window.rect());
+
+                    // Align location to grid
+                    window.x -= window.x % GRID_SIZE;
+                    window.y -= window.y % GRID_SIZE;
+
+                    window.x += h_movement;
+                    window.y += v_movement;
+
+                    // Ensure window remains visible
+                    window.x = cmp::max(
+                        -window.width() + GRID_SIZE,
+                        cmp::min(
+                            self.orb.image().width() - GRID_SIZE,
+                            window.x
+                        )
+                    );
+                    window.y = cmp::max(
+                        -window.height() + GRID_SIZE,
+                        cmp::min(
+                            self.orb.image().height() - GRID_SIZE,
+                            window.y
+                        )
+                    );
+
+                    let move_event = MoveEvent {
+                        x: window.x,
+                        y: window.y
+                    }.to_event();
+                    window.event(move_event);
+
+                    schedule(&mut self.scheme.redraws, window.title_rect());
+                    schedule(&mut self.scheme.redraws, window.rect());
+                }
+            }
+        }
+    }
+
+    fn clipboard_event(&mut self, kind: u8) {
+        if let Some(id) = self.scheme.order.front() {
+            if let Some(window) = self.scheme.windows.get_mut(id) {
+                //TODO: set window's clipboard to primary
+                let clipboard_event = ClipboardEvent { kind, size: 0}.to_event();
+                window.event(clipboard_event);
+            }
+        }
+    }
+
+    fn quit_front_window(&mut self) {
+        if let Some(id) = self.scheme.order.front() {
+            if let Some(window) = self.scheme.windows.get_mut(id) {
+                window.event(QuitEvent.to_event());
+            }
+        }
+    }
+
+    // Maximize / Restore the size of the front most window
+    fn toggle_front_window_max(&mut self) {
+        if let Some(id) = self.scheme.order.front() {
+            self.toggle_window_max(*id);
+        }
+    }
+
+    // undraw any overlay that was being displayed and exit the mode causing it to be displayed
+    fn close_overlays(&mut self) {
+        // redraw the area that was occupied by the popup
+        schedule(&mut self.scheme.redraws, self.scheme.popup_rect);
+        // disable drawing of the win-tab or volume popup or shortcuts overlay on redraw
+        self.scheme.win_tabbing = false;
+        self.scheme.volume_osd = false;
+        self.scheme.shortcuts_osd = false;
+    }
+
+    // Process incoming key events
     fn key_event(&mut self, event: KeyEvent) {
-        if event.scancode == 0x5B {
-            self.scheme.win_key = event.pressed;
+        self.track_modifier_state(event.scancode, event.pressed);
 
-            // If the win key was released, stop drawing any popup
-            if !self.scheme.win_key {
-                // redraw the area where the popup window was
-                schedule(&mut self.scheme.redraws, self.scheme.popup_rect);
-                self.scheme.win_tabbing = false;
-                self.scheme.volume_osd = false;
-            }
-        } else if event.scancode == 0x80 + 0x20 {
-            if event.pressed {
-                self.volume(Volume::Toggle);
-            } else {
-                self.scheme.volume_osd = false;
-            }
-        } else if event.scancode == 0x80 + 0x2E {
-            if event.pressed {
-                self.volume(Volume::Down);
-            } else {
-                self.scheme.volume_osd = false;
-            }
-        } else if event.scancode == 0x80 + 0x30 {
-            if event.pressed {
-                self.volume(Volume::Up);
-            } else {
-                self.scheme.volume_osd = false;
-            }
-        } else if self.scheme.win_key { // super was already pressed and continues to be
+        match (event.scancode, event.pressed) {
+            (K_SUPER, true) => self.scheme.shortcuts_osd = true,
+            (K_SUPER, false) => self.close_overlays(),
+            (K_VOLUME_TOGGLE, true) => self.volume(Volume::Toggle),
+            (K_VOLUME_DOWN, true) => self.volume(Volume::Down),
+            (K_VOLUME_UP, true) => self.volume(Volume::Up),
+            (K_VOLUME_TOGGLE | K_VOLUME_DOWN | K_VOLUME_UP, false) => self.scheme.volume_osd = false,
+            _ => {}
+        }
+
+        // process SUPER- key combinations
+        if self.scheme.modifier_state & SUPER_MODIFIER == SUPER_MODIFIER && event.pressed
+        && event.scancode != K_SUPER {
+            self.close_overlays();
+
             match event.scancode {
-                orbclient::K_Q => if event.pressed {
-                    if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(id) {
-                            window.event(QuitEvent.to_event());
-                        }
-                    }
-                },
-                orbclient::K_TAB => if event.pressed {
-                    // Enter win_tabbing mode
-                    self.scheme.win_tabbing = true;
-                    // Start drawing the window switcher, or move to next window in the list
-                    self.super_tab();
-                },
-                orbclient::K_BRACE_OPEN => if event.pressed {
-                    self.volume(Volume::Down);
-                },
-                orbclient::K_BRACE_CLOSE => if event.pressed {
-                    self.volume(Volume::Up);
-                },
-                orbclient::K_BACKSLASH => if event.pressed {
-                    self.volume(Volume::Toggle);
-                },
-                orbclient::K_UP |
-                orbclient::K_DOWN |
-                orbclient::K_LEFT |
-                orbclient::K_RIGHT => if event.pressed {
-                    if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(id) {
-                            if ! window.borderless {
-                                schedule(&mut self.scheme.redraws, window.title_rect());
-                                schedule(&mut self.scheme.redraws, window.rect());
-
-                                // Align location to grid
-                                let grid_size = 16;
-                                window.x -= window.x % grid_size;
-                                window.y -= window.y % grid_size;
-
-                                match event.scancode {
-                                    orbclient::K_LEFT => window.x -= grid_size,
-                                    orbclient::K_RIGHT => window.x += grid_size,
-                                    orbclient::K_UP => window.y -= grid_size,
-                                    orbclient::K_DOWN => window.y += grid_size,
-                                    _ => ()
-                                }
-
-                                // Ensure window remains visible
-                                window.x = cmp::max(
-                                    -window.width() + grid_size,
-                                    cmp::min(
-                                        self.orb.image().width() - grid_size,
-                                        window.x
-                                    )
-                                );
-                                window.y = cmp::max(
-                                    -window.height() + grid_size,
-                                    cmp::min(
-                                        self.orb.image().height() - grid_size,
-                                        window.y
-                                    )
-                                );
-
-                                let move_event = MoveEvent {
-                                    x: window.x,
-                                    y: window.y
-                                }.to_event();
-                                window.event(move_event);
-
-                                schedule(&mut self.scheme.redraws, window.title_rect());
-                                schedule(&mut self.scheme.redraws, window.rect());
-                            }
-                        }
-                    }
-                },
-                orbclient::K_C => if event.pressed {
-                    if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(id) {
-                            //TODO: set window's clipboard to primary
-                            let clipboard_event = ClipboardEvent {
-                                kind: orbclient::CLIPBOARD_COPY,
-                                size: 0,
-                            }.to_event();
-                            window.event(clipboard_event);
-                        }
-                    }
-                },
-                orbclient::K_X => if event.pressed {
-                    if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(id) {
-                            //TODO: set window's clipboard to primary
-                            let clipboard_event = ClipboardEvent {
-                                kind: orbclient::CLIPBOARD_CUT,
-                                size: 0,
-                            }.to_event();
-                            window.event(clipboard_event);
-                        }
-                    }
-                },
-                orbclient::K_V => if event.pressed {
-                    if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(id) {
-                            //TODO: set window's clipboard to primary
-                            let clipboard_event = ClipboardEvent {
-                                kind: orbclient::CLIPBOARD_PASTE,
-                                size: 0,
-                            }.to_event();
-                            window.event(clipboard_event);
-                        }
-                    }
-                },
+                orbclient::K_Q => self.quit_front_window(),
+                orbclient::K_TAB => self.super_tab(),
+                orbclient::K_BRACE_OPEN  => self.volume(Volume::Down),
+                orbclient::K_BRACE_CLOSE =>self.volume(Volume::Up),
+                orbclient::K_BACKSLASH => self.volume(Volume::Toggle),
+                orbclient::K_M => self.toggle_front_window_max(),
+                orbclient::K_ENTER => self.toggle_front_window_max(),
+                orbclient::K_UP => self.move_front_window(0, -GRID_SIZE),
+                orbclient::K_DOWN => self.move_front_window(0, GRID_SIZE),
+                orbclient::K_LEFT => self.move_front_window(-GRID_SIZE, 0),
+                orbclient::K_RIGHT => self.move_front_window(GRID_SIZE, 0),
+                orbclient::K_C => self.clipboard_event(orbclient::CLIPBOARD_COPY),
+                orbclient::K_X => self.clipboard_event(orbclient::CLIPBOARD_CUT),
+                orbclient::K_V => self.clipboard_event(orbclient::CLIPBOARD_PASTE),
                 _ => {
                     //TODO: remove hack for sending super events to lowest numbered window
+                    // ADM is this related to Launcher or Background or something?
                     if let Some((id, window)) = self.scheme.windows.iter_mut().next() {
-                        info!("sending super {:?} to {}", event, id);
+                        info!("sending super {:?} to {}, {}", event, id, window.title);
                         let mut super_event = event.to_event();
                         super_event.code += 0x1000_0000;
                         window.event(super_event);
                     }
                 }
             }
-        } else if let Some(id) = self.scheme.order.front() {
-            if let Some(window) = self.scheme.windows.get_mut(id) {
-                if event.pressed && event.character != '\0' {
-                    let text_input_event = TextInputEvent {
-                        character: event.character,
-                    }.to_event();
-                    window.event(text_input_event);
+        }
+
+        // send non-Super key events to the front window
+        if self.scheme.modifier_state & SUPER_MODIFIER == 0 {
+            if let Some(id) = self.scheme.order.front() {
+                if let Some(window) = self.scheme.windows.get_mut(id) {
+                    if event.pressed && event.character != '\0' {
+                        let text_input_event = TextInputEvent {
+                            character: event.character,
+                        }.to_event();
+                        window.event(text_input_event);
+                    }
+                    window.event(event.to_event());
                 }
-                window.event(event.to_event());
             }
         }
     }
@@ -903,7 +992,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                                 window.event(hover_event);
                             }
 
-                            if ! self.scheme.win_key {
+                            if self.scheme.modifier_state & SUPER_MODIFIER == 0 {
                                 let mut window_event = event.to_event();
                                 window_event.a -= window.x as i64;
                                 window_event.b -= window.y as i64;
@@ -1211,7 +1300,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                     let i = entry.2;
                     if let Some(window) = self.scheme.windows.get(&id) {
                         if window.rect().contains(self.scheme.cursor_x, self.scheme.cursor_y) {
-                            if self.scheme.win_key {
+                            if self.scheme.modifier_state & SUPER_MODIFIER == SUPER_MODIFIER {
                                 if event.left && ! self.scheme.cursor_left {
                                     focus = i;
                                     if ! window.borderless {
@@ -1367,26 +1456,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             self.event(event);
         }
 
-        // TODO call scheme_event() here that repeats the same identical code, or factor out
-        for (id, window) in self.scheme.windows.iter_mut() {
-            if ! window.events.is_empty() {
-                if !window.notified_read || window.asynchronous {
-                    window.notified_read = true;
-                    self.orb.scheme_write(&Packet {
-                        id: 0,
-                        pid: 0,
-                        uid: 0,
-                        gid: 0,
-                        a: syscall::number::SYS_FEVENT,
-                        b: *id,
-                        c: syscall::flag::EVENT_READ.bits(),
-                        d: window.events.len() * mem::size_of::<Event>()
-                    })?;
-                }
-            } else {
-                window.notified_read = false;
-            }
-        }
+        self.scheme_event(&mut [])?;
 
         // redrawn by handle_after
 
