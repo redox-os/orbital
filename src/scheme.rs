@@ -13,7 +13,9 @@ use std::{
 use std::rc::Rc;
 
 use log::{error, info, warn};
-use orbclient::{self, ButtonEvent, ClipboardEvent, Color, Event, EventOption, FocusEvent, HoverEvent, K_ALT, K_ALT_GR, K_CTRL, K_LEFT_SHIFT, K_RIGHT_SHIFT, KeyEvent, MouseEvent, MouseRelativeEvent, MoveEvent, QuitEvent, Renderer, ResizeEvent, ScreenEvent, TextInputEvent};
+use orbclient::{self, ButtonEvent, ClipboardEvent, Color, Event, EventOption, FocusEvent, HoverEvent,
+                KeyEvent, MouseEvent, MouseRelativeEvent, MoveEvent, QuitEvent, Renderer, ResizeEvent,
+                ScreenEvent, TextInputEvent};
 use syscall::data::Packet;
 use syscall::error::{EBADF, Error, Result};
 use syscall::number::SYS_READ;
@@ -28,7 +30,7 @@ use crate::core::{
     rect::Rect
 };
 use crate::core::image::ImageRef;
-// use theme::{BACKGROUND_COLOR, BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
+use crate::scheme::TilePosition::{BottomHalf, FullScreen, LeftHalf, RightHalf, TopHalf};
 use crate::window::{Window, WindowZOrder};
 
 fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
@@ -75,15 +77,14 @@ enum Volume {
     Toggle,
 }
 
-// TODO ADM - pending other MR to be merged...
-/// SUPER/META/WIN Key
-pub const K_SUPER : u8 = 0x5B;
-/// Media Key for Volume toggle (mute/unmute)
-pub const K_VOLUME_TOGGLE : u8 = 0x80 + 0x20;
-/// Media Key for Volume Down
-pub const K_VOLUME_DOWN : u8 = 0x80 + 0x2E;
-/// Media Key for Volume Up
-pub const K_VOLUME_UP : u8 = 0x80 + 0x30;
+#[allow(dead_code)]
+enum TilePosition {
+    LeftHalf,
+    TopHalf,
+    RightHalf,
+    BottomHalf,
+    FullScreen,
+}
 
 const GRID_SIZE: i32 = 16;
 
@@ -253,149 +254,128 @@ impl Handler for OrbitalScheme {
                 .map(|window| !window.asynchronous)
                 .unwrap_or(true)
     }
+
     fn handle_scheme(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()> {
         self.with_orbital(orb).scheme_event(packets)
     }
+
     fn handle_display(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()> {
         self.with_orbital(orb).display_event(events)
     }
+
     fn handle_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
         self.with_orbital(orb).redraw();
         Ok(())
     }
+
     fn handle_window_new(&mut self, orb: &mut Orbital,
                          x: i32, y: i32, width: i32, height: i32,
                          parts: &str, title: String) -> Result<usize> {
         self.with_orbital(orb).window_new(x, y, width, height, parts, title)
     }
+
     fn handle_window_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [Event]) -> Result<usize> {
-        if let Some(window) = self.windows.get_mut(&id) {
-            Ok(window.read(buf))
-        } else {
-            Err(Error::new(EBADF))
-        }
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        Ok(window.read(buf))
     }
+
     fn handle_window_async(&mut self, _orb: &mut Orbital, id: usize, is_async: bool) -> Result<()> {
-        if let Some(window) = self.windows.get_mut(&id) {
-            window.asynchronous = is_async;
-            Ok(())
-        } else {
-            Err(Error::new(EBADF))
-        }
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        window.asynchronous = is_async;
+        Ok(())
     }
+
     fn handle_window_mouse_cursor(&mut self, _orb: &mut Orbital, id: usize, visible: bool) -> Result<()> {
-        if let Some(window) = self.windows.get_mut(&id) {
-            window.mouse_cursor = visible;
-            Ok(())
-        } else {
-            Err(Error::new(EBADF))
-        }
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        window.mouse_cursor = visible;
+        Ok(())
     }
+
     fn handle_window_mouse_grab(&mut self, _orb: &mut Orbital, id: usize, grab: bool) -> Result<()> {
-        if let Some(window) = self.windows.get_mut(&id) {
-            window.mouse_grab = grab;
-            Ok(())
-        } else {
-            Err(Error::new(EBADF))
-        }
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        window.mouse_grab = grab;
+        Ok(())
     }
+
     fn handle_window_mouse_relative(&mut self, _orb: &mut Orbital, id: usize, relative: bool) -> Result<()> {
-        if let Some(window) = self.windows.get_mut(&id) {
-            window.mouse_relative = relative;
-            Ok(())
-        } else {
-            Err(Error::new(EBADF))
-        }
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        window.mouse_relative = relative;
+        Ok(())
     }
+
     fn handle_window_position(&mut self, _orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> Result<()> {
-        if let Some(window) = self.windows.get_mut(&id) {
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        schedule(&mut self.redraws, window.title_rect());
+        schedule(&mut self.redraws, window.rect());
 
-            window.x = x.unwrap_or(window.x);
-            window.y = y.unwrap_or(window.y);
+        window.x = x.unwrap_or(window.x);
+        window.y = y.unwrap_or(window.y);
 
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
+        schedule(&mut self.redraws, window.title_rect());
+        schedule(&mut self.redraws, window.rect());
 
-            Ok(())
-        } else {
-            Err(Error::new(EBADF))
-        }
+        Ok(())
     }
+
     fn handle_window_resize(&mut self, _orb: &mut Orbital, id: usize, w: Option<i32>, h: Option<i32>) -> Result<()> {
-        if let Some(window) = self.windows.get_mut(&id) {
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        schedule(&mut self.redraws, window.title_rect());
+        schedule(&mut self.redraws, window.rect());
 
-            let w = w.unwrap_or(window.width());
-            let h = h.unwrap_or(window.height());
+        let w = w.unwrap_or(window.width());
+        let h = h.unwrap_or(window.height());
 
-            window.set_size(w, h);
+        window.set_size(w, h);
 
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
+        schedule(&mut self.redraws, window.title_rect());
+        schedule(&mut self.redraws, window.rect());
 
-            Ok(())
-        } else {
-            Err(Error::new(EBADF))
-        }
+        Ok(())
     }
+
     fn handle_window_title(&mut self, _orb: &mut Orbital, id: usize, title: String) -> Result<()> {
-        if let Some(window) = self.windows.get_mut(&id) {
-            window.title = title;
-            window.render_title(&self.font);
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        window.title = title;
+        window.render_title(&self.font);
 
-            schedule(&mut self.redraws, window.title_rect());
+        schedule(&mut self.redraws, window.title_rect());
 
-            Ok(())
-        } else {
-            Err(Error::new(EBADF))
-        }
+        Ok(())
     }
+
     fn handle_window_clear_notified(&mut self, _orb: &mut Orbital, id: usize) -> Result<()> {
-        if let Some(window) = self.windows.get_mut(&id) {
-            window.notified_read = false;
-            Ok(())
-        } else {
-            Err(Error::new(EBADF))
-        }
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        window.notified_read = false;
+        Ok(())
     }
+
     fn handle_window_map(&mut self, _orb: &mut Orbital, id: usize) -> Result<&mut [Color]> {
-        if let Some(window) = self.windows.get_mut(&id) {
-            window.maps += 1;
-            Ok(window.map())
-        } else {
-            Err(Error::new(EBADF))
-        }
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        window.maps += 1;
+        Ok(window.map())
     }
+
     fn handle_window_unmap(&mut self, _orb: &mut Orbital, id: usize) -> Result<()> {
-        if let Some(window) = self.windows.get_mut(&id) {
-            if window.maps > 0 {
-                window.maps -= 1;
-            } else {
-                warn!("attempted unmap when there are no mappings");
-            }
-            Ok(())
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        if window.maps > 0 {
+            window.maps -= 1;
         } else {
-            Err(Error::new(EBADF))
+            warn!("attempted unmap when there are no mappings");
         }
+        Ok(())
     }
+
     fn handle_window_properties(&mut self, _orb: &mut Orbital, id: usize) -> Result<Properties> {
-        if let Some(window) = self.windows.get(&id) {
-            Ok(window.properties())
-        } else {
-            Err(Error::new(EBADF))
-        }
+        let window = self.windows.get(&id).ok_or(Error::new(EBADF))?;
+        Ok(window.properties())
     }
+
     fn handle_window_sync(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
-        if let Some(window) = self.windows.get(&id) {
-            schedule(&mut self.redraws, window.rect());
-            Ok(0)
-        } else {
-            Err(Error::new(EBADF))
-        }
+        let window = self.windows.get(&id).ok_or(Error::new(EBADF))?;
+        schedule(&mut self.redraws, window.rect());
+        Ok(0)
     }
+
     fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> Result<usize> {
         self.order.retain(|&e| e != id);
 
@@ -425,42 +405,36 @@ impl Handler for OrbitalScheme {
     }
     fn handle_clipboard_new(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
         //TODO: implement better clipboard mechanism
-        if let Some(window) = self.windows.get_mut(&id) {
-            window.clipboard_seek = 0;
-            Ok(id)
-        } else {
-            Err(Error::new(EBADF))
-        }
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        window.clipboard_seek = 0;
+        Ok(id)
     }
+
     fn handle_clipboard_read(&mut self, _orb: &mut Orbital, id: usize, buf: &mut [u8]) -> Result<usize> {
         //TODO: implement better clipboard mechanism
-        if let Some(window) = self.windows.get_mut(&id) {
-            let mut i = 0;
-            while i < buf.len() && window.clipboard_seek < self.clipboard.len() {
-                buf[i] = self.clipboard[i];
-                i += 1;
-                window.clipboard_seek += 1;
-            }
-            Ok(i)
-        } else {
-            Err(Error::new(EBADF))
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        let mut i = 0;
+        while i < buf.len() && window.clipboard_seek < self.clipboard.len() {
+            buf[i] = self.clipboard[i];
+            i += 1;
+            window.clipboard_seek += 1;
         }
+        Ok(i)
     }
+
     fn handle_clipboard_write(&mut self, _orb: &mut Orbital, id: usize, buf: &[u8]) -> Result<usize> {
         //TODO: implement better clipboard mechanism
-        if let Some(window) = self.windows.get_mut(&id) {
-            let mut i = 0;
-            self.clipboard.truncate(window.clipboard_seek);
-            while i < buf.len() {
-                self.clipboard.push(buf[i]);
-                i += 1;
-                window.clipboard_seek += 1;
-            }
-            Ok(i)
-        } else {
-            Err(Error::new(EBADF))
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        let mut i = 0;
+        self.clipboard.truncate(window.clipboard_seek);
+        while i < buf.len() {
+            self.clipboard.push(buf[i]);
+            i += 1;
+            window.clipboard_seek += 1;
         }
+        Ok(i)
     }
+
     fn handle_clipboard_close(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         if self.windows.contains_key(&id) {
@@ -756,6 +730,10 @@ impl<'a> OrbitalSchemeEvent<'a> {
         "Super-{: Volume down",
         "Super-}: Volume up",
         "Super-\\: Volume toggle (mute / unmute)",
+        "Super-Shift-left: Tile window to left half of screen",
+        "Super-Shift-right: Tile window to right half of screen",
+        "Super-Shift-up: Tile window to top half of screen",
+        "Super-Shift-down: Tile window to bottom half of screen",
         "Super-left_arrow: Move window left grid_size pixels",
         "Super-right_arrow: Move window right grid_size pixels",
         "Super-up_arrow: Move window up grid_size pixels",
@@ -797,18 +775,18 @@ impl<'a> OrbitalSchemeEvent<'a> {
     // Keep track of the modifier keys state based on past keydown/keyup events
     fn track_modifier_state(&mut self, scancode: u8, pressed: bool) {
         match (scancode, pressed) {
-            (K_SUPER, true) => self.scheme.modifier_state |= SUPER_MODIFIER,
-            (K_SUPER, false) => self.scheme.modifier_state &= !SUPER_MODIFIER,
-            (K_LEFT_SHIFT, true) => self.scheme.modifier_state |= SHIFT_LEFT_MODIFIER,
-            (K_LEFT_SHIFT, false) => self.scheme.modifier_state &= !SHIFT_LEFT_MODIFIER,
-            (K_RIGHT_SHIFT, true) => self.scheme.modifier_state |= SHIFT_RIGHT_MODIFIER,
-            (K_RIGHT_SHIFT, false) => self.scheme.modifier_state &= !SHIFT_RIGHT_MODIFIER,
-            (K_CTRL, true) => self.scheme.modifier_state |= CONTROL_MODIFIER,
-            (K_CTRL, false) => self.scheme.modifier_state &= !CONTROL_MODIFIER,
-            (K_ALT, true) => self.scheme.modifier_state |= ALT_MODIFIER,
-            (K_ALT, false) => self.scheme.modifier_state &= !ALT_MODIFIER,
-            (K_ALT_GR, true) => self.scheme.modifier_state |= ALT_GR_MODIFIER,
-            (K_ALT_GR, false) => self.scheme.modifier_state &= !ALT_GR_MODIFIER,
+            (orbclient::K_SUPER, true) => self.scheme.modifier_state |= SUPER_MODIFIER,
+            (orbclient::K_SUPER, false) => self.scheme.modifier_state &= !SUPER_MODIFIER,
+            (orbclient::K_LEFT_SHIFT, true) => self.scheme.modifier_state |= SHIFT_LEFT_MODIFIER,
+            (orbclient::K_LEFT_SHIFT, false) => self.scheme.modifier_state &= !SHIFT_LEFT_MODIFIER,
+            (orbclient::K_RIGHT_SHIFT, true) => self.scheme.modifier_state |= SHIFT_RIGHT_MODIFIER,
+            (orbclient::K_RIGHT_SHIFT, false) => self.scheme.modifier_state &= !SHIFT_RIGHT_MODIFIER,
+            (orbclient::K_CTRL, true) => self.scheme.modifier_state |= CONTROL_MODIFIER,
+            (orbclient::K_CTRL, false) => self.scheme.modifier_state &= !CONTROL_MODIFIER,
+            (orbclient::K_ALT, true) => self.scheme.modifier_state |= ALT_MODIFIER,
+            (orbclient::K_ALT, false) => self.scheme.modifier_state &= !ALT_MODIFIER,
+            (orbclient::K_ALT_GR, true) => self.scheme.modifier_state |= ALT_GR_MODIFIER,
+            (orbclient::K_ALT_GR, false) => self.scheme.modifier_state &= !ALT_GR_MODIFIER,
             _ => {}
         }
 
@@ -871,6 +849,39 @@ impl<'a> OrbitalSchemeEvent<'a> {
         }
     }
 
+    fn tile_front_window(&mut self, position: TilePosition) {
+        if let Some(id) = self.scheme.order.front() {
+            if let Some(window) = self.scheme.windows.get_mut(id) {
+                let display_index = Self::get_display_index(&self.orb.displays, &window.rect());
+                schedule(&mut self.scheme.redraws, window.title_rect());
+                schedule(&mut self.scheme.redraws, window.rect());
+
+                let top = self.orb.displays[display_index].y + window.title_rect().height();
+                let left = self.orb.displays[display_index].x;
+                let max_height = self.orb.displays[display_index].image.height() -
+                    window.title_rect().height();
+                let max_width = self.orb.displays[display_index].image.width();
+                let half_width = (max_width / 2) as u32;
+                let half_height = (max_height / 2) as u32;
+
+                let (x, y, width, height) = match position {
+                            LeftHalf => (left, top, half_width, max_height as u32),
+                            RightHalf => (left + half_width as i32, top, half_width, max_height as u32),
+                            TopHalf => (left, top, max_width as u32, half_height),
+                            BottomHalf => (left, top + half_height as i32, max_width as u32, half_height),
+                            FullScreen => (left, top, max_width as u32, max_height as u32),
+                        };
+
+                // TODO understand why this is needed and why handle_window_position isn't enough
+                window.x = x;
+                window.y = y;
+                window.event(MoveEvent { x, y }.to_event());
+
+                window.event(ResizeEvent { width, height }.to_event());
+            };
+        }
+    }
+
     fn clipboard_event(&mut self, kind: u8) {
         if let Some(id) = self.scheme.order.front() {
             if let Some(window) = self.scheme.windows.get_mut(id) {
@@ -911,20 +922,22 @@ impl<'a> OrbitalSchemeEvent<'a> {
         self.track_modifier_state(event.scancode, event.pressed);
 
         match (event.scancode, event.pressed) {
-            (K_SUPER, true) => self.scheme.shortcuts_osd = true,
-            (K_SUPER, false) => self.close_overlays(),
-            (K_VOLUME_TOGGLE, true) => self.volume(Volume::Toggle),
-            (K_VOLUME_DOWN, true) => self.volume(Volume::Down),
-            (K_VOLUME_UP, true) => self.volume(Volume::Up),
-            (K_VOLUME_TOGGLE | K_VOLUME_DOWN | K_VOLUME_UP, false) => self.scheme.volume_osd = false,
+            (orbclient::K_SUPER, true) => self.scheme.shortcuts_osd = true,
+            (orbclient::K_SUPER, false) => self.close_overlays(),
+            (orbclient::K_VOLUME_TOGGLE, true) => self.volume(Volume::Toggle),
+            (orbclient::K_VOLUME_DOWN, true) => self.volume(Volume::Down),
+            (orbclient::K_VOLUME_UP, true) => self.volume(Volume::Up),
+            (orbclient::K_VOLUME_TOGGLE | orbclient::K_VOLUME_DOWN | orbclient::K_VOLUME_UP, false) =>
+                self.scheme.volume_osd = false,
             _ => {}
         }
 
         // process SUPER- key combinations
         if self.scheme.modifier_state & SUPER_MODIFIER == SUPER_MODIFIER && event.pressed
-        && event.scancode != K_SUPER {
+        && event.scancode != orbclient::K_SUPER {
             self.close_overlays();
 
+            let shift = self.scheme.modifier_state & SHIFT_ANY_MODIFIER != 0;
             match event.scancode {
                 orbclient::K_Q => self.quit_front_window(),
                 orbclient::K_TAB => self.super_tab(),
@@ -933,6 +946,10 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 orbclient::K_BACKSLASH => self.volume(Volume::Toggle),
                 orbclient::K_M => self.toggle_front_window_max(),
                 orbclient::K_ENTER => self.toggle_front_window_max(),
+                orbclient::K_UP if shift => self.tile_front_window(TopHalf),
+                orbclient::K_DOWN if shift => self.tile_front_window(BottomHalf),
+                orbclient::K_LEFT if shift => self.tile_front_window(LeftHalf),
+                orbclient::K_RIGHT if shift => self.tile_front_window(RightHalf),
                 orbclient::K_UP => self.move_front_window(0, -GRID_SIZE),
                 orbclient::K_DOWN => self.move_front_window(0, GRID_SIZE),
                 orbclient::K_LEFT => self.move_front_window(-GRID_SIZE, 0),
@@ -1228,65 +1245,49 @@ impl<'a> OrbitalSchemeEvent<'a> {
         self.mouse_event(MouseEvent { x, y });
     }
 
+    // Find the display that a window (`rect`) most overlaps and return the index of it
+    fn get_display_index(displays: &[Display], rect: &Rect) -> usize {
+        // Find the index of the Display this window has the most overlap with
+        let mut display_index = 0;
+        let mut max_intersection_area = 0;
+        for (display_i, display) in displays.iter().enumerate() {
+            let intersect = display.screen_rect().intersection(rect);
+            let area = intersect.area();
+            if area > max_intersection_area {
+                display_index = display_i;
+                max_intersection_area = area;
+            }
+        }
+
+        display_index
+    }
+
     // the user has requested to maximize the window or to restore to the previous window size
     // (while maximized) by clicking on max/restore icon, or double-clicking on window title bar
     fn toggle_window_max(&mut self, window_id: usize) {
         if let Some(window) = self.scheme.windows.get_mut(&window_id) {
-            // Find the index of the Display this window has the most overlap with
-            let mut display_index = 0;
-            let mut max_intersection_area = 0;
-            for (display_i, display) in self.orb.displays.iter().enumerate() {
-                let intersect = display.screen_rect().intersection(&window.rect());
-                let area = intersect.area();
-                if area > max_intersection_area {
-                    display_index = display_i;
-                    max_intersection_area = area;
-                }
-            }
-
             schedule(&mut self.scheme.redraws, window.title_rect());
             schedule(&mut self.scheme.redraws, window.rect());
 
-            let (move_event, resize_event) = match window.max_restore.take() {
+            match window.max_restore.take() {
                 None => {
                     // we are about to maximize window, so store current size for restore later
                     window.max_restore = Some(window.rect());
-
-                    ( // move to the corner of the display
-                        MoveEvent {
-                            x: self.orb.displays[display_index].x,
-                            y: self.orb.displays[display_index].y + window.title_rect().height()
-                        },
-                        // set window size to the maximum size of the display
-                        ResizeEvent {
-                            width: self.orb.displays[display_index].image.width() as u32,
-                            height: (self.orb.displays[display_index].image.height() -
-                                window.title_rect().height()) as u32
-                        }
-                    )
+                    self.tile_front_window(FullScreen);
                 },
-                Some(max_restore) =>
-                    ( // move window to previous position
-                    MoveEvent {
-                        x: max_restore.left(),
-                        y: max_restore.top()
-                    },
-                    // restore the previous window size
-                    ResizeEvent {
+                Some(max_restore) => { // move window to previous position and size
+                    let move_event = MoveEvent { x: max_restore.left(), y: max_restore.top() };
+                    window.x = move_event.x;
+                    window.y = move_event.y;
+                    window.event(move_event.to_event());
+
+                    let resize_event = ResizeEvent {
                         width: max_restore.width() as u32,
                         height: max_restore.height() as u32
-                    }
-                )
+                    };
+                    window.event(resize_event.to_event()); //resize_event() schedules a redraw
+                }
             };
-
-            window.x = move_event.x;
-            window.y = move_event.y;
-            window.event(move_event.to_event());
-
-            schedule(&mut self.scheme.redraws, window.title_rect());
-            schedule(&mut self.scheme.redraws, window.rect());
-
-            window.event(resize_event.to_event()); //resize_event() schedules a redraw
         }
     }
 
