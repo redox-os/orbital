@@ -37,14 +37,14 @@ There seems to be attempts to be cross-platform, but due to dependencies on redo
 * orblogin
 * viewer
 * calendar
-* orbutils-launcher
-* orbutils-orblogin
-* orbutils-background
 * orbdata - haven't really looked at that yet.
 * orbterm - a terminal that runs on redox and linux/macOS
 * orbimage
 * orbfont
 * orbtk
+
+# Recipes
+These recipes (orbutils-launcher, orbutils-orblogin, orbutils-background) are for producing minimized images of Redox OS for low resource computers, where a desktop is available but not all applications included.
 
 # Slint rewrite
 It looks like a slint rewrite of some orbutils started. I see that calculator has been ported, but no others.
