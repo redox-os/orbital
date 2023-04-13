@@ -56,10 +56,6 @@ Continue work to move off orbtk, until the point we can remove it entirely?
 * what is the replacement? Slint, Iced? Egui?
 
 ## Questions about that
-* Why are there two versions of
-    * orblogin and orbutils / orblogin
-    * orblauncher and orbutils / launcher
-    * orbackground and orbutils / orb background
 * The builds on all the orbutils-* variants fail for me
   * Are they expected to build? Or are they deprecated? Could they be deleted and left to gitlab memory?
 
