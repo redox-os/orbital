@@ -77,7 +77,7 @@ enum Volume {
     Toggle,
 }
 
-#[allow(dead_code)]
+#[derive(Debug)]
 enum TilePosition {
     LeftHalf,
     TopHalf,
@@ -730,14 +730,14 @@ impl<'a> OrbitalSchemeEvent<'a> {
         "Super-{: Volume down",
         "Super-}: Volume up",
         "Super-\\: Volume toggle (mute / unmute)",
-        "Super-Shift-left: Tile window to left half of screen",
-        "Super-Shift-right: Tile window to right half of screen",
-        "Super-Shift-up: Tile window to top half of screen",
-        "Super-Shift-down: Tile window to bottom half of screen",
-        "Super-left_arrow: Move window left grid_size pixels",
-        "Super-right_arrow: Move window right grid_size pixels",
-        "Super-up_arrow: Move window up grid_size pixels",
-        "Super-down_arrow: Move window down grid_size pixels",
+        "Super-Shift-left: Tile window to left",
+        "Super-Shift-right: Tile window to right",
+        "Super-Shift-up: Tile window to top",
+        "Super-Shift-down: Tile window to bottom",
+        "Super-left_arrow: Move window left",
+        "Super-right_arrow: Move window right",
+        "Super-up_arrow: Move window up",
+        "Super-down_arrow: Move window down",
         "Super-C: Copy to copy buffer",
         "Super-X: Cut to copy buffer",
         "Super-V: Paste from the copy buffer",
@@ -849,39 +849,6 @@ impl<'a> OrbitalSchemeEvent<'a> {
         }
     }
 
-    fn tile_front_window(&mut self, position: TilePosition) {
-        if let Some(id) = self.scheme.order.front() {
-            if let Some(window) = self.scheme.windows.get_mut(id) {
-                let display_index = Self::get_display_index(&self.orb.displays, &window.rect());
-                schedule(&mut self.scheme.redraws, window.title_rect());
-                schedule(&mut self.scheme.redraws, window.rect());
-
-                let top = self.orb.displays[display_index].y + window.title_rect().height();
-                let left = self.orb.displays[display_index].x;
-                let max_height = self.orb.displays[display_index].image.height() -
-                    window.title_rect().height();
-                let max_width = self.orb.displays[display_index].image.width();
-                let half_width = (max_width / 2) as u32;
-                let half_height = (max_height / 2) as u32;
-
-                let (x, y, width, height) = match position {
-                            LeftHalf => (left, top, half_width, max_height as u32),
-                            RightHalf => (left + half_width as i32, top, half_width, max_height as u32),
-                            TopHalf => (left, top, max_width as u32, half_height),
-                            BottomHalf => (left, top + half_height as i32, max_width as u32, half_height),
-                            FullScreen => (left, top, max_width as u32, max_height as u32),
-                        };
-
-                // TODO understand why this is needed and why handle_window_position isn't enough
-                window.x = x;
-                window.y = y;
-                window.event(MoveEvent { x, y }.to_event());
-
-                window.event(ResizeEvent { width, height }.to_event());
-            };
-        }
-    }
-
     fn clipboard_event(&mut self, kind: u8) {
         if let Some(id) = self.scheme.order.front() {
             if let Some(window) = self.scheme.windows.get_mut(id) {
@@ -900,10 +867,47 @@ impl<'a> OrbitalSchemeEvent<'a> {
         }
     }
 
-    // Maximize / Restore the size of the front most window
-    fn toggle_front_window_max(&mut self) {
-        if let Some(id) = self.scheme.order.front() {
-            self.toggle_window_max(*id);
+    // tile a window to a defined position. If no window id is provided it will use the front window
+    fn tile_window(&mut self, window_id: Option<&usize>, position: TilePosition) {
+        if let Some(id) = window_id.or(self.scheme.order.front()) {
+            if let Some(window) = self.scheme.windows.get_mut(id) {
+                let display_index = Self::get_display_index(&self.orb.displays, &window.rect());
+                schedule(&mut self.scheme.redraws, window.title_rect());
+                schedule(&mut self.scheme.redraws, window.rect());
+
+                let (x, y, width, height) =  match window.restore.take() {
+                    None => {
+                        // we are about to maximize window, so store current size for restore later
+                        window.restore = Some(window.rect());
+
+                        let top = self.orb.displays[display_index].y + window.title_rect().height();
+                        let left = self.orb.displays[display_index].x;
+                        let max_height = self.orb.displays[display_index].image.height() -
+                            window.title_rect().height();
+                        let max_width = self.orb.displays[display_index].image.width();
+                        let half_width = (max_width / 2) as u32;
+                        let half_height = (max_height / 2) as u32;
+
+                        match position {
+                            LeftHalf => (left, top, half_width, max_height as u32),
+                            RightHalf => (left + half_width as i32, top, half_width, max_height as u32),
+                            TopHalf => (left, top, max_width as u32, half_height),
+                            BottomHalf => (left, top + half_height as i32, max_width as u32, half_height),
+                            FullScreen => (left, top, max_width as u32, max_height as u32),
+                        }
+                    },
+                    Some(restore) => {
+                        (restore.left(), restore.top(), restore.width() as u32, restore.height() as u32)
+                    }
+                };
+
+                // TODO understand why this is needed and why handle_window_position isn't enough
+                window.x = x;
+                window.y = y;
+                window.event(MoveEvent { x, y }.to_event());
+
+                window.event(ResizeEvent { width, height }.to_event());
+            };
         }
     }
 
@@ -944,12 +948,12 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 orbclient::K_BRACE_OPEN  => self.volume(Volume::Down),
                 orbclient::K_BRACE_CLOSE =>self.volume(Volume::Up),
                 orbclient::K_BACKSLASH => self.volume(Volume::Toggle),
-                orbclient::K_M => self.toggle_front_window_max(),
-                orbclient::K_ENTER => self.toggle_front_window_max(),
-                orbclient::K_UP if shift => self.tile_front_window(TopHalf),
-                orbclient::K_DOWN if shift => self.tile_front_window(BottomHalf),
-                orbclient::K_LEFT if shift => self.tile_front_window(LeftHalf),
-                orbclient::K_RIGHT if shift => self.tile_front_window(RightHalf),
+                orbclient::K_M => self.tile_window(None, FullScreen),
+                orbclient::K_ENTER => self.tile_window(None, FullScreen),
+                orbclient::K_UP if shift => self.tile_window(None, TopHalf),
+                orbclient::K_DOWN if shift => self.tile_window(None, BottomHalf),
+                orbclient::K_LEFT if shift => self.tile_window(None, LeftHalf),
+                orbclient::K_RIGHT if shift => self.tile_window(None, RightHalf),
                 orbclient::K_UP => self.move_front_window(0, -GRID_SIZE),
                 orbclient::K_DOWN => self.move_front_window(0, GRID_SIZE),
                 orbclient::K_LEFT => self.move_front_window(-GRID_SIZE, 0),
@@ -1262,35 +1266,6 @@ impl<'a> OrbitalSchemeEvent<'a> {
         display_index
     }
 
-    // the user has requested to maximize the window or to restore to the previous window size
-    // (while maximized) by clicking on max/restore icon, or double-clicking on window title bar
-    fn toggle_window_max(&mut self, window_id: usize) {
-        if let Some(window) = self.scheme.windows.get_mut(&window_id) {
-            schedule(&mut self.scheme.redraws, window.title_rect());
-            schedule(&mut self.scheme.redraws, window.rect());
-
-            match window.max_restore.take() {
-                None => {
-                    // we are about to maximize window, so store current size for restore later
-                    window.max_restore = Some(window.rect());
-                    self.tile_front_window(FullScreen);
-                },
-                Some(max_restore) => { // move window to previous position and size
-                    let move_event = MoveEvent { x: max_restore.left(), y: max_restore.top() };
-                    window.x = move_event.x;
-                    window.y = move_event.y;
-                    window.event(move_event.to_event());
-
-                    let resize_event = ResizeEvent {
-                        width: max_restore.width() as u32,
-                        height: max_restore.height() as u32
-                    };
-                    window.event(resize_event.to_event()); //resize_event() schedules a redraw
-                }
-            };
-        }
-    }
-
     fn button_event(&mut self, event: ButtonEvent) {
         // Check for focus switch, dragging, and forward mouse events to applications
         match self.scheme.dragging {
@@ -1322,7 +1297,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                             if event.left && ! self.scheme.cursor_left  {
                                 focus = i;
                                 if (window.max_contains(self.scheme.cursor_x, self.scheme.cursor_y)) && (window.resizable) {
-                                    self.toggle_window_max(id);
+                                    self.tile_window(Some(&id), FullScreen);
                                 } else if (window.close_contains(self.scheme.cursor_x, self.scheme.cursor_y)) && (!window.unclosable) {
                                     if let Some(window) = self.scheme.windows.get_mut(&id) {
                                         window.event(QuitEvent.to_event());
