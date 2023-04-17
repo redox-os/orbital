@@ -34,7 +34,7 @@ pub struct Window {
     pub transparent: bool,
     pub unclosable: bool,
     pub zorder: WindowZOrder,
-    pub max_restore: Option<Rect>,
+    pub restore: Option<Rect>,
     image: ImageAligned,
     title_image: Image,
     title_image_unfocused: Image,
@@ -68,7 +68,7 @@ impl Window {
             transparent: false,
             unclosable: false,
             zorder: WindowZOrder::Normal,
-            max_restore: None,
+            restore: None,
             // TODO: get a system constant for the page size
             image: ImageAligned::new(w, h, 4096), // Ensure that image data is page aligned at beginning and end
             title_image: Image::new(0, 0),
