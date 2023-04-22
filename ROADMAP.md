@@ -2,11 +2,40 @@
 First pass, Monday March 13th, Andrew Mackenzie
 
 ## Long-term questions
-Here I raise a few questions about what is the long-term plan (or let's define one if it doesn't already exist).
+Questions about what is the long-term plan.
 That doesn't prevent using it for quite a while and making improvements and additions to it, but knowing
 where we want to go eventually can help take decisions along the way.
 
+### Window Manager
 * Should we continue to invest in orbital as the main (only?) compositor and window manager and desktop of redox?
+* How does Cosmic fit in? What needs to be done to port Cosmic?
+
+### Wayland compatibility for apps
+* Should redox-os offer a Wayland compatible solutions to apps?
+   * Should we port actual Wayland?
+   * Should we contribute to one of the Rust Wayland implementations
+   * Should we build our own?
+
+### Frameworks
+* Agree on the UI framework we want to _use_ across redox-os GUI apps for a consistent look and feel and ease of development (due to consistency and similarity between projects)
+* To increase the selection of great (hopefully rust!) apps on redox-os, allow apps using any of the most used GUI frameworks to run
+  * What can we do to move the Slint port forward? Can we come up with a plan for who does what regarding Slint on Redox, so more people can contribute?
+  * What needs to be done to support Iced? Can we find a way forward with Iced?
+  * Can we add support for egui?
+
+### Cross-platform support
+* Should Orbital work on Linux? 
+* Should orbclient work on linux/macos in order to facilitate development of cross-platform apps using it?
+* Should orbutils run on those other OS too?
+
+### GPU Support
+What is our plan to do accelerated graphics and high-end CPU-rendered graphics?
+
+## Process and org
+* Reduce the workload and dependency on Jeremy.
+* Have a number of named maintainers who can lead this area
+* have a roadmap that describes the plan
+* Maintainers review, organize, label, prioritize issues according to the roadmap
 
 ## Functionalities
 * Compositor
@@ -16,6 +45,7 @@ where we want to go eventually can help take decisions along the way.
 * Desktop
     * Launcher app - should it be replaceable?
     * Background app - should it be replaceable
+    * Login app - should it be replaceable
 
 ## Components
 I have found the following components (in recipes) that are related to Orbital
@@ -26,70 +56,31 @@ I have found the following components (in recipes) that are related to Orbital
 * orbutils - a workspace crate with "calculator" and "orbutils" members
     * calculator - looks like it has been ported to Slint
     * orbutils - a workspace member crate with multiple binaries.
-
-Dependency on orbtk and pending port to Slint?
-There seems to be attempts to be cross-platform, but due to dependencies on redox::syscall they don't compile on Linux
-* background
-* character_map
-* editor
-* file_manager
-* launcher
-* orblogin
-* viewer
-* calendar
+* orbterm - a GUI terminal for redox
 * orbdata - haven't really looked at that yet.
-* orbterm - a terminal that runs on redox and linux/macOS
 * orbimage
 * orbfont
-* orbtk
+* orbtk - deprecated?
 
 # Recipes
 These recipes (orbutils-launcher, orbutils-orblogin, orbutils-background) are for producing minimized images of Redox OS for low resource computers, where a desktop is available but not all applications included.
 
-# Slint rewrite
-It looks like a slint rewrite of some orbutils started. I see that calculator has been ported, but no others.
-
-Is SLINT the future direction of GUI toolkit for redox and orbutils
-
-I still see references to orbtk which I understand is deprecated.
-Continue work to move off orbtk, until the point we can remove it entirely?
-* what is the replacement? Slint, Iced? Egui?
-
-## Questions about that
-* The builds on all the orbutils-* variants fail for me
-  * Are they expected to build? Or are they deprecated? Could they be deleted and left to gitlab memory?
-
-Can we remove these duplicates or merge them under orbutils?
-* Can we make orbterm a part of orbutils, as "just one more" orbutil app?
-* Many components attempt to support redox and other OS (via SDL)
-    * Fo we want to continue that as a goal (which OS?)
-    * Some (e.g. orbterm) compiles and runs just fine on Linux
-    * Some of them no longer compile for Linux due to direct inclusion of syscall and no conditional code for "redox"
-      target (like orbterm does)
-
-* Is travis still used anywhere?
-
 ## Proposed Roadmap
-* Decide what OS we want to actively support "utils" running on
-    * If we think any of them have potential to be "good" apps and get use across platforms and attract contributions
-      then it would make sense to support them. But if not, then just extra effort. Supporting them can make it easier to
-      develop and improve them (until redox is the main work OS for contributors) as you can dev on linux/macOS.
 * Decide what is the GUI toolkit/framework to be used going forward
-* Review code organization to make development easier and remove confusion and duplication
-  * orbital is made a workspace project
-  * orbital-core is made a workspace member
-      * If it is included by crates outside the orbital workspace, then maybe make it a lib.
-  * orbutils can be kept as a separate workspace project, or absorbed as part of orbital workspace
-      * Once GUI port and cleanup is done, each util can just be a workspace member (shares dependencies in target and
-        faster compiles) and we can remove the two-tiers in this crate at the moment.
-      * All "utils" are combined into one "orbutils" package, and they are all ported to use the same UI toolkit
-        (slint, iced, egui, whatever). i.e. orbterm is moved into utils.
-      * Such utils (i.e. other apps) should be able to be written by anyone. Any dependencies they _require_ on orbital should be exposed
-        public API, via a lib of orbital. They depend on "orbital" (but just the lib part).
-      * orbclient should be part of orbital and the API for client apps, and exposed as a lib.
-          * That would allow some internal re-org between orbclient and orbital-core (e.g. "core" structs such as Color
-            are IMHO part of orbital-core). Backwards compatibility for any app _outside_ combined orbital and orbutils
-            can be taken care of by re-exports.
+  * Current efforts target Slint. Continue with that?
+  * Find all references/usaged of orbtk, remove them with rewrites and then delete orbtk
+* orbital
+  * orbital-core is now a module of orbital and doesn't need to be a workspace member
+  * Move launcher, background and orblogin from orbutils into orbital. They are not really optional utils and they (or some replacement) is needed by orbital. 
+    * They can all still be separate binaries, modular and replaceable by other binaries
+    * This would cleanup orbutils and make them real optional utils, and all of them (the whole crate) could build, test and run across redox, linux and macos - which is not possible now.
+    * orbital project should build on redox, linux and macos, but redox is the only target os.
+* keep orbutils as a separate project
+    * Finish GUI port and cleanup. With each util a workspace member (shares dependencies in target and
+      faster compiles) and we can remove the two-tiers in this crate at the moment.
+    * Move "core" apps to orbital as above 
+    * Move orbterm into orbutils as another optional util. Same toolkit, build etc. There are no dependents on the crate in crates.io (I checked) and dependencies within redox-os are on the built binary
+    * orbutils should build on redox, linux and macos and be able to target the host os (they build, test and run on redox, linux, macos)
 * Examples
   * ~~Examples are not compiled in CI. If what they show is covered in orbutils, consider deleting them and just 
 referring people to orbutils~~ DONE
@@ -100,6 +91,7 @@ add a reference in the README.md to the other repo and it's examples~~ DONE
 * Add doc comments and doc tests to API methods for use by application developers
   * Deploy "cargo doc" generated docs somewhere
 * Improve testing, stability and ease contributions
+  * Remove any old travis CI files
   * Improve test coverage, have the tests run in CI and don't merge if not green
     * More extensive test coverage makes contributions easier and more reliable for all, but especially for new 
 developers
