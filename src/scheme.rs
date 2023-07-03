@@ -16,6 +16,7 @@ use log::{error, info, warn};
 use orbclient::{self, ButtonEvent, ClipboardEvent, Color, Event, EventOption, FocusEvent, HoverEvent,
                 KeyEvent, MouseEvent, MouseRelativeEvent, MoveEvent, QuitEvent, Renderer, ResizeEvent,
                 ScreenEvent, TextInputEvent};
+use redox_daemon::Daemon;
 use syscall::data::Packet;
 use syscall::error::{EBADF, Error, Result};
 use syscall::number::SYS_READ;
@@ -349,9 +350,11 @@ impl Handler for OrbitalScheme {
         Ok(())
     }
 
-    fn handle_window_map(&mut self, _orb: &mut Orbital, id: usize) -> Result<&mut [Color]> {
+    fn handle_window_map(&mut self, _orb: &mut Orbital, id: usize, create_new: bool) -> Result<&mut [Color]> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
-        window.maps += 1;
+        if create_new {
+            window.maps += 1;
+        }
         Ok(window.map())
     }
 

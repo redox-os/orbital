@@ -44,13 +44,6 @@ enum DaemonStatusCode {
 /// This executable (main()) can fail. If it does it will log (error!()) the event and exit with
 /// a non-zero status code. See [OrbitalStatusCode]
 fn orbital(daemon: Daemon) -> Result<(), String> {
-    // TODO: To prevent possible race conditions, insert this right after the scheme has been
-    // created.
-    if let Err(e) = daemon.ready() {
-        error!("Daemon::ready() error: {}", e);
-        return Err("Daemon::ready() returned error".into());
-    }
-
     // Ignore possible errors while enabling logging
     let _ = RedoxLogger::new()
         .with_output(
@@ -68,12 +61,13 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
 
     let orbital = Orbital::open_display(&display_path)
         .map_err(|e| format!("could not open display, caused by: {}", e))?;
+    daemon.ready().unwrap();
 
     debug!("found display {}x{}", orbital.image().width(), orbital.image().height());
     let config = Rc::new(Config::from_path("/ui/orbital.toml"));
     let scheme = OrbitalScheme::new(
         &orbital.displays,
-        config
+        config,
     )?;
 
     Command::new(login_cmd)

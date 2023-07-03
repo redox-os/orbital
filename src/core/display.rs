@@ -18,7 +18,7 @@ fn display_fd_map(width: i32, height: i32, display_fd: usize) -> syscall::Result
         let display_ptr = syscall::fmap(display_fd, &syscall::Map {
             offset: 0,
             size: (width * height * 4) as usize,
-            flags: syscall::PROT_READ | syscall::PROT_WRITE,
+            flags: syscall::PROT_READ | syscall::PROT_WRITE | syscall::MAP_SHARED,
             address: 0,
         })?;
         let display_slice = slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize);
