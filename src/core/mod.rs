@@ -160,6 +160,9 @@ pub struct Orbital {
     pub todo: Vec<Packet>,
     pub displays: Vec<Display>,
     pub maps: BTreeMap<usize, (usize, usize)>,
+
+    /// Handle to "input:consumer" to recieve input events.
+    pub input: File,
 }
 
 impl Orbital {
@@ -259,6 +262,7 @@ impl Orbital {
             todo: Vec::new(),
             displays,
             maps: BTreeMap::new(),
+            input: File::open("input:consumer")?,
         })
     }
 
@@ -293,7 +297,7 @@ impl Orbital {
         //TODO: Figure out why rand: gets opened after this: syscall::setrens(0, 0)?;
 
         let scheme_fd = self.scheme.as_raw_fd();
-        let display_fd = self.displays[0].file.as_raw_fd();
+        let input_fd = self.input.as_raw_fd();
 
         handler.handle_startup(&mut self)?;
 
@@ -337,12 +341,12 @@ impl Orbital {
             Ok(result)
         })?;
 
-        event_queue.add(display_fd, move |_| -> io::Result<Option<()>> {
+        event_queue.add(input_fd, move |_| -> io::Result<Option<()>> {
             let mut me = me2.borrow_mut();
             let me = &mut *me;
             let mut events = [Event::new(); 16];
             loop {
-                match read_to_slice(&mut me.orb.displays[0].file, &mut events)? {
+                match read_to_slice(&mut me.orb.input, &mut events)? {
                     0 => break,
                     count => {
                         let events = &mut events[..count];
