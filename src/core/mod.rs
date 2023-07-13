@@ -338,9 +338,7 @@ impl Orbital {
                         for packet in packets.iter_mut() {
                             let delay = me.handler.should_delay(packet);
 
-                            if me.do_handle(packet) {
-                                continue;
-                            }
+                            me.handle(packet);
 
                             if delay && packet.a == 0 {
                                 me.orb.todo.push(*packet);
@@ -378,7 +376,7 @@ impl Orbital {
 
                             let delay = me.handler.should_delay(&packet);
 
-                            me.do_handle(&mut packet);
+                            me.handle(&mut packet);
 
                             if delay && packet.a == 0 {
                                 i += 1;
@@ -597,52 +595,14 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
 
         self.handler.handle_window_close(&mut self.orb, id)
     }
-}
-impl<H: Handler> OrbitalHandler<H> {
-    fn ksmsg_mmap(&mut self, id: usize, flags: syscall::MapFlags, offset: u64, page_count: usize, create_new: bool) -> syscall::Result<usize> {
-        log::info!("KSMSG MMAP {} {:?} {} {} {}", id, flags, offset, page_count, create_new);
-        let data = self.handler.handle_window_map(&mut self.orb, id, create_new)?;
+    fn mmap_prep(&mut self, id: usize, flags: syscall::MapFlags, size: usize, offset: u64) -> syscall::Result<usize> {
+        let data = self.handler.handle_window_map(&mut self.orb, id, true)?;
 
-        log::info!("Data {:p} len {}", data.as_ptr(), data.len());
-
-        if page_count * PAGE_SIZE > data.len() * core::mem::size_of::<Color>() {
+        if size > data.len() * core::mem::size_of::<Color>() {
             return Err(syscall::Error::new(EINVAL));
         }
 
         Ok(data.as_mut_ptr() as usize)
-    }
-    fn do_handle(&mut self, packet: &mut Packet) -> bool {
-        match packet.a {
-            KSMSG_MMAP_PREP => {
-                let req_file = packet.b;
-                let req_flags = MapFlags::from_bits_truncate(packet.c);
-                let req_page_count = packet.d;
-                let req_offset = u64::from(packet.uid) | (u64::from(packet.gid) << 32);
-
-                log::info!("MMAP MMAP MMAP");
-                let create_new = packet.a == KSMSG_MMAP_PREP;
-                let res = self.ksmsg_mmap(req_file, req_flags, req_offset, req_page_count, true);
-
-                *packet = Packet {
-                    id: packet.id,
-                    a: syscall::Error::mux(res),
-                    ..Packet::default()
-                };
-
-                false
-            }
-            KSMSG_MSYNC => {
-                packet.a = 0;
-                false
-            }
-            KSMSG_MUNMAP => {
-                todo!()
-            }
-            _ => {
-                self.handle(packet);
-                false
-            },
-        }
     }
 }
 

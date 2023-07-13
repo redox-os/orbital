@@ -1,5 +1,6 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
+#![feature(int_roundings)]
 
 use crate::core::Orbital;
 use std::{
