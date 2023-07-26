@@ -595,7 +595,7 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
 
         self.handler.handle_window_close(&mut self.orb, id)
     }
-    fn mmap_prep(&mut self, id: usize, flags: syscall::MapFlags, size: usize, offset: u64) -> syscall::Result<usize> {
+    fn mmap_prep(&mut self, id: usize, offset: u64, size: usize, flags: syscall::MapFlags) -> syscall::Result<usize> {
         let data = self.handler.handle_window_map(&mut self.orb, id, true)?;
 
         if size > data.len() * core::mem::size_of::<Color>() {
