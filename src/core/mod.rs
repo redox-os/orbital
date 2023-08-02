@@ -188,6 +188,21 @@ impl Orbital {
 
     /// Open an orbital display and connect to the scheme
     pub fn open_display(display_path: &str) -> io::Result<Self> {
+        let mut buffer = [0; 1024];
+
+        let input_handle = File::open(format!("input:consumer/{display_path}"))?;
+        let fd = input_handle.as_raw_fd();
+
+        let written = syscall::fpath(fd as usize, &mut buffer)
+            .expect("init: failed to get the path to the display device");
+
+        assert!(written <= buffer.len());
+
+        let display_path = std::str::from_utf8(&buffer[..written])
+            .expect("init: display path UTF-8 check failed");
+   
+        fix_env(&display_path)?;
+
         let display = syscall::open(display_path, O_CLOEXEC | O_NONBLOCK | O_RDWR)
             .map(|socket| {
                 unsafe { File::from_raw_fd(socket as RawFd) }
@@ -208,8 +223,8 @@ impl Orbital {
 
         let mut buf: [u8; 4096] = [0; 4096];
         let count = syscall::fpath(display.as_raw_fd() as usize, &mut buf)
-            .map_err(|_| io::Error::new(ErrorKind::Other,
-                                        "Could not read display path with fpath()"))?;
+            .map_err(|e| io::Error::new(ErrorKind::Other,
+                                        format!("Could not read display path with fpath(): {e}")))?;
 
         let url = String::from_utf8(Vec::from(&buf[..count]))
             .map_err(|_| io::Error::new(ErrorKind::Other,
@@ -262,7 +277,7 @@ impl Orbital {
             todo: Vec::new(),
             displays,
             maps: BTreeMap::new(),
-            input: File::open("input:consumer")?,
+            input: input_handle,
         })
     }
 

@@ -66,8 +66,6 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
     let display_path = env::var("DISPLAY").expect("`DISPLAY` environment variable not set");
     let login_cmd = args.next().ok_or("no login manager argument")?;
 
-    core::fix_env(&display_path).map_err(|_| "error setting env vars")?;
-
     let orbital = Orbital::open_display(&display_path)
         .map_err(|e| format!("could not open display, caused by: {}", e))?;
 
