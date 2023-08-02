@@ -190,7 +190,11 @@ impl Orbital {
     pub fn open_display(display_path: &str) -> io::Result<Self> {
         let mut buffer = [0; 1024];
 
-        let input_handle = File::open(format!("input:consumer/{display_path}"))?;
+        let input_handle = {
+            let (scheme_name, path) = Self::url_parts(&display_path)?;
+            let (vt_screen, _width, _height) = Self::parse_display_path(path);
+            File::open(format!("input:consumer/{vt_screen}"))?
+        };
         let fd = input_handle.as_raw_fd();
 
         let written = syscall::fpath(fd as usize, &mut buffer)
