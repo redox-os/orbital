@@ -31,4 +31,4 @@ orbclient = "0.3"
 git = "https://gitlab.redox-os.org/redox-os/event.git"
 
 [patch.crates-io]
-redox_syscall = { path = "../../kernel/source/syscall" }
+redox_syscall = { git = "https://gitlab.redox-os.org/redox-os/syscall.git" }
