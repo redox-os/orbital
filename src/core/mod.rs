@@ -22,7 +22,7 @@ use syscall::{
     error::EINVAL,
     flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR},
     flag::EventFlags,
-    SchemeMut,
+    SchemeMut, PAGE_SIZE, KSMSG_MMAP_PREP, KSMSG_MMAP, KSMSG_MSYNC, KSMSG_MUNMAP, MapFlags, ESKMSG, SKMSG_PROVIDE_MMAP,
 };
 
 use display::Display;
@@ -135,7 +135,7 @@ pub trait Handler {
     /// TODO: Abstract event system away completely.
     fn handle_window_clear_notified(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<()>;
     /// Return a reference the window's image that will be mapped in the scheme's fmap function
-    fn handle_window_map(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<&mut [Color]>;
+    fn handle_window_map(&mut self, orb: &mut Orbital, id: usize, create_new: bool) -> syscall::Result<&mut [Color]>;
     /// Free a reference to the window's image, for use by funmap
     fn handle_window_unmap(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<()>;
     /// Called to get window properties
@@ -532,14 +532,7 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             .handle_window_clear_notified(&mut self.orb, id)
             .and(Ok(EventFlags::empty()))
     }
-    fn fmap_old(&mut self, id: usize, map: &syscall::OldMap) -> syscall::Result<usize> {
-        self.fmap(id, &syscall::Map {
-            offset: map.offset,
-            size: map.size,
-            flags: map.flags,
-            address: 0,
-        })
-    }
+    /*
     fn fmap(&mut self, id: usize, map: &syscall::Map) -> syscall::Result<usize> {
         let page_size = 4096;
         let map_pages = (map.offset + map.size + page_size - 1)/page_size;
@@ -556,18 +549,6 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             Err(syscall::Error::new(EINVAL))
         }
     }
-    fn funmap_old(&mut self, address: usize) -> syscall::Result<usize> {
-        match self.orb.maps.remove(&address) {
-            Some((id, _map_size)) => {
-                info!("funmap_old 0x{:x} = {}", address, id);
-                self.handler.handle_window_unmap(&mut self.orb, id)?;
-            },
-            None => {
-                error!("failed to found mapping 0x{:x}", address);
-            }
-        }
-        Ok(0)
-    }
     fn funmap(&mut self, address: usize, size: usize) -> syscall::Result<usize> {
         match self.orb.maps.remove(&address) {
             Some((id, map_size)) => {
@@ -582,6 +563,7 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         }
         Ok(0)
     }
+    */
     fn fpath(&mut self, id: usize, mut buf: &mut [u8]) -> syscall::Result<usize> {
         let props = self.handler.handle_window_properties(&mut self.orb, id)?;
         let original_len = buf.len();
@@ -608,6 +590,15 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         }
 
         self.handler.handle_window_close(&mut self.orb, id)
+    }
+    fn mmap_prep(&mut self, id: usize, offset: u64, size: usize, flags: syscall::MapFlags) -> syscall::Result<usize> {
+        let data = self.handler.handle_window_map(&mut self.orb, id, true)?;
+
+        if size > data.len() * core::mem::size_of::<Color>() {
+            return Err(syscall::Error::new(EINVAL));
+        }
+
+        Ok(data.as_mut_ptr() as usize)
     }
 }
 

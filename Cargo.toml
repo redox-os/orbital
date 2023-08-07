@@ -29,3 +29,6 @@ orbclient = "0.3"
 
 [dependencies.redox_event]
 git = "https://gitlab.redox-os.org/redox-os/event.git"
+
+[patch.crates-io]
+redox_syscall = { git = "https://gitlab.redox-os.org/redox-os/syscall.git" }
