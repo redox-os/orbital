@@ -9,7 +9,7 @@ use std::{
     rc::Rc
 };
 use redox_log::{OutputBuilder, RedoxLogger};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use redox_daemon::Daemon;
 
 use config::Config;
@@ -57,10 +57,20 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
         .enable();
 
     let mut args = env::args().skip(1);
-    let display_path = env::var("DISPLAY").expect("`DISPLAY` environment variable not set");
+    let vt = env::var("DISPLAY").expect("`DISPLAY` environment variable not set");
     let login_cmd = args.next().ok_or("no login manager argument")?;
 
-    let orbital = Orbital::open_display(&display_path)
+    //TODO: integrate this into orbital
+    match Command::new("inputd").arg("-G").arg(&vt).status() {
+        Ok(status) => if ! status.success() {
+            warn!("inputd -G '{}' exited with status: {:?}", vt, status);
+        },
+        Err(err) => {
+            warn!("inputd -G '{}' failed to run with error: {}", vt, err);
+        }
+    }
+
+    let orbital = Orbital::open_display(&vt)
         .map_err(|e| format!("could not open display, caused by: {}", e))?;
     daemon.ready().unwrap();
 

@@ -187,10 +187,10 @@ impl Orbital {
     }
 
     /// Open an orbital display and connect to the scheme
-    pub fn open_display(display_path: &str) -> io::Result<Self> {
+    pub fn open_display(vt: &str) -> io::Result<Self> {
         let mut buffer = [0; 1024];
 
-        let input_handle = File::open(format!("input:consumer/{display_path}"))?;
+        let input_handle = File::open(format!("input:consumer/{vt}"))?;
         let fd = input_handle.as_raw_fd();
 
         let written = syscall::fpath(fd as usize, &mut buffer)
@@ -200,7 +200,7 @@ impl Orbital {
 
         let display_path = std::str::from_utf8(&buffer[..written])
             .expect("init: display path UTF-8 check failed");
-   
+
         fix_env(&display_path)?;
 
         let display = syscall::open(display_path, O_CLOEXEC | O_NONBLOCK | O_RDWR)
