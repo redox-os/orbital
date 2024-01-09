@@ -210,6 +210,31 @@ impl Window {
     }
 
     pub fn event(&mut self, event: Event) {
+        // Combine or replace the last event for some event types where it improves latency without disrupting logic
+        if let Some(last_event) = self.events.back_mut() {
+            if last_event.code == event.code {
+                match event.code {
+                    // Absolute mouse events, window move, window resize, and screen report events can be replaced
+                    orbclient::EVENT_MOUSE |
+                    orbclient::EVENT_MOVE |
+                    orbclient::EVENT_RESIZE |
+                    orbclient::EVENT_SCREEN => {
+                        *last_event = event;
+                        return;
+                    }
+                    // Relative mouse events and scroll events can be combined with addition
+                    orbclient::EVENT_MOUSE_RELATIVE | orbclient::EVENT_SCROLL => {
+                        last_event.a += event.a;
+                        last_event.b += event.b;
+                        return;
+                    }
+                    // Other events cannot be combined or replaced
+                    _ => {}
+                }
+            }
+        }
+
+        // Push event if not combined or replaced
         self.events.push_back(event);
     }
 
