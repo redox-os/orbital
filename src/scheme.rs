@@ -1414,7 +1414,19 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         match event_union.to_option() {
             EventOption::Key(event) => self.key_event(event),
-            EventOption::Mouse(event) => self.mouse_event(event),
+            EventOption::Mouse(MouseEvent { x, y }) => {
+                // ps2d gives us absolute mouse events with x and y in the range 0..65535.
+                // We need to translate this back to screen coordinates. We are using the
+                // size of the first display here as the only multi-display system supported
+                // by qemu doesn't produce absolute mouse events using vmmouse at all.
+                // FIXME once we have usb tablet support add a new event like MouseEvent
+                // which indicates the input device from which the event originated to use
+                // the correct display for getting the size.
+                self.mouse_event(MouseEvent {
+                    x: x * self.orb.displays[0].image.width() / 65536,
+                    y: y * self.orb.displays[0].image.height() / 65536,
+                });
+            }
             EventOption::MouseRelative(event) => self.mouse_relative_event(event),
             EventOption::Button(event) => self.button_event(event),
             EventOption::Scroll(_) => {
