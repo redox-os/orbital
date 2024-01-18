@@ -55,16 +55,7 @@ impl From<syscall::Error> for Error {
 
 /// Convenience function for setting DISPLAY and PATH environment variables
 pub fn fix_env(display_path: &str) -> io::Result<()> {
-    env::set_current_dir("file:")?;
-
     env::set_var("DISPLAY", display_path);
-
-    let path = env::var("PATH").unwrap_or(String::new());
-    let new_path = env::join_paths(
-        env::split_paths(&path)
-            .chain(iter::once(PathBuf::from("/ui/bin")))
-    ).map_err(|_| io::Error::new(ErrorKind::Other, "Could not join paths"))?;
-    env::set_var("PATH", new_path);
     Ok(())
 }
 
