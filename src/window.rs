@@ -16,6 +16,17 @@ use std::rc::Rc;
 // use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 use crate::config::Config;
 
+//TODO: move to orbclient?
+pub const ORBITAL_FLAG_ASYNC: char = 'a';
+pub const ORBITAL_FLAG_BACK: char = 'b';
+pub const ORBITAL_FLAG_FRONT: char = 'f';
+pub const ORBITAL_FLAG_HIDDEN: char = 'h';
+pub const ORBITAL_FLAG_BORDERLESS: char = 'l';
+pub const ORBITAL_FLAG_MAXIMIZED: char = 'm';
+pub const ORBITAL_FLAG_RESIZABLE: char = 'r';
+pub const ORBITAL_FLAG_TRANSPARENT: char = 't';
+pub const ORBITAL_FLAG_UNCLOSABLE: char = 'u';
+
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum WindowZOrder {
     Back,
@@ -30,6 +41,7 @@ pub struct Window {
     pub title: String,
     pub asynchronous: bool,
     pub borderless: bool,
+    pub hidden: bool,
     pub resizable: bool,
     pub transparent: bool,
     pub unclosable: bool,
@@ -64,6 +76,7 @@ impl Window {
             title: String::new(),
             asynchronous: false,
             borderless: false,
+            hidden: false,
             resizable: false,
             transparent: false,
             unclosable: false,
@@ -94,7 +107,11 @@ impl Window {
     }
 
     pub fn rect(&self) -> Rect {
-        Rect::new(self.x, self.y, self.width(), self.height())
+        if self.hidden {
+            Rect::new(self.x, self.y, 0, 0)
+        } else {
+            Rect::new(self.x, self.y, self.width(), self.height())
+        }
     }
 
     pub fn title_rect(&self) -> Rect {
@@ -253,14 +270,26 @@ impl Window {
     }
 
     pub fn properties(&self) -> Properties {
-        let mut properties = 0;
-        if self.asynchronous { properties |= core::PROPERTY_ASYNC; }
-        if self.borderless { properties |= core::PROPERTY_BORDERLESS; }
-        if self.resizable { properties |= core::PROPERTY_RESIZABLE; }
-        if self.transparent { properties |= core::PROPERTY_TRANSPARENT; }
-        if self.unclosable { properties |= core::PROPERTY_UNCLOSABLE; }
+        //TODO: avoid allocation
+        let mut flags = String::with_capacity(8);
+        if self.asynchronous { flags.push(ORBITAL_FLAG_ASYNC) }
+        if self.borderless { flags.push(ORBITAL_FLAG_BORDERLESS) }
+        if self.hidden { flags.push(ORBITAL_FLAG_HIDDEN) }
+        if self.restore.is_some() { flags.push(ORBITAL_FLAG_MAXIMIZED) }
+        if self.resizable { flags.push(ORBITAL_FLAG_RESIZABLE) }
+        if self.transparent { flags.push(ORBITAL_FLAG_TRANSPARENT) }
+        if self.unclosable { flags.push(ORBITAL_FLAG_UNCLOSABLE) }
+        match self.zorder {
+            WindowZOrder::Back => {
+                 flags.push(ORBITAL_FLAG_BACK)
+            },
+            WindowZOrder::Normal => {},
+            WindowZOrder::Front => {
+                 flags.push(ORBITAL_FLAG_FRONT)
+            },
+        }
         Properties {
-            properties,
+            flags,
             x: self.x,
             y: self.y,
             width: self.width(),
@@ -284,6 +313,22 @@ impl Window {
         self.title_image_unfocused = Image::from_color(title_render.width() as i32, title_render.height() as i32, color_blank);
         self.title_image_unfocused.mode().set(orbclient::Mode::Overwrite);
         title_render.draw(&mut self.title_image_unfocused, 0, 0, text_color);
+    }
+
+    pub fn set_flag(&mut self, flag: char, value: bool) {
+        match flag {
+            ORBITAL_FLAG_ASYNC => self.asynchronous = value,
+            ORBITAL_FLAG_BACK => self.zorder = if value { WindowZOrder::Back } else { WindowZOrder::Normal },
+            ORBITAL_FLAG_FRONT => self.zorder = if value { WindowZOrder::Front } else { WindowZOrder::Normal },
+            ORBITAL_FLAG_HIDDEN => self.hidden = value,
+            ORBITAL_FLAG_BORDERLESS => self.borderless = value,
+            ORBITAL_FLAG_RESIZABLE => self.resizable = value,
+            ORBITAL_FLAG_TRANSPARENT => self.transparent = value,
+            ORBITAL_FLAG_UNCLOSABLE => self.unclosable = value,
+            _ => {
+                log::warn!("unknown window flag {:?}", flag);
+            }
+        }
     }
 
     pub fn set_size(&mut self, w: i32, h: i32) {
