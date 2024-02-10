@@ -286,6 +286,12 @@ impl Handler for OrbitalScheme {
         Ok(())
     }
 
+    fn handle_window_drag(&mut self, orb: &mut Orbital, id: usize /*TODO: resize sides */) -> Result<()> {
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        self.dragging = DragMode::Title(id, self.cursor_x, self.cursor_y);
+        Ok(())
+    }
+
     fn handle_window_mouse_cursor(&mut self, _orb: &mut Orbital, id: usize, visible: bool) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.mouse_cursor = visible;
