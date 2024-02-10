@@ -340,6 +340,35 @@ impl Handler for OrbitalScheme {
         Ok(())
     }
 
+    fn handle_window_set_flag(&mut self, orb: &mut Orbital, id: usize, flag: char, value: bool) -> Result<()> {
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+
+        // Handle maximized flag custom
+        if flag == crate::window::ORBITAL_FLAG_MAXIMIZED {
+            let toggle_tile = if value {
+                window.restore = None;
+                true
+            } else {
+                window.restore.is_some()
+            };
+            if toggle_tile {
+                self.with_orbital(orb).tile_window(Some(&id), TilePosition::FullScreen);
+            }
+        } else {
+            // Setting flag may change visibility, make sure to queue redraws both before and after
+            schedule(&mut self.redraws, window.title_rect());
+            schedule(&mut self.redraws, window.rect());
+
+            window.set_flag(flag, value);
+
+            // Setting flag may change visibility, make sure to queue redraws both before and after
+            schedule(&mut self.redraws, window.title_rect());
+            schedule(&mut self.redraws, window.rect());
+        }
+
+        Ok(())
+    }
+
     fn handle_window_title(&mut self, _orb: &mut Orbital, id: usize, title: String) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.title = title;
@@ -818,42 +847,40 @@ impl<'a> OrbitalSchemeEvent<'a> {
     fn move_front_window(&mut self, h_movement: i32, v_movement: i32) {
         if let Some(id) = self.scheme.order.front() {
             if let Some(window) = self.scheme.windows.get_mut(id) {
-                if ! window.borderless {
-                    schedule(&mut self.scheme.redraws, window.title_rect());
-                    schedule(&mut self.scheme.redraws, window.rect());
+                schedule(&mut self.scheme.redraws, window.title_rect());
+                schedule(&mut self.scheme.redraws, window.rect());
 
-                    // Align location to grid
-                    window.x -= window.x % GRID_SIZE;
-                    window.y -= window.y % GRID_SIZE;
+                // Align location to grid
+                window.x -= window.x % GRID_SIZE;
+                window.y -= window.y % GRID_SIZE;
 
-                    window.x += h_movement;
-                    window.y += v_movement;
+                window.x += h_movement;
+                window.y += v_movement;
 
-                    // Ensure window remains visible
-                    window.x = cmp::max(
-                        -window.width() + GRID_SIZE,
-                        cmp::min(
-                            self.orb.image().width() - GRID_SIZE,
-                            window.x
-                        )
-                    );
-                    window.y = cmp::max(
-                        -window.height() + GRID_SIZE,
-                        cmp::min(
-                            self.orb.image().height() - GRID_SIZE,
-                            window.y
-                        )
-                    );
+                // Ensure window remains visible
+                window.x = cmp::max(
+                    -window.width() + GRID_SIZE,
+                    cmp::min(
+                        self.orb.image().width() - GRID_SIZE,
+                        window.x
+                    )
+                );
+                window.y = cmp::max(
+                    -window.height() + GRID_SIZE,
+                    cmp::min(
+                        self.orb.image().height() - GRID_SIZE,
+                        window.y
+                    )
+                );
 
-                    let move_event = MoveEvent {
-                        x: window.x,
-                        y: window.y
-                    }.to_event();
-                    window.event(move_event);
+                let move_event = MoveEvent {
+                    x: window.x,
+                    y: window.y
+                }.to_event();
+                window.event(move_event);
 
-                    schedule(&mut self.scheme.redraws, window.title_rect());
-                    schedule(&mut self.scheme.redraws, window.rect());
-                }
+                schedule(&mut self.scheme.redraws, window.title_rect());
+                schedule(&mut self.scheme.redraws, window.rect());
             }
         }
     }
@@ -1288,9 +1315,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                             if self.scheme.modifier_state & SUPER_MODIFIER == SUPER_MODIFIER {
                                 if event.left && ! self.scheme.cursor_left {
                                     focus = i;
-                                    if ! window.borderless {
-                                        self.scheme.dragging = DragMode::Title(id, self.scheme.cursor_x, self.scheme.cursor_y);
-                                    }
+                                    self.scheme.dragging = DragMode::Title(id, self.scheme.cursor_x, self.scheme.cursor_y);
                                 }
                             } else if let Some(window) = self.scheme.windows.get_mut(&id) {
                                     window.event(event.to_event());
@@ -1513,16 +1538,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         let mut window = Window::new(x, y, width, height, self.scheme.scale, Rc::clone(&self.scheme.config));
 
         for flag in flags.chars() {
-            match flag {
-                'a' => window.asynchronous = true,
-                'b' => window.zorder = WindowZOrder::Back,
-                'f' => window.zorder = WindowZOrder::Front,
-                'l' => window.borderless = true,
-                'r' => window.resizable = true,
-                't' => window.transparent = true,
-                'u' => window.unclosable = true,
-                _ => ()
-            }
+            window.set_flag(flag, true);
         }
 
         window.title = title;

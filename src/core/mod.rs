@@ -66,14 +66,9 @@ fn read_to_slice<R: Read, T: Copy>(mut r: R, buf: &mut [T]) -> io::Result<usize>
     }
 }
 
-pub const PROPERTY_ASYNC:      u8 = 1 << 0;
-pub const PROPERTY_BORDERLESS: u8 = 1 << 1;
-pub const PROPERTY_RESIZABLE:  u8 = 1 << 2;
-pub const PROPERTY_TRANSPARENT: u8 = 1 << 3;
-pub const PROPERTY_UNCLOSABLE: u8 = 1 << 4;
-
 pub struct Properties<'a> {
-    pub properties: u8,
+    //TODO: avoid allocation
+    pub flags: String,
     pub x: i32,
     pub y: i32,
     pub width: i32,
@@ -122,6 +117,8 @@ pub trait Handler {
     fn handle_window_position(&mut self, orb: &mut Orbital, id: usize, x: Option<i32>, y: Option<i32>) -> syscall::Result<()>;
     /// Called when the window asks to be resized
     fn handle_window_resize(&mut self, orb: &mut Orbital, id: usize, w: Option<i32>, h: Option<i32>) -> syscall::Result<()>;
+    /// Called when the window wants to set a flag
+    fn handle_window_set_flag(&mut self, orb: &mut Orbital, id: usize, flag: char, value: bool) -> syscall::Result<()>;
     /// Called when the window asks to change title
     fn handle_window_title(&mut self, orb: &mut Orbital, id: usize, title: String) -> syscall::Result<()>;
     /// Called by fevent to clear notified status, assuming you're sending edge-triggered notifications
@@ -471,6 +468,19 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
                     }
                     _ => Err(syscall::Error::new(EINVAL)),
                 }
+                "F" => {
+                    let mut parts = data.split(',');
+                    let flags = parts.next().unwrap_or("");
+                    let value = match parts.next().unwrap_or("") {
+                        "0" => false,
+                        "1" => true,
+                        _ => return Err(syscall::Error::new(EINVAL)),
+                    };
+                    for flag in flags.chars() {
+                        self.handler.handle_window_set_flag(&mut self.orb, id, flag, value)?;
+                    }
+                    Ok(buf.len())
+                }
                 "M" => match data {
                     "C,0" => {
                         self.handler.handle_window_mouse_cursor(&mut self.orb, id, false)?;
@@ -569,14 +579,8 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         let original_len = buf.len();
         #[allow(clippy::write_literal)] // TODO: Z order
         let _ = write!(buf,
-            "orbital:{}{}{}{}{}{}/{}/{}/{}/{}/{}",
-            if props.properties & PROPERTY_ASYNC == PROPERTY_ASYNC { "a" } else { "" },
-            "", // TODO: Z order
-            if props.properties & PROPERTY_BORDERLESS == PROPERTY_BORDERLESS { "l" } else { "" },
-            if props.properties & PROPERTY_RESIZABLE == PROPERTY_RESIZABLE { "r" } else { "" },
-            if props.properties & PROPERTY_TRANSPARENT == PROPERTY_TRANSPARENT { "t" } else { "" },
-            if props.properties & PROPERTY_UNCLOSABLE == PROPERTY_UNCLOSABLE { "u" } else { "" },
-            props.x, props.y, props.width, props.height, props.title
+            "orbital:{}/{}/{}/{}/{}/{}",
+            props.flags, props.x, props.y, props.width, props.height, props.title
         );
         Ok(original_len - buf.len())
     }
