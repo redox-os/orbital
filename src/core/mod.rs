@@ -466,6 +466,12 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
                         self.handler.handle_window_drag(&mut self.orb, id)?;
                         Ok(buf.len())
                     }
+                    //TODO: resize by dragging edge
+                    // Comma separated
+                    // B is bottom
+                    // L is left
+                    // R is right
+                    // T is top
                     _ => Err(syscall::Error::new(EINVAL)),
                 }
                 "F" => {
