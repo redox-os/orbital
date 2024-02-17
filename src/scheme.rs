@@ -1524,12 +1524,6 @@ impl<'a> OrbitalSchemeEvent<'a> {
             self.scheme.next_id = 1;
         }
 
-        if x < 0 && y < 0 {
-            // Automatic placement
-            x = cmp::max(0, (self.orb.image().width() - width)/2);
-            y = cmp::max(28, (self.orb.image().height() - height)/2);
-        }
-
         if let Some(id) = self.scheme.order.front() {
             if let Some(window) = self.scheme.windows.get(id) {
                 schedule(&mut self.scheme.redraws, window.title_rect());
@@ -1545,6 +1539,12 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         window.title = title;
         window.render_title(&self.scheme.font);
+
+        if x < 0 && y < 0 {
+            // Automatic placement
+            window.x = cmp::max(0, (self.orb.image().width() - width)/2);
+            window.y = cmp::max(window.title_rect().height(), (self.orb.image().height() - height)/2);
+        }
 
         schedule(&mut self.scheme.redraws, window.title_rect());
         schedule(&mut self.scheme.redraws, window.rect());
