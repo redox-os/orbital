@@ -15,6 +15,7 @@ use std::{
 
 use event::EventQueue;
 use failure::Fail;
+use libredox::flag;
 use log::{debug, error, info};
 use orbclient::{Color, Event};
 use syscall::{
@@ -183,7 +184,7 @@ impl Orbital {
         let input_handle = File::open(format!("input:consumer/{vt}"))?;
         let fd = input_handle.as_raw_fd();
 
-        let written = syscall::fpath(fd as usize, &mut buffer)
+        let written = libredox::call::fpath(fd as usize, &mut buffer)
             .expect("init: failed to get the path to the display device");
 
         assert!(written <= buffer.len());
@@ -193,26 +194,26 @@ impl Orbital {
 
         fix_env(&display_path)?;
 
-        let display = syscall::open(display_path, O_CLOEXEC | O_NONBLOCK | O_RDWR)
+        let display = libredox::call::open(display_path, flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR, 0)
             .map(|socket| {
                 unsafe { File::from_raw_fd(socket as RawFd) }
             })
             .map_err(|err| {
                 error!("failed to open display {}: {}", display_path, err);
-                io::Error::from_raw_os_error(err.errno)
+                io::Error::from_raw_os_error(err.errno())
             })?;
 
-        let scheme = syscall::open(":orbital", O_CREAT | O_CLOEXEC | O_NONBLOCK | O_RDWR)
+        let scheme = libredox::call::open(":orbital", flag::O_CREAT | flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR, 0)
             .map(|socket| {
                 unsafe { File::from_raw_fd(socket as RawFd) }
             })
             .map_err(|err| {
                 error!("failed to open ':orbital': {}", err);
-                io::Error::from_raw_os_error(err.errno)
+                io::Error::from_raw_os_error(err.errno())
             })?;
 
         let mut buf: [u8; 4096] = [0; 4096];
-        let count = syscall::fpath(display.as_raw_fd() as usize, &mut buf)
+        let count = libredox::call::fpath(display.as_raw_fd() as usize, &mut buf)
             .map_err(|e| io::Error::new(ErrorKind::Other,
                                         format!("Could not read display path with fpath(): {e}")))?;
 
@@ -232,13 +233,13 @@ impl Orbital {
             //TODO: determine maximum number of screens
             for screen_i in start_screen_i + 1..1024 {
                 let extra_path = format!("{}:{}.{}", scheme_name, vt_i, screen_i);
-                let extra_file = match syscall::open(&extra_path, O_CLOEXEC | O_NONBLOCK | O_RDWR) {
+                let extra_file = match libredox::call::open(&extra_path, flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR, 0) {
                     Ok(socket) => unsafe { File::from_raw_fd(socket as RawFd) },
                     Err(_err) => break,
                 };
 
                 let mut buf: [u8; 4096] = [0; 4096];
-                let count = syscall::fpath(extra_file.as_raw_fd() as usize, &mut buf)
+                let count = libredox::call::fpath(extra_file.as_raw_fd() as usize, &mut buf)
                     .map_err(|_| io::Error::new(ErrorKind::Other,
                                                 "Could not open extra_file as_raw_fd()"))?;
 
@@ -299,7 +300,7 @@ impl Orbital {
     {
         let mut event_queue = EventQueue::<()>::new()?;
 
-        //TODO: Figure out why rand: gets opened after this: syscall::setrens(0, 0)?;
+        //TODO: Figure out why rand: gets opened after this: libredox::call::setrens(0, 0)?;
 
         let scheme_fd = self.scheme.as_raw_fd();
         let input_fd = self.input.as_raw_fd();
