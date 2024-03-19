@@ -1,3 +1,4 @@
+use libredox::{call::MmapArgs, flag};
 use orbclient::{Color, Renderer};
 use std::{
     convert::TryInto,
@@ -13,13 +14,15 @@ use crate::core::{
     rect::Rect,
 };
 
-fn display_fd_map(width: i32, height: i32, display_fd: usize) -> syscall::Result<ImageRef<'static>> {
+fn display_fd_map(width: i32, height: i32, display_fd: usize) -> libredox::error::Result<ImageRef<'static>> {
     unsafe {
-        let display_ptr = syscall::fmap(display_fd, &syscall::Map {
+        let display_ptr = libredox::call::mmap(MmapArgs {
+            fd: display_fd,
             offset: 0,
-            size: (width * height * 4) as usize,
-            flags: syscall::PROT_READ | syscall::PROT_WRITE | syscall::MAP_SHARED,
-            address: 0,
+            length: (width * height * 4) as usize,
+            prot: flag::PROT_READ | flag::PROT_WRITE,
+            flags: flag::MAP_SHARED,
+            addr: core::ptr::null_mut(),
         })?;
         let display_slice = slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize);
         Ok(ImageRef::from_data(width, height, display_slice))
@@ -28,7 +31,7 @@ fn display_fd_map(width: i32, height: i32, display_fd: usize) -> syscall::Result
 
 fn display_fd_unmap(image: &mut ImageRef) {
     unsafe {
-        let _ = syscall::funmap(image.data().as_ptr() as usize, (image.width() * image.height() * 4) as usize);
+        let _ = libredox::call::munmap(image.data().as_ptr() as *mut (), (image.width() * image.height() * 4) as usize);
     }
 }
 
@@ -46,7 +49,7 @@ impl Display {
         let image =  display_fd_map(width, height, file.as_raw_fd() as usize)
                 .map_err(|err| {
                     error!("failed to map display: {}", err);
-                    io::Error::from_raw_os_error(err.errno)
+                    io::Error::from_raw_os_error(err.errno())
                 })?;
         Ok(Self {
             x,
