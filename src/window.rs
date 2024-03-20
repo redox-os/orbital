@@ -171,8 +171,8 @@ impl Window {
     }
 
     pub fn draw_title(&mut self, display: &mut Display, rect: &Rect, focused: bool, window_max: &mut Image, window_close: &mut Image) {
-        let bar_color = self.config.bar_color;
-        let bar_highlight_color = self.config.bar_highlight_color;
+        let bar_color = Color::from(self.config.bar_color);
+        let bar_highlight_color = Color::from(self.config.bar_highlight_color);
 
         let title_rect = self.title_rect();
         let title_intersect = rect.intersection(&title_rect);
@@ -308,11 +308,11 @@ impl Window {
 
         self.title_image = Image::from_color(title_render.width() as i32, title_render.height() as i32, color_blank);
         self.title_image.mode().set(orbclient::Mode::Overwrite);
-        title_render.draw(&mut self.title_image, 0, 0, text_highlight_color);
+        title_render.draw(&mut self.title_image, 0, 0, text_highlight_color.into());
 
         self.title_image_unfocused = Image::from_color(title_render.width() as i32, title_render.height() as i32, color_blank);
         self.title_image_unfocused.mode().set(orbclient::Mode::Overwrite);
-        title_render.draw(&mut self.title_image_unfocused, 0, 0, text_color);
+        title_render.draw(&mut self.title_image_unfocused, 0, 0, text_color.into());
     }
 
     pub fn set_flag(&mut self, flag: char, value: bool) {
@@ -372,11 +372,11 @@ mod test {
             window_close: String::default(),
             window_close_unfocused: String::default(),
 
-            background_color: Color::rgba(1, 2, 3, 200),
-            bar_color: Color::rgba(1, 2, 3, 200),
-            bar_highlight_color: Color::rgba(1, 2, 3, 200),
-            text_color: Color::rgba(1, 2, 3, 200),
-            text_highlight_color: Color::rgba(1, 2, 3, 200),
+            background_color: Color::rgba(1, 2, 3, 200).into(),
+            bar_color: Color::rgba(1, 2, 3, 200).into(),
+            bar_highlight_color: Color::rgba(1, 2, 3, 200).into(),
+            text_color: Color::rgba(1, 2, 3, 200).into(),
+            text_highlight_color: Color::rgba(1, 2, 3, 200).into(),
         }
     }
 
