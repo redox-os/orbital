@@ -4,6 +4,20 @@ use log::{debug, error};
 use serde_derive::Deserialize;
 use orbclient::Color;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
+pub struct ConfigColor { data: u32 }
+
+impl From<ConfigColor> for Color {
+    fn from(value: ConfigColor) -> Self {
+        Self { data: value.data }
+    }
+}
+impl From<Color> for ConfigColor {
+    fn from(value: Color) -> Self {
+        Self { data: value.data }
+    }
+}
+
 #[derive(Deserialize, Clone)]
 pub struct Config {
     pub cursor: String,
@@ -18,22 +32,22 @@ pub struct Config {
     pub window_close_unfocused: String,
 
     #[serde(default = "background_color_default")]
-    pub background_color: Color,
+    pub background_color: ConfigColor,
     #[serde(default = "bar_color_default")]
-    pub bar_color: Color,
+    pub bar_color: ConfigColor,
     #[serde(default = "bar_highlight_color_default")]
-    pub bar_highlight_color: Color,
+    pub bar_highlight_color: ConfigColor,
     #[serde(default = "text_color_default")]
-    pub text_color: Color,
+    pub text_color: ConfigColor,
     #[serde(default = "text_highlight_color_default")]
-    pub text_highlight_color: Color,
+    pub text_highlight_color: ConfigColor,
 }
 
-fn background_color_default() -> Color { Color::rgb(0, 0, 0) }
-fn bar_color_default() -> Color { Color::rgba(47, 52, 63, 224) }
-fn bar_highlight_color_default() -> Color { Color::rgba(80, 86, 102, 224) }
-fn text_color_default() -> Color { Color::rgb(204, 210, 224) }
-fn text_highlight_color_default() -> Color { Color::rgb(204, 210, 224) }
+fn background_color_default() -> ConfigColor { Color::rgb(0, 0, 0).into() }
+fn bar_color_default() -> ConfigColor { Color::rgba(47, 52, 63, 224).into() }
+fn bar_highlight_color_default() -> ConfigColor { Color::rgba(80, 86, 102, 224).into() }
+fn text_color_default() -> ConfigColor { Color::rgb(204, 210, 224).into() }
+fn text_highlight_color_default() -> ConfigColor { Color::rgb(204, 210, 224).into() }
 
 /// Create a sane default Orbital [Config] in case none is supplied or it is unreadable
 impl Default for Config {
