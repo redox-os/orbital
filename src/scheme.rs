@@ -16,7 +16,6 @@ use log::{error, info, warn};
 use orbclient::{self, ButtonEvent, ClipboardEvent, Color, Event, EventOption, FocusEvent, HoverEvent,
                 KeyEvent, MouseEvent, MouseRelativeEvent, MoveEvent, QuitEvent, Renderer, ResizeEvent,
                 ScreenEvent, TextInputEvent};
-use redox_daemon::Daemon;
 use syscall::data::Packet;
 use syscall::error::{EBADF, Error, Result};
 use syscall::number::SYS_READ;
@@ -509,7 +508,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             for display in self.orb.displays.iter_mut() {
                 let rect = original_rect.intersection(&display.screen_rect());
                 if ! rect.is_empty() {
-                    display.rect(&rect, self.scheme.config.background_color);
+                    display.rect(&rect, self.scheme.config.background_color.into());
 
                     for entry in self.scheme.zbuffer.iter().rev() {
                         let id = entry.0;
@@ -724,17 +723,17 @@ impl<'a> OrbitalSchemeEvent<'a> {
             let list_h = (selectable_window_ids.len() as u32 * SELECT_ROW_HEIGHT + (SELECT_POPUP_TOP_BOTTOM_MARGIN * 2)) as i32;
             let list_w = SELECT_ROW_WIDTH;
             let popup_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
-            let mut image = Image::from_color(list_w, list_h, bar_color);
+            let mut image = Image::from_color(list_w, list_h, bar_color.into());
 
             for (selectable_index, window_id) in selectable_window_ids.iter().enumerate() {
                 if let Some(window) = self.scheme.windows.get(window_id) {
                     let vertical_offset = selectable_index as i32 * SELECT_ROW_HEIGHT as i32 + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32;
                     let text = self.scheme.font.render(&window.title, FONT_HEIGHT);
                     if selectable_index == 0 {
-                        image.rect(0, vertical_offset, list_w as u32, SELECT_ROW_HEIGHT, bar_highlight_color);
-                        text.draw(&mut image, SELECT_POPUP_SIDE_MARGIN, vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32, text_highlight_color);
+                        image.rect(0, vertical_offset, list_w as u32, SELECT_ROW_HEIGHT, bar_highlight_color.into());
+                        text.draw(&mut image, SELECT_POPUP_SIDE_MARGIN, vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32, text_highlight_color.into());
                     } else {
-                        text.draw(&mut image, SELECT_POPUP_SIDE_MARGIN, vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32, text_color);
+                        text.draw(&mut image, SELECT_POPUP_SIDE_MARGIN, vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32, text_color.into());
                     }
                 }
             }
@@ -757,8 +756,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
         let list_w = BAR_WIDTH + (2 * POPUP_MARGIN);
         let popup_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
         // Color copied over from orbtk's window background
-        let mut image = Image::from_color(list_w, list_h, bar_color);
-        image.rect(POPUP_MARGIN, POPUP_MARGIN, self.scheme.volume_value as u32, BAR_HEIGHT as u32, bar_highlight_color);
+        let mut image = Image::from_color(list_w, list_h, bar_color.into());
+        image.rect(POPUP_MARGIN, POPUP_MARGIN, self.scheme.volume_value as u32, BAR_HEIGHT as u32, bar_highlight_color.into());
         self.orb.image_mut().roi(&popup_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
         self.scheme.popup_rect = popup_rect;
         schedule(&mut self.scheme.redraws, popup_rect);
@@ -798,13 +797,13 @@ impl<'a> OrbitalSchemeEvent<'a> {
         let list_h = (Self::SHORTCUTS_LIST.len() as u32 * ROW_HEIGHT + (POPUP_BORDER * 2)) as i32;
         let list_w = ROW_WIDTH;
         let popup_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
-        let mut image = Image::from_color(list_w, list_h, bar_color);
+        let mut image = Image::from_color(list_w, list_h, bar_color.into());
 
         for (index, shortcut) in Self::SHORTCUTS_LIST.iter().enumerate() {
             let vertical_offset = index as i32 * ROW_HEIGHT as i32 + POPUP_BORDER as i32;
             let text = self.scheme.font.render(shortcut, FONT_HEIGHT);
-            image.rect(0, vertical_offset, list_w as u32, ROW_HEIGHT, bar_highlight_color);
-            text.draw(&mut image, POPUP_BORDER as i32, vertical_offset + POPUP_BORDER as i32, text_highlight_color);
+            image.rect(0, vertical_offset, list_w as u32, ROW_HEIGHT, bar_highlight_color.into());
+            text.draw(&mut image, POPUP_BORDER as i32, vertical_offset + POPUP_BORDER as i32, text_highlight_color.into());
         }
 
         self.orb.image_mut().roi(&popup_rect).blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));

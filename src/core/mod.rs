@@ -13,7 +13,7 @@ use std::{
     str,
 };
 
-use event::EventQueue;
+use event::{user_data, EventQueue};
 use failure::Fail;
 use libredox::flag;
 use log::{debug, error, info};
@@ -46,12 +46,17 @@ pub enum Error {
     IoError(io::Error),
     #[fail(display = "syscall error: {}", _0)]
     SyscallError(syscall::Error),
+    #[fail(display = "system error: {}", _0)]
+    LibredoxError(libredox::error::Error),
 }
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Self { Error::IoError(err) }
 }
 impl From<syscall::Error> for Error {
     fn from(err: syscall::Error) -> Self { Error::SyscallError(err) }
+}
+impl From<libredox::error::Error> for Error {
+    fn from(err: libredox::error::Error) -> Self { Error::LibredoxError(err) }
 }
 
 /// Convenience function for setting DISPLAY and PATH environment variables
@@ -298,7 +303,14 @@ impl Orbital {
     pub fn run<H>(mut self, mut handler: H) -> Result<(), Error>
         where H: Handler + 'static
     {
-        let mut event_queue = EventQueue::<()>::new()?;
+        user_data! {
+            enum Source {
+                Scheme,
+                Input,
+            }
+        }
+
+        let mut event_queue = EventQueue::<Source>::new()?;
 
         //TODO: Figure out why rand: gets opened after this: libredox::call::setrens(0, 0)?;
 
@@ -307,86 +319,80 @@ impl Orbital {
 
         handler.handle_startup(&mut self)?;
 
-        let me = Rc::new(RefCell::new(OrbitalHandler {
+        let mut me = OrbitalHandler {
             orb: self,
             handler,
-        }));
-        let me2 = Rc::clone(&me);
+        };
+        event_queue.subscribe(scheme_fd as usize, Source::Scheme, event::EventFlags::READ)?;
+        event_queue.subscribe(input_fd as usize, Source::Input, event::EventFlags::READ)?;
 
-        event_queue.add(scheme_fd, move |_| -> io::Result<Option<()>> {
-            let mut me = me.borrow_mut();
-            let me = &mut *me;
-            let mut packets = [Packet::default(); 16];
-            let result = loop {
-                match read_to_slice(&mut me.orb.scheme, &mut packets) {
-                    Ok(0) => break Some(()),
-                    Ok(count) => {
-                        let packets = &mut packets[..count];
-                        for packet in packets.iter_mut() {
-                            let delay = me.handler.should_delay(packet);
+        'events: for event_res in event_queue.map(|e| e.map(|e| e.user_data)) {
+            match event_res? {
+                Source::Scheme => {
+                    let mut packets = [Packet::default(); 16];
+                    loop {
+                        match read_to_slice(&mut me.orb.scheme, &mut packets) {
+                            Ok(0) => break 'events,
+                            Ok(count) => {
+                                let packets = &mut packets[..count];
+                                for packet in packets.iter_mut() {
+                                    let delay = me.handler.should_delay(packet);
 
-                            me.handle(packet);
+                                    me.handle(packet);
 
-                            if delay && packet.a == 0 {
-                                me.orb.todo.push(*packet);
+                                    if delay && packet.a == 0 {
+                                        me.orb.todo.push(*packet);
+                                    } else {
+                                        me.orb.scheme_write(packet)?;
+                                    }
+                                }
+                                me.handler.handle_scheme(&mut me.orb, packets)?;
+
+                                me.handler.handle_scheme_after(&mut me.orb)?;
+                                me.handler.handle_after(&mut me.orb)?;
+                            },
+                            Err(err) => if err.kind() == ErrorKind::WouldBlock {
+                                continue 'events;
                             } else {
-                                me.orb.scheme_write(packet)?;
+                                return Err(err.into());
                             }
                         }
-                        me.handler.handle_scheme(&mut me.orb, packets)?;
-                    },
-                    Err(err) => if err.kind() == ErrorKind::WouldBlock {
-                        break None;
-                    } else {
-                        return Err(err);
                     }
                 }
-            };
-            me.handler.handle_scheme_after(&mut me.orb)?;
-            me.handler.handle_after(&mut me.orb)?;
-            Ok(result)
-        })?;
+                Source::Input => {
+                    let mut events = [Event::new(); 16];
+                    loop {
+                        match read_to_slice(&mut me.orb.input, &mut events)? {
+                            0 => break,
+                            count => {
+                                let events = &mut events[..count];
 
-        event_queue.add(input_fd, move |_| -> io::Result<Option<()>> {
-            let mut me = me2.borrow_mut();
-            let me = &mut *me;
-            let mut events = [Event::new(); 16];
-            loop {
-                match read_to_slice(&mut me.orb.input, &mut events)? {
-                    0 => break,
-                    count => {
-                        let events = &mut events[..count];
+                                let mut i = 0;
+                                while i < me.orb.todo.len() {
+                                    let mut packet = me.orb.todo[i];
 
-                        let mut i = 0;
-                        while i < me.orb.todo.len() {
-                            let mut packet = me.orb.todo[i];
+                                    let delay = me.handler.should_delay(&packet);
 
-                            let delay = me.handler.should_delay(&packet);
+                                    me.handle(&mut packet);
 
-                            me.handle(&mut packet);
+                                    if delay && packet.a == 0 {
+                                        i += 1;
+                                    } else {
+                                        me.orb.todo.remove(i);
+                                        me.orb.scheme_write(&packet)?;
+                                    }
+                                }
 
-                            if delay && packet.a == 0 {
-                                i += 1;
-                            }else{
-                                me.orb.todo.remove(i);
-                                me.orb.scheme_write(&packet)?;
+                                me.handler.handle_display(&mut me.orb, events)?;
                             }
                         }
-
-                        me.handler.handle_display(&mut me.orb, events)?;
                     }
+                    me.handler.handle_display_after(&mut me.orb)?;
+                    me.handler.handle_after(&mut me.orb)?;
                 }
             }
-            me.handler.handle_display_after(&mut me.orb)?;
-            me.handler.handle_after(&mut me.orb)?;
-            Ok(None)
-        })?;
+        }
 
-        event_queue.trigger_all(event::Event {
-            fd: 0,
-            flags: EventFlags::empty(),
-        })?;
-        event_queue.run()?;
         //TODO: Cleanup and handle TODO
         Ok(())
     }
