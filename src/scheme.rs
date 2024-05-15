@@ -787,15 +787,24 @@ impl<'a> OrbitalSchemeEvent<'a> {
     // Draw an on screen display (overlay) of available SUPER keyboard shortcuts
     fn draw_shortcuts_osd(&mut self) {
         const ROW_HEIGHT: u32 = 20;
-        const ROW_WIDTH: i32 = 400;
         const POPUP_BORDER: u32 = 2;
         const FONT_HEIGHT : f32 = 16.0;
+        const FONT_WIDTH: u32 = 7;
 
         // follow the look of the current config - in terms of colors
         let Config { bar_color, bar_highlight_color, text_highlight_color, .. } = *self.scheme.config;
 
         let list_h = (Self::SHORTCUTS_LIST.len() as u32 * ROW_HEIGHT + (POPUP_BORDER * 2)) as i32;
-        let list_w = ROW_WIDTH;
+
+        // finds the longest shortcut string and uses that to calculate overlay width
+        let mut longest_shortcut = 0;
+        for line in Self::SHORTCUTS_LIST {
+            if line.chars().count() > longest_shortcut {
+                longest_shortcut = line.len();
+            }
+        }
+        // uses FONT_WIDTH as approximation for average character width.
+        let list_w = (longest_shortcut as u32 * FONT_WIDTH) as i32;
         let popup_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
         let mut image = Image::from_color(list_w, list_h, bar_color.into());
 
