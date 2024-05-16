@@ -765,10 +765,10 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
     const SHORTCUTS_LIST: &'static [&'static str] = &[
         "Super-Q: Quit current window",
-        "Super-TAB: Cycle through active windows bringing to the front of the stack",
+        "Super-TAB: Cycle through open windows",
         "Super-{: Volume down",
         "Super-}: Volume up",
-        "Super-\\: Volume toggle (mute / unmute)",
+        "Super-\\: Volume mute / unmute",
         "Super-Shift-left: Tile window to left",
         "Super-Shift-right: Tile window to right",
         "Super-Shift-up: Tile window to top",
@@ -780,8 +780,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
         "Super-C: Copy to copy buffer",
         "Super-X: Cut to copy buffer",
         "Super-V: Paste from the copy buffer",
-        "Super-M: Toggle window max (maximize or restore)",
-        "Super-ENTER: Toggle window max (maximize or restore)",
+        "Super-M: Maximize / restore window",
+        "Super-ENTER: Maximize / restore window",
     ];
 
     // Draw an on screen display (overlay) of available SUPER keyboard shortcuts
