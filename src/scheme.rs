@@ -542,19 +542,28 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         }
 
-        if self.scheme.win_tabbing {
-            //TODO: add to total_redraw?
-            self.draw_window_list_osd();
-        }
-
         if self.scheme.volume_osd {
             //TODO: add to total_redraw?
             self.draw_volume_osd();
         }
 
-        if self.scheme.shortcuts_osd {
-            //TODO: add to total_redraw?
-            self.draw_shortcuts_osd();
+        // Iterate through list of all open windows and find if any of them are titled 'orblogin'
+        let orblogin_open: bool = self.scheme.windows.values().any(|window| window.title == "orblogin");
+
+        if !orblogin_open {
+
+            if self.scheme.win_tabbing {
+                //TODO: add to total_redraw?
+                self.draw_window_list_osd();
+            }
+    
+    
+            if self.scheme.shortcuts_osd {
+                //TODO: add to total_redraw?
+    
+                self.draw_shortcuts_osd();
+            }
+
         }
 
         // Add any redraws from OSD's
