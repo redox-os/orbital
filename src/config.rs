@@ -44,10 +44,10 @@ pub struct Config {
 }
 
 fn background_color_default() -> ConfigColor { Color::rgb(0, 0, 0).into() }
-fn bar_color_default() -> ConfigColor { Color::rgba(47, 52, 63, 224).into() }
-fn bar_highlight_color_default() -> ConfigColor { Color::rgba(80, 86, 102, 224).into() }
-fn text_color_default() -> ConfigColor { Color::rgb(204, 210, 224).into() }
-fn text_highlight_color_default() -> ConfigColor { Color::rgb(204, 210, 224).into() }
+fn bar_color_default() -> ConfigColor { Color::rgba(0x1B, 0x1B, 0x1B, 224).into() }
+fn bar_highlight_color_default() -> ConfigColor { Color::rgba(0x36, 0x36, 0x36, 224).into() }
+fn text_color_default() -> ConfigColor { Color::rgb(0xE7, 0xE7, 0xE7).into() }
+fn text_highlight_color_default() -> ConfigColor { Color::rgb(0xE7, 0xE7, 0xE7).into() }
 
 /// Create a sane default Orbital [Config] in case none is supplied or it is unreadable
 impl Default for Config {
