@@ -157,7 +157,7 @@ pub struct Orbital {
     pub displays: Vec<Display>,
     pub maps: BTreeMap<usize, (usize, usize)>,
 
-    /// Handle to "input:consumer" to recieve input events.
+    /// Handle to "/scheme/input/consumer" to recieve input events.
     pub input: File,
 }
 
@@ -186,7 +186,7 @@ impl Orbital {
     pub fn open_display(vt: &str) -> io::Result<Self> {
         let mut buffer = [0; 1024];
 
-        let input_handle = File::open(format!("input:consumer/{vt}"))?;
+        let input_handle = File::open(format!("/scheme/input/consumer/{vt}"))?;
         let fd = input_handle.as_raw_fd();
 
         let written = libredox::call::fpath(fd as usize, &mut buffer)
