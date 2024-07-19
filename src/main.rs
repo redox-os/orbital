@@ -61,12 +61,12 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
     let login_cmd = args.next().ok_or("no login manager argument")?;
 
     //TODO: integrate this into orbital
-    match Command::new("inputd").arg("-G").arg(&vt).status() {
+    match Command::new("inputd").arg("-A").arg(&vt).status() {
         Ok(status) => if ! status.success() {
-            warn!("inputd -G '{}' exited with status: {:?}", vt, status);
+            warn!("inputd -A '{}' exited with status: {:?}", vt, status);
         },
         Err(err) => {
-            warn!("inputd -G '{}' failed to run with error: {}", vt, err);
+            warn!("inputd -A '{}' failed to run with error: {}", vt, err);
         }
     }
 
