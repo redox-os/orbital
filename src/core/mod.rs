@@ -59,7 +59,7 @@ impl From<libredox::error::Error> for Error {
     fn from(err: libredox::error::Error) -> Self { Error::LibredoxError(err) }
 }
 
-/// Convenience function for setting DISPLAY and PATH environment variables
+/// Convenience function for setting DISPLAY environment variable
 pub fn fix_env(display_path: &str) -> io::Result<()> {
     env::set_var("DISPLAY", display_path);
     Ok(())

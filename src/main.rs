@@ -57,7 +57,8 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
         .enable();
 
     let mut args = env::args().skip(1);
-    let vt = env::var("DISPLAY").expect("`DISPLAY` environment variable not set");
+    let vt = env::var("VT").expect("`VT` environment variable not set");
+    env::remove_var("VT");
     let login_cmd = args.next().ok_or("no login manager argument")?;
 
     //TODO: integrate this into orbital
