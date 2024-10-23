@@ -115,8 +115,8 @@ impl Window {
     }
 
     pub fn title_rect(&self) -> Rect {
-        if self.borderless {
-            Rect::new(-1, -1, 0, 0)
+        if self.borderless || self.hidden {
+            Rect::new(self.x, self.y, 0, 0)
         } else {
             Rect::new(self.x, self.y - TITLE_HEIGHT * self.scale, self.width(), TITLE_HEIGHT * self.scale)
         }
