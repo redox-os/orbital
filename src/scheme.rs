@@ -206,6 +206,14 @@ impl OrbitalScheme {
         Rect::new(self.cursor_x + off_x, self.cursor_y + off_y, cursor.width(), cursor.height())
     }
 
+    fn focus(&mut self, id: usize, focused: bool) {
+        if let Some(window) = self.windows.get_mut(&id) {
+            schedule(&mut self.redraws, window.title_rect());
+            schedule(&mut self.redraws, window.rect());
+            window.event(FocusEvent { focused }.to_event());
+        }
+    }
+
     fn rezbuffer(&mut self) {
         self.zbuffer.clear();
 
@@ -416,14 +424,12 @@ impl Handler for OrbitalScheme {
     }
 
     fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> Result<usize> {
-        self.order.retain(|&e| e != id);
-
+        // Unfocus current front window
         if let Some(id) = self.order.front() {
-            if let Some(window) = self.windows.get(id){
-                schedule(&mut self.redraws, window.title_rect());
-                schedule(&mut self.redraws, window.rect());
-            }
+            self.focus(*id, false);
         }
+
+        self.order.retain(|&e| e != id);
 
         let res = if let Some(window) = self.windows.remove(&id) {
             schedule(&mut self.redraws, window.title_rect());
@@ -432,6 +438,11 @@ impl Handler for OrbitalScheme {
         } else {
             Err(Error::new(EBADF))
         };
+
+        // Focus current front window
+        if let Some(id) = self.order.front() {
+            self.focus(*id, true);
+        }
 
         // Ensure mouse cursor is correct
         let event = MouseEvent {
@@ -642,11 +653,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
     // set the focus to be on a window by id, and redraw it
     fn focus(&mut self, id: usize, focused: bool) {
-        if let Some(window) = self.scheme.windows.get_mut(&id) {
-            schedule(&mut self.scheme.redraws, window.title_rect());
-            schedule(&mut self.scheme.redraws, window.rect());
-            window.event(FocusEvent { focused }.to_event());
-        }
+        self.scheme.focus(id, focused);
     }
 
     // Tab through the list of selectable windows, changing window order and focus to bring
@@ -1379,13 +1386,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 if focus > 0 {
                     // Redraw old focused window
                     if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(id){
-                            schedule(&mut self.scheme.redraws, window.title_rect());
-                            schedule(&mut self.scheme.redraws, window.rect());
-                            window.event(FocusEvent {
-                                focused: false
-                            }.to_event());
-                        }
+                        self.focus(*id, false);
                     }
 
                     // Reorder windows
@@ -1406,13 +1407,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
                     // Redraw new focused window
                     if let Some(id) = self.scheme.order.front() {
-                        if let Some(window) = self.scheme.windows.get_mut(id){
-                            schedule(&mut self.scheme.redraws, window.title_rect());
-                            schedule(&mut self.scheme.redraws, window.rect());
-                            window.event(FocusEvent {
-                                focused: true
-                            }.to_event());
-                        }
+                        self.focus(*id, true);
                     }
                 }
             },
