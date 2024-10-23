@@ -1523,11 +1523,9 @@ impl<'a> OrbitalSchemeEvent<'a> {
             self.scheme.next_id = 1;
         }
 
+        // Unfocus previous top window
         if let Some(id) = self.scheme.order.front() {
-            if let Some(window) = self.scheme.windows.get(id) {
-                schedule(&mut self.scheme.redraws, window.title_rect());
-                schedule(&mut self.scheme.redraws, window.rect());
-            }
+            self.focus(*id, false);
         }
 
         let mut window = Window::new(x, y, width, height, self.scheme.scale, Rc::clone(&self.scheme.config));
@@ -1545,9 +1543,11 @@ impl<'a> OrbitalSchemeEvent<'a> {
             window.y = cmp::max(window.title_rect().height(), (self.orb.image().height() - height)/2);
         }
 
+        // Redraw new window
         schedule(&mut self.scheme.redraws, window.title_rect());
         schedule(&mut self.scheme.redraws, window.rect());
 
+        // Add to zorder as appropriate
         match window.zorder {
             WindowZOrder::Front | WindowZOrder::Normal => {
                 self.scheme.order.push_front(id);
@@ -1558,6 +1558,11 @@ impl<'a> OrbitalSchemeEvent<'a> {
         }
 
         self.scheme.windows.insert(id, window);
+
+        // Focus new top window
+        if let Some(id) = self.scheme.order.front() {
+            self.focus(*id, true);
+        }
 
         // Ensure mouse cursor is correct
         let event = MouseEvent {
