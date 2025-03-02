@@ -61,6 +61,10 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
     env::remove_var("VT");
     let login_cmd = args.next().ok_or("no login manager argument")?;
 
+    let orbital = Orbital::open_display(&vt)
+        .map_err(|e| format!("could not open display, caused by: {}", e))?;
+    daemon.ready().unwrap();
+
     //TODO: integrate this into orbital
     match Command::new("inputd").arg("-A").arg(&vt).status() {
         Ok(status) => if ! status.success() {
@@ -70,10 +74,6 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
             warn!("inputd -A '{}' failed to run with error: {}", vt, err);
         }
     }
-
-    let orbital = Orbital::open_display(&vt)
-        .map_err(|e| format!("could not open display, caused by: {}", e))?;
-    daemon.ready().unwrap();
 
     debug!("found display {}x{}", orbital.image().width(), orbital.image().height());
     let config = Rc::new(Config::from_path("/ui/orbital.toml"));
