@@ -237,7 +237,7 @@ impl Orbital {
             let start_screen_i = parts.next().unwrap_or("").parse::<usize>().unwrap_or(0);
             //TODO: determine maximum number of screens
             for screen_i in start_screen_i + 1..1024 {
-                let extra_path = format!("{}:{}.{}", scheme_name, vt_i, screen_i);
+                let extra_path = format!("/scheme/{}/{}.{}", scheme_name, vt_i, screen_i);
                 let extra_file = match libredox::call::open(&extra_path, flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR, 0) {
                     Ok(socket) => unsafe { File::from_raw_fd(socket as RawFd) },
                     Err(_err) => break,
