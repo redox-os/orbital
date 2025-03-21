@@ -265,12 +265,30 @@ impl Image {
         self.h
     }
 
+    pub fn data(&self) -> &[Color] {
+        self.data.as_ref()
+    }
+
     pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
         ImageRoi {
             rect: *rect,
             w: self.w,
             data: &mut self.data
         }
+    }
+
+    pub fn slice_roi(&mut self, rect: &Rect) -> &mut [u8] {
+        let mut image_roi = ImageRoi {
+            rect: *rect,
+            w: self.w,
+            data: &mut self.data
+        };
+
+        let cursor_img_bytes = unsafe {
+            slice::from_raw_parts_mut(&mut image_roi as *mut ImageRoi as *mut u8, mem::size_of::<ImageRoi>())
+        };
+        cursor_img_bytes
+
     }
 }
 

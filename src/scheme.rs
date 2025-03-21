@@ -16,6 +16,7 @@ use log::{error, info, warn};
 use orbclient::{self, ButtonEvent, ClipboardEvent, Color, Event, EventOption, FocusEvent, HoverEvent,
                 KeyEvent, MouseEvent, MouseRelativeEvent, MoveEvent, QuitEvent, Renderer, ResizeEvent,
                 ScreenEvent, TextInputEvent};
+use orbimage::ImageRoi;
 use syscall::data::Packet;
 use syscall::error::{EBADF, Error, Result};
 use syscall::number::SYS_READ;
@@ -50,7 +51,7 @@ fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)] //Added Debug
 enum CursorKind {
     None,
     LeftPtr,
@@ -537,16 +538,18 @@ impl<'a> OrbitalSchemeEvent<'a> {
                             window.draw(display, &rect);
                         }
                     }
-
-                    let cursor_intersect = rect.intersection(&cursor_rect);
-                    if ! cursor_intersect.is_empty() {
-                        if let Some(cursor) = self.scheme.cursors.get_mut(&self.scheme.cursor_i) {
-                            display.roi(&cursor_intersect)
-                                .blend(
-                                    &cursor.roi(
-                                        &cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())
-                                    )
-                                );
+                    
+                    if !self.orb.hw_cursor {
+                        let cursor_intersect = rect.intersection(&cursor_rect);
+                        if ! cursor_intersect.is_empty() {
+                            if let Some(cursor) = self.scheme.cursors.get_mut(&self.scheme.cursor_i) {
+                                display.roi(&cursor_intersect)
+                                    .blend(
+                                        &cursor.roi(
+                                            &cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())
+                                        )
+                                    );
+                            }
                         }
                     }
                 }
@@ -1242,7 +1245,12 @@ impl<'a> OrbitalSchemeEvent<'a> {
             self.scheme.hover = new_hover;
         }
 
-        self.scheme.update_cursor(event.x, event.y, new_cursor);
+        if self.orb.hw_cursor {
+            self.update_hw_cursor(event.x, event.y, new_cursor);
+        }else{
+            self.scheme.update_cursor(event.x, event.y, new_cursor);
+        }
+        
     }
 
     fn mouse_relative_event(&mut self, event: MouseRelativeEvent) {
@@ -1267,7 +1275,11 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         // Handle relative window cursor
         if let Some((x, y, kind)) = relative_cursor_opt {
-            self.scheme.update_cursor(x, y, kind);
+            if self.orb.hw_cursor {
+                self.update_hw_cursor(x, y, kind);
+            }else{
+                self.scheme.update_cursor(x, y, kind);
+            }
             return;
         }
 
@@ -1567,5 +1579,60 @@ impl<'a> OrbitalSchemeEvent<'a> {
         self.mouse_event(event);
 
         Ok(id)
+    }
+
+    fn update_hw_cursor(&mut self, x: i32, y: i32, new_cursor: CursorKind) {
+        
+        //header flag that indicates update_cursor or move_cursor
+        let mut header: u32 = 1;
+        if self.scheme.cursor_i == new_cursor {
+            header = 0;
+        }
+
+        //Conver cursor_img to a &[u8]        
+        let cursor_img = self.scheme.cursors.get_mut(&new_cursor).unwrap();
+        //let cursor_img_roi = cursor_img.roi(&Rect::new(x, y, cursor_img.width(), cursor_img.height()));
+        
+        // let cursor_img_bytes = unsafe {
+        //     slice::from_raw_parts_mut(cursor_img as *const Image as *mut u8, mem::size_of::<Image>())
+        // };
+        // let cursor_img_bytes = cursor_img.data();
+        let cursor_img_bytes = cursor_img.slice_roi(&Rect::new(x, y, cursor_img.width(), cursor_img.height()));
+        // const len = cursor_img_bytes.len();
+        // let cursor_image: [Color; len] = cursor_img_bytes.try_into().unwrap();
+
+
+        //Construct object to send to the display
+        #[allow(dead_code)]
+        #[repr(packed)]
+        struct SyncRect<'a>{
+            header: u32,
+            x: i32,
+            y: i32,
+            cursor_img_bytes: &'a[u8],
+            // img_len: u32,
+        }
+
+        let sync_rect = SyncRect {
+            header,
+            x,
+            y,
+            cursor_img_bytes
+        };
+
+        println!("SENDING SYNC RECT WITH SIZE OF {}", size_of_val(&sync_rect));
+
+        for (i, display) in self.orb.displays.iter_mut().enumerate() {
+            println!("SENDING SYNC RECT TO DISPLAY {}", i);
+            match display.file.write(unsafe {
+                slice::from_raw_parts(
+                    &sync_rect as *const SyncRect as *const u8,
+                    mem::size_of::<SyncRect>()
+                )
+            }) {
+                Ok(_) => (),
+                Err(err) => error!("failed to sync display {}: {}", i, err),
+            }
+        }
     }
 }

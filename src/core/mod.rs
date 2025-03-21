@@ -159,6 +159,7 @@ pub struct Orbital {
 
     /// Handle to "/scheme/input/consumer" to recieve input events.
     pub input: File,
+    pub hw_cursor: bool,
 }
 
 impl Orbital {
@@ -196,6 +197,13 @@ impl Orbital {
 
         let display_path = std::str::from_utf8(&buffer[..written])
             .expect("init: display path UTF-8 check failed");
+
+        let mut hw_cursor: bool = false;
+
+        if display_path.contains("virtio-gpu") {
+            info!("Hardware cursor detected");
+            hw_cursor = true;
+        }
 
         fix_env(&display_path)?;
 
@@ -274,6 +282,7 @@ impl Orbital {
             displays,
             maps: BTreeMap::new(),
             input: input_handle,
+            hw_cursor,
         })
     }
 
