@@ -1247,6 +1247,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         if self.orb.hw_cursor {
             self.update_hw_cursor(event.x, event.y, new_cursor);
+            self.scheme.update_cursor(event.x, event.y, new_cursor); //testing purpose
         }else{
             self.scheme.update_cursor(event.x, event.y, new_cursor);
         }
@@ -1277,6 +1278,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         if let Some((x, y, kind)) = relative_cursor_opt {
             if self.orb.hw_cursor {
                 self.update_hw_cursor(x, y, kind);
+                self.scheme.update_cursor(x, y, kind); //testing purpose
             }else{
                 self.scheme.update_cursor(x, y, kind);
             }
@@ -1589,41 +1591,36 @@ impl<'a> OrbitalSchemeEvent<'a> {
             header = 0;
         }
 
-        //Conver cursor_img to a &[u8]        
+        //Conver cursor_img to an array [u32; 4096]        
         let cursor_img = self.scheme.cursors.get_mut(&new_cursor).unwrap();
-        //let cursor_img_roi = cursor_img.roi(&Rect::new(x, y, cursor_img.width(), cursor_img.height()));
-        
-        // let cursor_img_bytes = unsafe {
-        //     slice::from_raw_parts_mut(cursor_img as *const Image as *mut u8, mem::size_of::<Image>())
-        // };
-        // let cursor_img_bytes = cursor_img.data();
-        let cursor_img_bytes = cursor_img.slice_roi(&Rect::new(x, y, cursor_img.width(), cursor_img.height()));
-        // const len = cursor_img_bytes.len();
-        // let cursor_image: [Color; len] = cursor_img_bytes.try_into().unwrap();
-
+        let cursor_img_arr = cursor_img.data();
+        let img_len = cursor_img_arr.iter().take_while(|&&x| x != 0).count();
+        let w = cursor_img.width() as i32;
+        let h = cursor_img.height() as i32;
+        println!("ORBITAL VALID IMG ARR SIZE: {} WITH {}x{}", img_len, w, h);
 
         //Construct object to send to the display
         #[allow(dead_code)]
         #[repr(packed)]
-        struct SyncRect<'a>{
+        struct SyncRect{
             header: u32,
             x: i32,
             y: i32,
-            cursor_img_bytes: &'a[u8],
-            // img_len: u32,
+            w: i32,
+            h: i32,
+            cursor_img_arr: [u32; 4096],
         }
 
         let sync_rect = SyncRect {
             header,
             x,
             y,
-            cursor_img_bytes
+            w, 
+            h,
+            cursor_img_arr, 
         };
 
-        println!("SENDING SYNC RECT WITH SIZE OF {}", size_of_val(&sync_rect));
-
         for (i, display) in self.orb.displays.iter_mut().enumerate() {
-            println!("SENDING SYNC RECT TO DISPLAY {}", i);
             match display.file.write(unsafe {
                 slice::from_raw_parts(
                     &sync_rect as *const SyncRect as *const u8,
