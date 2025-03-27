@@ -265,7 +265,7 @@ impl Image {
         self.h
     }
 
-    pub fn data(&self) -> [u32;4096] {
+    pub fn get_data(&self) -> [u32;4096] {
         let mut array = [0; 4096]; 
         for (i, color) in self.data.iter().enumerate().take(4096) {
             array[i] = color.data;

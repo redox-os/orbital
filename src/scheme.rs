@@ -1246,8 +1246,9 @@ impl<'a> OrbitalSchemeEvent<'a> {
         }
 
         if self.orb.hw_cursor {
-            self.update_hw_cursor(event.x, event.y, new_cursor);
-            self.scheme.update_cursor(event.x, event.y, new_cursor); //testing purpose
+            self.scheme.cursor_x = event.x;
+            self.scheme.cursor_y = event.y;
+            self.update_hw_cursor(new_cursor);
         }else{
             self.scheme.update_cursor(event.x, event.y, new_cursor);
         }
@@ -1277,8 +1278,9 @@ impl<'a> OrbitalSchemeEvent<'a> {
         // Handle relative window cursor
         if let Some((x, y, kind)) = relative_cursor_opt {
             if self.orb.hw_cursor {
-                self.update_hw_cursor(x, y, kind);
-                self.scheme.update_cursor(x, y, kind); //testing purpose
+                self.scheme.cursor_x = x;
+                self.scheme.cursor_y = y;
+                self.update_hw_cursor(kind);
             }else{
                 self.scheme.update_cursor(x, y, kind);
             }
@@ -1583,21 +1585,36 @@ impl<'a> OrbitalSchemeEvent<'a> {
         Ok(id)
     }
 
-    fn update_hw_cursor(&mut self, x: i32, y: i32, new_cursor: CursorKind) {
+    fn update_hw_cursor(&mut self, new_cursor: CursorKind) {
         
         //header flag that indicates update_cursor or move_cursor
-        let mut header: u32 = 1;
-        if self.scheme.cursor_i == new_cursor {
-            header = 0;
+        let mut header: u32 = 0;
+
+        if self.scheme.cursor_i != new_cursor {
+            header = 1;
+            self.scheme.cursor_i = new_cursor;
         }
 
-        //Conver cursor_img to an array [u32; 4096]        
-        let cursor_img = self.scheme.cursors.get_mut(&new_cursor).unwrap();
-        let cursor_img_arr = cursor_img.data();
-        let img_len = cursor_img_arr.iter().take_while(|&&x| x != 0).count();
-        let w = cursor_img.width() as i32;
-        let h = cursor_img.height() as i32;
-        println!("ORBITAL VALID IMG ARR SIZE: {} WITH {}x{}", img_len, w, h);
+        //retrieve image data
+        let cursor = self.scheme.cursors.get_mut(&new_cursor).unwrap();
+        let cursor_img: [u32; 4096] = cursor.get_data();
+        
+        let w: i32 = cursor.width(); 
+        let h: i32 = cursor.height();
+
+        let x: i32 = self.scheme.cursor_x;
+        let y: i32 = self.scheme.cursor_y;
+
+
+        let (hot_x, hot_y) = match new_cursor {
+            CursorKind::None => (0, 0),
+            CursorKind::LeftPtr => (0, 0),
+            CursorKind::BottomLeftCorner => (0, h),
+            CursorKind::BottomRightCorner => (w, h),
+            CursorKind::BottomSide => (w/2, h),
+            CursorKind::LeftSide => (0, h/2),
+            CursorKind::RightSide => (w, h/2),
+        };
 
         //Construct object to send to the display
         #[allow(dead_code)]
@@ -1606,18 +1623,22 @@ impl<'a> OrbitalSchemeEvent<'a> {
             header: u32,
             x: i32,
             y: i32,
+            hot_x: i32,
+            hot_y: i32,
             w: i32,
             h: i32,
-            cursor_img_arr: [u32; 4096],
+            cursor_img: [u32; 4096],
         }
 
         let sync_rect = SyncRect {
             header,
             x,
             y,
+            hot_x,
+            hot_y,
             w, 
             h,
-            cursor_img_arr, 
+            cursor_img, 
         };
 
         for (i, display) in self.orb.displays.iter_mut().enumerate() {
