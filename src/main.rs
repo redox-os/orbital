@@ -3,20 +3,16 @@
 #![feature(int_roundings)]
 
 use crate::core::Orbital;
-use std::{
-    env,
-    process::Command,
-    rc::Rc
-};
-use redox_log::{OutputBuilder, RedoxLogger};
 use log::{debug, error, info, warn};
 use redox_daemon::Daemon;
+use redox_log::{OutputBuilder, RedoxLogger};
+use std::{env, process::Command, rc::Rc};
 
 use config::Config;
 use scheme::OrbitalScheme;
 
-mod core;
 mod config;
+mod core;
 mod scheme;
 mod window;
 
@@ -33,7 +29,7 @@ enum DaemonStatusCode {
     /// [Orbital event loop][Orbital::run] ran to completion and ended without error
     Success = 0,
     /// There was a failure during execution in the [Daemon][redox_daemon::Daemon]
-    EDaemonFailure= 1,
+    EDaemonFailure = 1,
 }
 
 /// Run orbital main event loop in a background daemon, starting a login command before
@@ -51,7 +47,7 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
             OutputBuilder::stdout()
                 .with_filter(log::LevelFilter::Debug)
                 .with_ansi_escape_codes()
-                .build()
+                .build(),
         )
         .with_process_name("orbital".into())
         .enable();
@@ -67,27 +63,31 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
 
     //TODO: integrate this into orbital
     match Command::new("inputd").arg("-A").arg(&vt).status() {
-        Ok(status) => if ! status.success() {
-            warn!("inputd -A '{}' exited with status: {:?}", vt, status);
-        },
+        Ok(status) => {
+            if !status.success() {
+                warn!("inputd -A '{}' exited with status: {:?}", vt, status);
+            }
+        }
         Err(err) => {
             warn!("inputd -A '{}' failed to run with error: {}", vt, err);
         }
     }
 
-    debug!("found display {}x{}", orbital.image().width(), orbital.image().height());
+    debug!(
+        "found display {}x{}",
+        orbital.image().width(),
+        orbital.image().height()
+    );
     let config = Rc::new(Config::from_path("/ui/orbital.toml"));
-    let scheme = OrbitalScheme::new(
-        &orbital.displays,
-        config,
-    )?;
+    let scheme = OrbitalScheme::new(&orbital.displays, config)?;
 
     Command::new(login_cmd)
         .args(args)
         .spawn()
         .map_err(|_| "failed to spawn login_cmd")?;
 
-    orbital.run(scheme)
+    orbital
+        .run(scheme)
         .map_err(|e| format!("error in main loop, caused by {}", e))
 }
 
@@ -101,27 +101,36 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
 ///
 /// Startup messages and errors are logged to RedoxLogger with filter set to DEBUG
 pub fn main() {
-    match Daemon::new(move |daemon| {
-        match orbital(daemon) {
-            Ok(_) => {
-                info!("ran to completion successfully, exiting with status={}",
-                    DaemonStatusCode::Success as i32);
-                std::process::exit(DaemonStatusCode::Success as i32);
-            },
-            Err(e) => {
-                error!("error during daemon execution, exiting with status={}: {}",
-                    DaemonStatusCode::EDaemonFailure as i32, e);
-                std::process::exit(DaemonStatusCode::EDaemonFailure as i32);
-            }
+    match Daemon::new(move |daemon| match orbital(daemon) {
+        Ok(_) => {
+            info!(
+                "ran to completion successfully, exiting with status={}",
+                DaemonStatusCode::Success as i32
+            );
+            std::process::exit(DaemonStatusCode::Success as i32);
+        }
+        Err(e) => {
+            error!(
+                "error during daemon execution, exiting with status={}: {}",
+                DaemonStatusCode::EDaemonFailure as i32,
+                e
+            );
+            std::process::exit(DaemonStatusCode::EDaemonFailure as i32);
         }
     }) {
         Ok(_) => {
-            info!("Daemon started, exiting with status={}", OrbitalStatusCode::Success as i32);
+            info!(
+                "Daemon started, exiting with status={}",
+                OrbitalStatusCode::Success as i32
+            );
             std::process::exit(OrbitalStatusCode::Success as i32);
-        },
+        }
         Err(e) => {
-            error!("error starting daemon, exiting with status={}: {}",
-                OrbitalStatusCode::EStartingDaemon as i32, e);
+            error!(
+                "error starting daemon, exiting with status={}: {}",
+                OrbitalStatusCode::EStartingDaemon as i32,
+                e
+            );
             std::process::exit(OrbitalStatusCode::EStartingDaemon as i32);
         }
     }
