@@ -1586,7 +1586,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
     }
 
     fn update_hw_cursor(&mut self, new_cursor: CursorKind) {
-        
+                
         //header flag that indicates update_cursor or move_cursor
         let mut header: u32 = 0;
 
