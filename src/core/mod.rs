@@ -297,6 +297,7 @@ impl Orbital {
 
         let mut hw_cursor: bool = false;
 
+        //Only virtio-gpu supports hw cursor
         if display_path.contains("virtio-gpu") {
             info!("Hardware cursor detected");
             hw_cursor = true;
