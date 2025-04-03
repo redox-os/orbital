@@ -192,7 +192,7 @@ impl OrbitalScheme {
     pub fn with_orbital<'a>(&'a mut self, orb: &'a mut Orbital) -> OrbitalSchemeEvent<'a> {
         OrbitalSchemeEvent {
             scheme: self,
-            orb,
+            orb
         }
     }
 
