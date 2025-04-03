@@ -8,7 +8,8 @@ use std::{
     io::{self, Write},
     mem,
     slice,
-    str
+    str,
+    time::Instant
 };
 use std::rc::Rc;
 
@@ -130,6 +131,8 @@ pub struct OrbitalScheme {
     volume_osd: bool,
     shortcuts_osd: bool,
     popup_rect: Rect,
+    update_cursor_timer: Instant,  //QEMU UIs do not grab the pointer in case an absolute pointing device is present
+                                   //and since releasing our gpu cursor makes it disappear, updating it every second fixes it
 }
 
 impl OrbitalScheme {
@@ -182,13 +185,14 @@ impl OrbitalScheme {
             volume_osd: false,
             shortcuts_osd: false,
             popup_rect: Rect::default(),
+            update_cursor_timer: Instant::now(),
         })
     }
 
     pub fn with_orbital<'a>(&'a mut self, orb: &'a mut Orbital) -> OrbitalSchemeEvent<'a> {
         OrbitalSchemeEvent {
             scheme: self,
-            orb
+            orb,
         }
     }
 
@@ -1453,6 +1457,13 @@ impl<'a> OrbitalSchemeEvent<'a> {
     pub fn event(&mut self, event_union: Event){
         self.scheme.rezbuffer();
 
+        if self.orb.hw_cursor && self.scheme.update_cursor_timer.elapsed().as_millis() > 1000 {
+            let cursor_kind = self.scheme.cursor_i;
+            self.scheme.cursor_i = CursorKind::None;
+            self.update_hw_cursor(cursor_kind);
+            self.scheme.update_cursor_timer = Instant::now();
+        }
+
         match event_union.to_option() {
             EventOption::Key(event) => self.key_event(event),
             EventOption::Mouse(MouseEvent { x, y }) => {
@@ -1586,7 +1597,6 @@ impl<'a> OrbitalSchemeEvent<'a> {
     fn update_hw_cursor(&mut self, new_cursor: CursorKind) {
         //header flag that indicates update_cursor or move_cursor
         let mut header: u32 = 0;
-
         if self.scheme.cursor_i != new_cursor {
             header = 1;
             self.scheme.cursor_i = new_cursor;
@@ -1594,7 +1604,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         //retrieve image data
         let cursor = self.scheme.cursors.get_mut(&new_cursor).unwrap();
-        let cursor_img: [u32; 4096] = cursor.get_data();
+        let cursor_img: [u32; 4096] = cursor.get_cursor_data();
 
         let w: i32 = cursor.width();
         let h: i32 = cursor.height();
@@ -1614,7 +1624,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         //Construct object to send to the display
         #[allow(dead_code)]
-        #[repr(packed)]
+        #[repr(C, packed)]
         struct SyncRect {
             header: u32,
             x: i32,

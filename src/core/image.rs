@@ -265,7 +265,7 @@ impl Image {
         self.h
     }
 
-    pub fn get_data(&self) -> [u32; 4096] {
+    pub fn get_cursor_data(&self) -> [u32; 4096] {
         let mut img_data = [0; 4096];
         for (i, color) in self.data.iter().enumerate().take(4096) {
             img_data[i] = color.data;

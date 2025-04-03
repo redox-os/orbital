@@ -198,17 +198,9 @@ impl Orbital {
         let display_path = std::str::from_utf8(&buffer[..written])
             .expect("init: display path UTF-8 check failed");
 
-        let mut hw_cursor: bool = false;
-
-        //Only virtio-gpu supports hw cursor
-        if display_path.contains("virtio-gpu") {
-            info!("Hardware cursor detected");
-            hw_cursor = true;
-        }
-
         fix_env(&display_path)?;
 
-        let display = libredox::call::open(display_path, flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR, 0)
+        let mut display = libredox::call::open(display_path, flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR, 0)
             .map(|socket| {
                 unsafe { File::from_raw_fd(socket as RawFd) }
             })
@@ -216,6 +208,19 @@ impl Orbital {
                 error!("failed to open display {}: {}", display_path, err);
                 io::Error::from_raw_os_error(err.errno())
             })?;
+
+        //Reading display file is only used to check if GPU cursor is supported
+        //Read still return EINVAL
+        let mut buf_array = [0; 1];
+        let buf: &mut [u8] = &mut buf_array;
+        let _ret = display.read(buf);
+
+        let mut hw_cursor: bool = false;
+
+        if buf[0] == 1 {
+            info!("Hardware cursor detected");
+            hw_cursor = true;
+        }
 
         let scheme = libredox::call::open(":orbital", flag::O_CREAT | flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR, 0)
             .map(|socket| {
