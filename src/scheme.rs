@@ -8,7 +8,8 @@ use std::{
     io::{self, Write},
     mem,
     slice,
-    str
+    str,
+    time::Instant
 };
 use std::rc::Rc;
 
@@ -130,6 +131,8 @@ pub struct OrbitalScheme {
     volume_osd: bool,
     shortcuts_osd: bool,
     popup_rect: Rect,
+    update_cursor_timer: Instant,  //QEMU UIs do not grab the pointer in case an absolute pointing device is present
+                                   //and since releasing our gpu cursor makes it disappear, updating it every second fixes it
 }
 
 impl OrbitalScheme {
@@ -182,6 +185,7 @@ impl OrbitalScheme {
             volume_osd: false,
             shortcuts_osd: false,
             popup_rect: Rect::default(),
+            update_cursor_timer: Instant::now(),
         })
     }
 
@@ -538,16 +542,18 @@ impl<'a> OrbitalSchemeEvent<'a> {
                         }
                     }
 
-                    let cursor_intersect = rect.intersection(&cursor_rect);
-                    if ! cursor_intersect.is_empty() {
-                        if let Some(cursor) = self.scheme.cursors.get_mut(&self.scheme.cursor_i) {
-                            display.roi(&cursor_intersect)
-                                .blend(
-                                    &cursor.roi(
-                                        &cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())
-                                    )
-                                );
-                        }
+                    if !self.orb.hw_cursor {
+                        let cursor_intersect = rect.intersection(&cursor_rect);
+                        if ! cursor_intersect.is_empty() {
+                            if let Some(cursor) = self.scheme.cursors.get_mut(&self.scheme.cursor_i) {
+                                display.roi(&cursor_intersect)
+                                    .blend(
+                                        &cursor.roi(
+                                            &cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())
+                                        )
+                                    );
+                            }
+                        }    
                     }
                 }
             }
@@ -1242,7 +1248,13 @@ impl<'a> OrbitalSchemeEvent<'a> {
             self.scheme.hover = new_hover;
         }
 
-        self.scheme.update_cursor(event.x, event.y, new_cursor);
+        if self.orb.hw_cursor {
+            self.scheme.cursor_x = event.x;
+            self.scheme.cursor_y = event.y;
+            self.update_hw_cursor(new_cursor);
+        } else {
+            self.scheme.update_cursor(event.x, event.y, new_cursor);
+        }
     }
 
     fn mouse_relative_event(&mut self, event: MouseRelativeEvent) {
@@ -1267,7 +1279,13 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         // Handle relative window cursor
         if let Some((x, y, kind)) = relative_cursor_opt {
-            self.scheme.update_cursor(x, y, kind);
+            if self.orb.hw_cursor {
+                self.scheme.cursor_x = x;
+                self.scheme.cursor_y = y;
+                self.update_hw_cursor(kind);
+            } else {
+                self.scheme.update_cursor(x, y, kind);
+            }
             return;
         }
 
@@ -1439,6 +1457,13 @@ impl<'a> OrbitalSchemeEvent<'a> {
     pub fn event(&mut self, event_union: Event){
         self.scheme.rezbuffer();
 
+        if self.orb.hw_cursor && self.scheme.update_cursor_timer.elapsed().as_millis() > 1000 {
+            let cursor_kind = self.scheme.cursor_i;
+            self.scheme.cursor_i = CursorKind::None;
+            self.update_hw_cursor(cursor_kind);
+            self.scheme.update_cursor_timer = Instant::now();
+        }
+
         match event_union.to_option() {
             EventOption::Key(event) => self.key_event(event),
             EventOption::Mouse(MouseEvent { x, y }) => {
@@ -1567,5 +1592,70 @@ impl<'a> OrbitalSchemeEvent<'a> {
         self.mouse_event(event);
 
         Ok(id)
+    }
+
+    fn update_hw_cursor(&mut self, new_cursor: CursorKind) {
+        //header flag that indicates update_cursor or move_cursor
+        let mut header: u32 = 0;
+        if self.scheme.cursor_i != new_cursor {
+            header = 1;
+            self.scheme.cursor_i = new_cursor;
+        }
+
+        //retrieve image data
+        let cursor = self.scheme.cursors.get_mut(&new_cursor).unwrap();
+        let cursor_img: [u32; 4096] = cursor.get_cursor_data();
+
+        let w: i32 = cursor.width();
+        let h: i32 = cursor.height();
+
+        let x: i32 = self.scheme.cursor_x;
+        let y: i32 = self.scheme.cursor_y;
+
+        let (hot_x, hot_y) = match new_cursor {
+            CursorKind::None => (0, 0),
+            CursorKind::LeftPtr => (0, 0),
+            CursorKind::BottomLeftCorner => (0, h),
+            CursorKind::BottomRightCorner => (w, h),
+            CursorKind::BottomSide => (w / 2, h),
+            CursorKind::LeftSide => (0, h / 2),
+            CursorKind::RightSide => (w, h / 2),
+        };
+
+        //Construct object to send to the display
+        #[repr(C, packed)]
+        struct SyncRect {
+            header: u32,
+            x: i32,
+            y: i32,
+            hot_x: i32,
+            hot_y: i32,
+            w: i32,
+            h: i32,
+            cursor_img: [u32; 4096],
+        }
+
+        let sync_rect = SyncRect {
+            header,
+            x,
+            y,
+            hot_x,
+            hot_y,
+            w,
+            h,
+            cursor_img,
+        };
+
+        for (i, display) in self.orb.displays.iter_mut().enumerate() {
+            match display.file.write(unsafe {
+                slice::from_raw_parts(
+                    &sync_rect as *const SyncRect as *const u8,
+                    mem::size_of::<SyncRect>(),
+                )
+            }) {
+                Ok(_) => (),
+                Err(err) => error!("failed to sync display {}: {}", i, err),
+            }
+        }
     }
 }
