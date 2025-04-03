@@ -159,6 +159,7 @@ pub struct Orbital {
 
     /// Handle to "/scheme/input/consumer" to recieve input events.
     pub input: File,
+    pub hw_cursor: bool,
 }
 
 impl Orbital {
@@ -199,7 +200,7 @@ impl Orbital {
 
         fix_env(&display_path)?;
 
-        let display = libredox::call::open(display_path, flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR, 0)
+        let mut display = libredox::call::open(display_path, flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR, 0)
             .map(|socket| {
                 unsafe { File::from_raw_fd(socket as RawFd) }
             })
@@ -207,6 +208,18 @@ impl Orbital {
                 error!("failed to open display {}: {}", display_path, err);
                 io::Error::from_raw_os_error(err.errno())
             })?;
+
+        //Reading display file is only used to check if GPU cursor is supported
+        let mut buf_array = [0; 1];
+        let buf: &mut [u8] = &mut buf_array;
+        let _ret = display.read(buf);
+
+        let mut hw_cursor: bool = false;
+
+        if buf[0] == 1 {
+            info!("Hardware cursor detected");
+            hw_cursor = true;
+        }
 
         let scheme = libredox::call::open(":orbital", flag::O_CREAT | flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR, 0)
             .map(|socket| {
@@ -274,6 +287,7 @@ impl Orbital {
             displays,
             maps: BTreeMap::new(),
             input: input_handle,
+            hw_cursor,
         })
     }
 
