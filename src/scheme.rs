@@ -1623,7 +1623,6 @@ impl<'a> OrbitalSchemeEvent<'a> {
         };
 
         //Construct object to send to the display
-        #[allow(dead_code)]
         #[repr(C, packed)]
         struct SyncRect {
             header: u32,

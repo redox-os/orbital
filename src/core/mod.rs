@@ -210,7 +210,6 @@ impl Orbital {
             })?;
 
         //Reading display file is only used to check if GPU cursor is supported
-        //Read still return EINVAL
         let mut buf_array = [0; 1];
         let buf: &mut [u8] = &mut buf_array;
         let _ret = display.read(buf);
