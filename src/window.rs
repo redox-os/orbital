@@ -1,5 +1,4 @@
 use crate::core::{
-    self,
     display::Display,
     image::{Image, ImageAligned},
     rect::Rect,

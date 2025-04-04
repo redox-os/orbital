@@ -328,10 +328,10 @@ impl Handler for OrbitalScheme {
 
     fn handle_window_drag(
         &mut self,
-        orb: &mut Orbital,
+        _orb: &mut Orbital,
         id: usize, /*TODO: resize sides */
     ) -> Result<()> {
-        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        let _window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         if self.cursor_left {
             self.dragging = DragMode::Title(id, self.cursor_x, self.cursor_y);
         }
@@ -1763,8 +1763,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
     fn window_new(
         &mut self,
-        mut x: i32,
-        mut y: i32,
+        x: i32,
+        y: i32,
         width: i32,
         height: i32,
         flags: &str,

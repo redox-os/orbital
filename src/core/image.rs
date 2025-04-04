@@ -146,7 +146,7 @@ pub struct ImageRef<'a> {
 }
 
 impl<'a> ImageRef<'a> {
-    pub fn from_data(w: i32, h: i32, data: &'a mut [Color]) -> ImageRef {
+    pub fn from_data(w: i32, h: i32, data: &'a mut [Color]) -> Self {
         ImageRef {
             w,
             h,

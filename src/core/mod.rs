@@ -1,13 +1,10 @@
 use std::{
-    cell::RefCell,
     collections::BTreeMap,
     env,
     fs::File,
     io::{self, ErrorKind, Read, Write},
-    iter, mem,
+    mem,
     os::unix::io::{AsRawFd, FromRawFd, RawFd},
-    path::PathBuf,
-    rc::Rc,
     slice, str,
 };
 
@@ -16,14 +13,7 @@ use failure::Fail;
 use libredox::flag;
 use log::{debug, error, info};
 use orbclient::{Color, Event};
-use syscall::{
-    data::Packet,
-    error::EINVAL,
-    flag::EventFlags,
-    flag::{O_CLOEXEC, O_CREAT, O_NONBLOCK, O_RDWR},
-    MapFlags, SchemeMut, ESKMSG, KSMSG_MMAP, KSMSG_MMAP_PREP, KSMSG_MSYNC, KSMSG_MUNMAP, PAGE_SIZE,
-    SKMSG_PROVIDE_MMAP,
-};
+use syscall::{data::Packet, error::EINVAL, flag::EventFlags, SchemeMut};
 
 use display::Display;
 use image::ImageRef;
@@ -438,7 +428,7 @@ impl Orbital {
             }
         }
 
-        let mut event_queue = EventQueue::<Source>::new()?;
+        let event_queue = EventQueue::<Source>::new()?;
 
         //TODO: Figure out why rand: gets opened after this: libredox::call::setrens(0, 0)?;
 
@@ -757,11 +747,11 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
     fn mmap_prep(
         &mut self,
         id: usize,
-        offset: u64,
+        _offset: u64,
         size: usize,
-        flags: syscall::MapFlags,
+        _flags: syscall::MapFlags,
     ) -> syscall::Result<usize> {
-        //TODO: handle offset, size, flags?
+        //TODO: handle offset, flags?
         let data = self.handler.handle_window_map(&mut self.orb, id, true)?;
 
         if size > data.len() * core::mem::size_of::<Color>() {
@@ -773,9 +763,9 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
     fn munmap(
         &mut self,
         id: usize,
-        offset: u64,
-        size: usize,
-        flags: syscall::MunmapFlags,
+        _offset: u64,
+        _size: usize,
+        _flags: syscall::MunmapFlags,
     ) -> syscall::Result<usize> {
         //TODO: handle offset, size, flags?
         self.handler.handle_window_unmap(&mut self.orb, id)?;
