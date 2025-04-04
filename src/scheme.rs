@@ -559,19 +559,28 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         }
 
-        if self.scheme.win_tabbing {
-            //TODO: add to total_redraw?
-            self.draw_window_list_osd();
-        }
-
         if self.scheme.volume_osd {
             //TODO: add to total_redraw?
             self.draw_volume_osd();
         }
 
-        if self.scheme.shortcuts_osd {
-            //TODO: add to total_redraw?
-            self.draw_shortcuts_osd();
+        // Iterate through list of all open windows and find if any of them are titled 'orblogin'
+        let orblogin_open: bool = self.scheme.windows.values().any(|window| window.title == "orblogin");
+
+        if !orblogin_open {
+
+            if self.scheme.win_tabbing {
+                //TODO: add to total_redraw?
+                self.draw_window_list_osd();
+            }
+    
+    
+            if self.scheme.shortcuts_osd {
+                //TODO: add to total_redraw?
+    
+                self.draw_shortcuts_osd();
+            }
+
         }
 
         // Add any redraws from OSD's
@@ -778,10 +787,10 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
     const SHORTCUTS_LIST: &'static [&'static str] = &[
         "Super-Q: Quit current window",
-        "Super-TAB: Cycle through active windows bringing to the front of the stack",
+        "Super-TAB: Cycle through open windows",
         "Super-{: Volume down",
         "Super-}: Volume up",
-        "Super-\\: Volume toggle (mute / unmute)",
+        "Super-\\: Volume mute / unmute",
         "Super-Shift-left: Tile window to left",
         "Super-Shift-right: Tile window to right",
         "Super-Shift-up: Tile window to top",
@@ -793,22 +802,31 @@ impl<'a> OrbitalSchemeEvent<'a> {
         "Super-C: Copy to copy buffer",
         "Super-X: Cut to copy buffer",
         "Super-V: Paste from the copy buffer",
-        "Super-M: Toggle window max (maximize or restore)",
-        "Super-ENTER: Toggle window max (maximize or restore)",
+        "Super-M: Maximize / restore window",
+        "Super-ENTER: Maximize / restore window",
     ];
 
     // Draw an on screen display (overlay) of available SUPER keyboard shortcuts
     fn draw_shortcuts_osd(&mut self) {
         const ROW_HEIGHT: u32 = 20;
-        const ROW_WIDTH: i32 = 400;
         const POPUP_BORDER: u32 = 2;
         const FONT_HEIGHT : f32 = 16.0;
+        const FONT_WIDTH: u32 = 7;
 
         // follow the look of the current config - in terms of colors
         let Config { bar_color, bar_highlight_color, text_highlight_color, .. } = *self.scheme.config;
 
         let list_h = (Self::SHORTCUTS_LIST.len() as u32 * ROW_HEIGHT + (POPUP_BORDER * 2)) as i32;
-        let list_w = ROW_WIDTH;
+
+        // finds the longest shortcut string and uses that to calculate overlay width
+        let mut longest_shortcut = 0;
+        for line in Self::SHORTCUTS_LIST {
+            if line.chars().count() > longest_shortcut {
+                longest_shortcut = line.len();
+            }
+        }
+        // uses FONT_WIDTH as approximation for average character width.
+        let list_w = (longest_shortcut as u32 * FONT_WIDTH) as i32;
         let popup_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
         let mut image = Image::from_color(list_w, list_h, bar_color.into());
 
