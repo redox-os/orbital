@@ -9,7 +9,6 @@ use std::{
 };
 
 use event::{user_data, EventQueue};
-use failure::Fail;
 use libredox::flag;
 use log::{debug, error, info};
 use orbclient::{Color, Event};
@@ -29,28 +28,18 @@ const CLIPBOARD_FLAG: usize = 1 << 31;
 #[cfg(target_pointer_width = "64")]
 const CLIPBOARD_FLAG: usize = 1 << 63;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[fail(display = "io error: {}", _0)]
-    IoError(io::Error),
-    #[fail(display = "syscall error: {}", _0)]
+    #[error("io error")]
+    IoError(#[from] io::Error),
+    #[error("syscall error: {0}")]
     SyscallError(syscall::Error),
-    #[fail(display = "system error: {}", _0)]
-    LibredoxError(libredox::error::Error),
-}
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Self {
-        Error::IoError(err)
-    }
+    #[error("system error")]
+    LibredoxError(#[from] libredox::error::Error),
 }
 impl From<syscall::Error> for Error {
     fn from(err: syscall::Error) -> Self {
         Error::SyscallError(err)
-    }
-}
-impl From<libredox::error::Error> for Error {
-    fn from(err: libredox::error::Error) -> Self {
-        Error::LibredoxError(err)
     }
 }
 
