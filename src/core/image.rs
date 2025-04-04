@@ -1,10 +1,10 @@
+use crate::core::rect::Rect;
+use log::{debug, error};
 use orbclient::{Color, Mode, Renderer};
-use std::{cmp, mem, ptr, slice};
 use std::cell::Cell;
 use std::cmp::Ordering;
 use std::path::Path;
-use crate::core::rect::Rect;
-use log::{debug, error};
+use std::{cmp, mem, ptr, slice};
 
 pub struct ImageRoiRows<'a> {
     rect: Rect,
@@ -20,7 +20,7 @@ impl<'a> Iterator for ImageRoiRows<'a> {
             let start = (self.rect.top() + self.i) * self.w + self.rect.left();
             let end = start + self.rect.width();
             self.i += 1;
-            Some(& self.data[start as usize .. end as usize])
+            Some(&self.data[start as usize..end as usize])
         } else {
             None
         }
@@ -42,16 +42,18 @@ impl<'a> Iterator for ImageRoiRowsMut<'a> {
 
             // skip section of data above top of rect
             if self.i == 0 {
-                data = data.split_at_mut(self.rect.top() as usize * self.w as usize).1
+                data = data
+                    .split_at_mut(self.rect.top() as usize * self.w as usize)
+                    .1
             };
 
             // split after next row
             let (row, tail) = data.split_at_mut(self.w as usize);
-            self.data = tail;                            // make data point to the remaining rows
+            self.data = tail; // make data point to the remaining rows
             let start = self.rect.left() as usize;
             let end = self.rect.left() as usize + self.rect.width() as usize;
             self.i += 1;
-            Some(&mut row[start .. end]) // return the rect part of the row
+            Some(&mut row[start..end]) // return the rect part of the row
         } else {
             None
         }
@@ -64,9 +66,8 @@ impl<'a> Iterator for ImageRoiRowsMut<'a> {
 pub struct ImageRoi<'a> {
     rect: Rect,
     w: i32,
-    data: &'a mut [Color]
+    data: &'a mut [Color],
 }
-
 
 impl<'a> IntoIterator for ImageRoi<'a> {
     type Item = &'a [Color];
@@ -74,8 +75,14 @@ impl<'a> IntoIterator for ImageRoi<'a> {
 
     fn into_iter(self) -> Self::IntoIter {
         let Self { rect, w, data } = self;
-        let data = &mut data[rect.top() as usize * w as usize..][..rect.height() as usize * w as usize];
-        ImageRoiRows { rect, w, data, i: 0}
+        let data =
+            &mut data[rect.top() as usize * w as usize..][..rect.height() as usize * w as usize];
+        ImageRoiRows {
+            rect,
+            w,
+            data,
+            i: 0,
+        }
     }
 }
 
@@ -85,7 +92,7 @@ impl<'a> ImageRoi<'a> {
             rect: self.rect,
             w: self.w,
             data: self.data,
-            i: 0
+            i: 0,
         }
     }
 
@@ -94,7 +101,7 @@ impl<'a> ImageRoi<'a> {
             rect: self.rect,
             w: self.w,
             data: self.data,
-            i: 0
+            i: 0,
         }
     }
 
@@ -135,12 +142,17 @@ pub struct ImageRef<'a> {
     w: i32,
     h: i32,
     data: &'a mut [Color],
-    mode: Cell<Mode>
+    mode: Cell<Mode>,
 }
 
 impl<'a> ImageRef<'a> {
     pub fn from_data(w: i32, h: i32, data: &'a mut [Color]) -> ImageRef {
-        ImageRef { w, h, data, mode: Cell::new(Mode::Blend) }
+        ImageRef {
+            w,
+            h,
+            data,
+            mode: Cell::new(Mode::Blend),
+        }
     }
 
     pub fn width(&self) -> i32 {
@@ -155,7 +167,7 @@ impl<'a> ImageRef<'a> {
         ImageRoi {
             rect: *rect,
             w: self.w,
-            data: self.data
+            data: self.data,
         }
     }
 }
@@ -204,11 +216,20 @@ impl Image {
     }
 
     pub fn from_color(width: i32, height: i32, color: Color) -> Image {
-        Image::from_data(width, height, vec![color; width as usize * height as usize].into_boxed_slice())
+        Image::from_data(
+            width,
+            height,
+            vec![color; width as usize * height as usize].into_boxed_slice(),
+        )
     }
 
     pub fn from_data(w: i32, h: i32, data: Box<[Color]>) -> Image {
-        Image { w, h, data, mode: Cell::new(Mode::Blend) }
+        Image {
+            w,
+            h,
+            data,
+            mode: Cell::new(Mode::Blend),
+        }
     }
 
     pub fn from_path_scale<P: AsRef<Path>>(path: P, scale: i32) -> Option<Image> {
@@ -218,14 +239,11 @@ impl Image {
                 let height = orb_image.height();
                 let data = orb_image.into_data();
                 match scale.cmp(&1) {
-                    Ordering::Equal => Some(Image::from_data(
-                        width as i32, height as i32, data
-                    )),
+                    Ordering::Equal => Some(Image::from_data(width as i32, height as i32, data)),
                     Ordering::Greater => {
-                        let mut new_data = vec![
-                            Color::rgb(0, 0, 0);
-                            data.len() * (scale * scale) as usize
-                        ].into_boxed_slice();
+                        let mut new_data =
+                            vec![Color::rgb(0, 0, 0); data.len() * (scale * scale) as usize]
+                                .into_boxed_slice();
 
                         for y in 0..height as i32 {
                             for x in 0..width as i32 {
@@ -233,7 +251,9 @@ impl Image {
                                 let value = data[i as usize].data;
                                 for y_s in 0..scale {
                                     for x_s in 0..scale {
-                                        let new_i = (y * scale + y_s) * width as i32 * scale + x * scale + x_s;
+                                        let new_i = (y * scale + y_s) * width as i32 * scale
+                                            + x * scale
+                                            + x_s;
                                         new_data[new_i as usize].data = value;
                                     }
                                 }
@@ -241,15 +261,17 @@ impl Image {
                         }
 
                         Some(Image::from_data(
-                            width as i32 * scale, height as i32 * scale, new_data
+                            width as i32 * scale,
+                            height as i32 * scale,
+                            new_data,
                         ))
-                    },
+                    }
                     Ordering::Less => {
                         debug!("Image::from_path_scale: scale {} < 1", scale);
                         None
                     }
                 }
-            },
+            }
             Err(err) => {
                 error!("Image::from_path_scale: {}", err);
                 None
@@ -277,7 +299,7 @@ impl Image {
         ImageRoi {
             rect: *rect,
             w: self.w,
-            data: &mut self.data
+            data: &mut self.data,
         }
     }
 }
@@ -321,7 +343,9 @@ pub struct ImageAligned {
 
 impl Drop for ImageAligned {
     fn drop(&mut self) {
-        unsafe { libc::free(self.data.as_mut_ptr() as *mut libc::c_void); }
+        unsafe {
+            libc::free(self.data.as_mut_ptr() as *mut libc::c_void);
+        }
     }
 }
 
@@ -337,10 +361,15 @@ impl ImageAligned {
             libc::memset(ptr, 0, size_aligned);
             data = slice::from_raw_parts_mut(
                 ptr as *mut Color,
-                size_aligned / mem::size_of::<Color>()
+                size_aligned / mem::size_of::<Color>(),
             );
         }
-        ImageAligned { w, h, data, mode: Cell::new(Mode::Blend) }
+        ImageAligned {
+            w,
+            h,
+            data,
+            mode: Cell::new(Mode::Blend),
+        }
     }
 
     pub fn width(&self) -> i32 {
@@ -355,7 +384,7 @@ impl ImageAligned {
         ImageRoi {
             rect: *rect,
             w: self.w,
-            data: self.data
+            data: self.data,
         }
     }
 }
