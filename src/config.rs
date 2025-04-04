@@ -1,11 +1,13 @@
+use log::{debug, error};
+use orbclient::Color;
+use serde_derive::Deserialize;
 use std::fs::File;
 use std::io::Read;
-use log::{debug, error};
-use serde_derive::Deserialize;
-use orbclient::Color;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
-pub struct ConfigColor { data: u32 }
+pub struct ConfigColor {
+    data: u32,
+}
 
 impl From<ConfigColor> for Color {
     fn from(value: ConfigColor) -> Self {
@@ -43,11 +45,21 @@ pub struct Config {
     pub text_highlight_color: ConfigColor,
 }
 
-fn background_color_default() -> ConfigColor { Color::rgb(0, 0, 0).into() }
-fn bar_color_default() -> ConfigColor { Color::rgba(0x1B, 0x1B, 0x1B, 224).into() }
-fn bar_highlight_color_default() -> ConfigColor { Color::rgba(0x36, 0x36, 0x36, 224).into() }
-fn text_color_default() -> ConfigColor { Color::rgb(0xE7, 0xE7, 0xE7).into() }
-fn text_highlight_color_default() -> ConfigColor { Color::rgb(0xE7, 0xE7, 0xE7).into() }
+fn background_color_default() -> ConfigColor {
+    Color::rgb(0, 0, 0).into()
+}
+fn bar_color_default() -> ConfigColor {
+    Color::rgba(0x1B, 0x1B, 0x1B, 224).into()
+}
+fn bar_highlight_color_default() -> ConfigColor {
+    Color::rgba(0x36, 0x36, 0x36, 224).into()
+}
+fn text_color_default() -> ConfigColor {
+    Color::rgb(0xE7, 0xE7, 0xE7).into()
+}
+fn text_highlight_color_default() -> ConfigColor {
+    Color::rgb(0xE7, 0xE7, 0xE7).into()
+}
 
 /// Create a sane default Orbital [Config] in case none is supplied or it is unreadable
 impl Default for Config {
@@ -108,7 +120,7 @@ impl Config {
 
 #[cfg(test)]
 mod test {
-    use crate::config::{background_color_default, Config, text_highlight_color_default};
+    use crate::config::{background_color_default, text_highlight_color_default, Config};
 
     #[test]
     fn non_existent_config_file() {
