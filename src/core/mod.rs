@@ -160,6 +160,7 @@ pub struct Orbital {
     /// Handle to "/scheme/input/consumer" to recieve input events.
     pub input: File,
     pub hw_cursor: bool,
+    pub hw_cursor_initialized: bool,
 }
 
 impl Orbital {
@@ -288,6 +289,7 @@ impl Orbital {
             maps: BTreeMap::new(),
             input: input_handle,
             hw_cursor,
+            hw_cursor_initialized: false,
         })
     }
 
