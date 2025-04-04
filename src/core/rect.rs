@@ -1,11 +1,11 @@
-use std::cmp::{min, max};
+use std::cmp::{max, min};
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Rect {
     x: i32,
     y: i32,
     w: i32,
-    h: i32
+    h: i32,
 }
 
 impl Rect {
@@ -13,7 +13,7 @@ impl Rect {
         assert!(w >= 0);
         assert!(h >= 0);
 
-        Rect{ x, y, w, h }
+        Rect { x, y, w, h }
     }
 
     pub fn area(&self) -> i32 {
@@ -57,10 +57,7 @@ impl Rect {
     }
 
     pub fn contains(&self, x: i32, y: i32) -> bool {
-        self.left() <= x
-        && self.right() >= x
-        && self.top() <= y
-        && self.bottom() >= y
+        self.left() <= x && self.right() >= x && self.top() <= y && self.bottom() >= y
     }
 
     pub fn is_empty(&self) -> bool {

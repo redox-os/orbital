@@ -1,14 +1,13 @@
-use orbclient::{Color, Event, Renderer};
-use orbfont::Font;
 use crate::core::{
-    Properties,
     display::Display,
     image::{Image, ImageAligned},
     rect::Rect,
-    self
+    Properties,
 };
+use orbclient::{Color, Event, Renderer};
+use orbfont::Font;
 
-use std::cmp::{min, max};
+use std::cmp::{max, min};
 use std::collections::VecDeque;
 
 use std::rc::Rc;
@@ -59,11 +58,11 @@ pub struct Window {
     pub mouse_relative: bool,
     pub maps: usize,
 
-    config: Rc<Config>
+    config: Rc<Config>,
 }
 
-const TITLE_HEIGHT : i32 = 28;
-const TITLE_TEXT_HEIGHT : i32 = 16;
+const TITLE_HEIGHT: i32 = 28;
+const TITLE_TEXT_HEIGHT: i32 = 16;
 
 impl Window {
     // TODO Consider creating Rect for the title area, max and close areas and removing a lot
@@ -94,7 +93,7 @@ impl Window {
             mouse_grab: false,
             mouse_relative: false,
             maps: 0,
-            config
+            config,
         }
     }
 
@@ -118,7 +117,12 @@ impl Window {
         if self.borderless || self.hidden {
             Rect::new(self.x, self.y, 0, 0)
         } else {
-            Rect::new(self.x, self.y - TITLE_HEIGHT * self.scale, self.width(), TITLE_HEIGHT * self.scale)
+            Rect::new(
+                self.x,
+                self.y - TITLE_HEIGHT * self.scale,
+                self.width(),
+                TITLE_HEIGHT * self.scale,
+            )
         }
     }
 
@@ -132,7 +136,12 @@ impl Window {
 
     pub fn bottom_left_border_rect(&self) -> Rect {
         if self.resizable {
-            Rect::new(self.x - 8 * self.scale, self.y + self.height(), 8 * self.scale, 8 * self.scale)
+            Rect::new(
+                self.x - 8 * self.scale,
+                self.y + self.height(),
+                8 * self.scale,
+                8 * self.scale,
+            )
         } else {
             Rect::new(-1, -1, 0, 0)
         }
@@ -140,7 +149,12 @@ impl Window {
 
     pub fn bottom_right_border_rect(&self) -> Rect {
         if self.resizable {
-            Rect::new(self.x + self.width(), self.y + self.height(), 8 * self.scale, 8 * self.scale)
+            Rect::new(
+                self.x + self.width(),
+                self.y + self.height(),
+                8 * self.scale,
+                8 * self.scale,
+            )
         } else {
             Rect::new(-1, -1, 0, 0)
         }
@@ -148,7 +162,12 @@ impl Window {
 
     pub fn left_border_rect(&self) -> Rect {
         if self.resizable {
-            Rect::new(self.x - 8 * self.scale, self.y, 8 * self.scale, self.height())
+            Rect::new(
+                self.x - 8 * self.scale,
+                self.y,
+                8 * self.scale,
+                self.height(),
+            )
         } else {
             Rect::new(-1, -1, 0, 0)
         }
@@ -163,51 +182,115 @@ impl Window {
     }
 
     pub fn max_contains(&self, x: i32, y: i32) -> bool {
-        ! self.borderless && x >= max(self.x + 6 * self.scale, self.x + self.width() - 36 * self.scale)  && y >= self.y - TITLE_HEIGHT * self.scale && x < self.x + self.width() - 18 * self.scale && y < self.y
+        !self.borderless
+            && x >= max(
+                self.x + 6 * self.scale,
+                self.x + self.width() - 36 * self.scale,
+            )
+            && y >= self.y - TITLE_HEIGHT * self.scale
+            && x < self.x + self.width() - 18 * self.scale
+            && y < self.y
     }
 
     pub fn close_contains(&self, x: i32, y: i32) -> bool {
-        ! self.borderless && x >= max(self.x + 6 * self.scale, self.x + self.width() - 18 * self.scale)  && y >= self.y - TITLE_HEIGHT * self.scale && x < self.x + self.width() && y < self.y
+        !self.borderless
+            && x >= max(
+                self.x + 6 * self.scale,
+                self.x + self.width() - 18 * self.scale,
+            )
+            && y >= self.y - TITLE_HEIGHT * self.scale
+            && x < self.x + self.width()
+            && y < self.y
     }
 
-    pub fn draw_title(&mut self, display: &mut Display, rect: &Rect, focused: bool, window_max: &mut Image, window_close: &mut Image) {
+    pub fn draw_title(
+        &mut self,
+        display: &mut Display,
+        rect: &Rect,
+        focused: bool,
+        window_max: &mut Image,
+        window_close: &mut Image,
+    ) {
         let bar_color = Color::from(self.config.bar_color);
         let bar_highlight_color = Color::from(self.config.bar_highlight_color);
 
         let title_rect = self.title_rect();
         let title_intersect = rect.intersection(&title_rect);
-        if ! title_intersect.is_empty() {
-            display.rect(&title_intersect, if focused { bar_highlight_color } else { bar_color });
+        if !title_intersect.is_empty() {
+            display.rect(
+                &title_intersect,
+                if focused {
+                    bar_highlight_color
+                } else {
+                    bar_color
+                },
+            );
 
             let mut x = self.x + 6 * self.scale;
-            let w = max(self.x + 6 * self.scale, self.x + self.width() - 18 * self.scale) - x;
+            let w = max(
+                self.x + 6 * self.scale,
+                self.x + self.width() - 18 * self.scale,
+            ) - x;
             if w > 0 {
-                let title_image = if focused { &mut self.title_image } else { &mut self.title_image_unfocused };
-                let image_rect = Rect::new(x, title_rect.top() + 6 * self.scale, min(w, title_image.width()), title_image.height());
+                let title_image = if focused {
+                    &mut self.title_image
+                } else {
+                    &mut self.title_image_unfocused
+                };
+                let image_rect = Rect::new(
+                    x,
+                    title_rect.top() + 6 * self.scale,
+                    min(w, title_image.width()),
+                    title_image.height(),
+                );
                 let image_intersect = rect.intersection(&image_rect);
-                if ! image_intersect.is_empty() {
-                    display.roi(&image_intersect).blend(&title_image.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+                if !image_intersect.is_empty() {
+                    display.roi(&image_intersect).blend(
+                        &title_image
+                            .roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())),
+                    );
                 }
             }
 
             if self.resizable {
                 x = max(self.x + 6, self.x + self.width() - 36 * self.scale);
                 if x + 36 * self.scale <= self.x + self.width() {
-                    let image_rect = Rect::new(x, title_rect.top() + 7 * self.scale, window_max.width(), window_max.height());
+                    let image_rect = Rect::new(
+                        x,
+                        title_rect.top() + 7 * self.scale,
+                        window_max.width(),
+                        window_max.height(),
+                    );
                     let image_intersect = rect.intersection(&image_rect);
-                    if ! image_intersect.is_empty() {
-                        display.roi(&image_intersect).blend(&window_max.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+                    if !image_intersect.is_empty() {
+                        display.roi(&image_intersect).blend(
+                            &window_max.roi(
+                                &image_intersect.offset(-image_rect.left(), -image_rect.top()),
+                            ),
+                        );
                     }
                 }
             }
 
             if !self.unclosable {
-                x = max(self.x + 6 * self.scale, self.x + self.width() - 18 * self.scale);
+                x = max(
+                    self.x + 6 * self.scale,
+                    self.x + self.width() - 18 * self.scale,
+                );
                 if x + 18 * self.scale <= self.x + self.width() {
-                    let image_rect = Rect::new(x, title_rect.top() + 7 * self.scale, window_close.width(), window_close.height());
+                    let image_rect = Rect::new(
+                        x,
+                        title_rect.top() + 7 * self.scale,
+                        window_close.width(),
+                        window_close.height(),
+                    );
                     let image_intersect = rect.intersection(&image_rect);
-                    if ! image_intersect.is_empty() {
-                        display.roi(&image_intersect).blend(&window_close.roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())));
+                    if !image_intersect.is_empty() {
+                        display.roi(&image_intersect).blend(
+                            &window_close.roi(
+                                &image_intersect.offset(-image_rect.left(), -image_rect.top()),
+                            ),
+                        );
                     }
                 }
             }
@@ -217,11 +300,19 @@ impl Window {
     pub fn draw(&mut self, display: &mut Display, rect: &Rect) {
         let self_rect = self.rect();
         let intersect = self_rect.intersection(rect);
-        if ! intersect.is_empty() {
+        if !intersect.is_empty() {
             if self.transparent {
-                display.roi(&intersect).blend(&self.image.roi(&intersect.offset(-self_rect.left(), -self_rect.top())));
+                display.roi(&intersect).blend(
+                    &self
+                        .image
+                        .roi(&intersect.offset(-self_rect.left(), -self_rect.top())),
+                );
             } else {
-                display.roi(&intersect).blit(&self.image.roi(&intersect.offset(-self_rect.left(), -self_rect.top())));
+                display.roi(&intersect).blit(
+                    &self
+                        .image
+                        .roi(&intersect.offset(-self_rect.left(), -self_rect.top())),
+                );
             }
         }
     }
@@ -232,10 +323,10 @@ impl Window {
             if last_event.code == event.code {
                 match event.code {
                     // Absolute mouse events, window move, window resize, and screen report events can be replaced
-                    orbclient::EVENT_MOUSE |
-                    orbclient::EVENT_MOVE |
-                    orbclient::EVENT_RESIZE |
-                    orbclient::EVENT_SCREEN => {
+                    orbclient::EVENT_MOUSE
+                    | orbclient::EVENT_MOVE
+                    | orbclient::EVENT_RESIZE
+                    | orbclient::EVENT_SCREEN => {
                         *last_event = event;
                         return;
                     }
@@ -263,7 +354,7 @@ impl Window {
         for (i, event) in buf.iter_mut().enumerate() {
             *event = match self.events.pop_front() {
                 Some(item) => item,
-                None => return i
+                None => return i,
             };
         }
         buf.len()
@@ -272,21 +363,31 @@ impl Window {
     pub fn properties(&self) -> Properties {
         //TODO: avoid allocation
         let mut flags = String::with_capacity(8);
-        if self.asynchronous { flags.push(ORBITAL_FLAG_ASYNC) }
-        if self.borderless { flags.push(ORBITAL_FLAG_BORDERLESS) }
-        if self.hidden { flags.push(ORBITAL_FLAG_HIDDEN) }
-        if self.restore.is_some() { flags.push(ORBITAL_FLAG_MAXIMIZED) }
-        if self.resizable { flags.push(ORBITAL_FLAG_RESIZABLE) }
-        if self.transparent { flags.push(ORBITAL_FLAG_TRANSPARENT) }
-        if self.unclosable { flags.push(ORBITAL_FLAG_UNCLOSABLE) }
+        if self.asynchronous {
+            flags.push(ORBITAL_FLAG_ASYNC)
+        }
+        if self.borderless {
+            flags.push(ORBITAL_FLAG_BORDERLESS)
+        }
+        if self.hidden {
+            flags.push(ORBITAL_FLAG_HIDDEN)
+        }
+        if self.restore.is_some() {
+            flags.push(ORBITAL_FLAG_MAXIMIZED)
+        }
+        if self.resizable {
+            flags.push(ORBITAL_FLAG_RESIZABLE)
+        }
+        if self.transparent {
+            flags.push(ORBITAL_FLAG_TRANSPARENT)
+        }
+        if self.unclosable {
+            flags.push(ORBITAL_FLAG_UNCLOSABLE)
+        }
         match self.zorder {
-            WindowZOrder::Back => {
-                 flags.push(ORBITAL_FLAG_BACK)
-            },
-            WindowZOrder::Normal => {},
-            WindowZOrder::Front => {
-                 flags.push(ORBITAL_FLAG_FRONT)
-            },
+            WindowZOrder::Back => flags.push(ORBITAL_FLAG_BACK),
+            WindowZOrder::Normal => {}
+            WindowZOrder::Front => flags.push(ORBITAL_FLAG_FRONT),
         }
         Properties {
             flags,
@@ -294,7 +395,7 @@ impl Window {
             y: self.y,
             width: self.width(),
             height: self.height(),
-            title: &self.title
+            title: &self.title,
         }
     }
 
@@ -306,20 +407,42 @@ impl Window {
 
         let color_blank = Color::rgba(0, 0, 0, 0);
 
-        self.title_image = Image::from_color(title_render.width() as i32, title_render.height() as i32, color_blank);
+        self.title_image = Image::from_color(
+            title_render.width() as i32,
+            title_render.height() as i32,
+            color_blank,
+        );
         self.title_image.mode().set(orbclient::Mode::Overwrite);
         title_render.draw(&mut self.title_image, 0, 0, text_highlight_color.into());
 
-        self.title_image_unfocused = Image::from_color(title_render.width() as i32, title_render.height() as i32, color_blank);
-        self.title_image_unfocused.mode().set(orbclient::Mode::Overwrite);
+        self.title_image_unfocused = Image::from_color(
+            title_render.width() as i32,
+            title_render.height() as i32,
+            color_blank,
+        );
+        self.title_image_unfocused
+            .mode()
+            .set(orbclient::Mode::Overwrite);
         title_render.draw(&mut self.title_image_unfocused, 0, 0, text_color.into());
     }
 
     pub fn set_flag(&mut self, flag: char, value: bool) {
         match flag {
             ORBITAL_FLAG_ASYNC => self.asynchronous = value,
-            ORBITAL_FLAG_BACK => self.zorder = if value { WindowZOrder::Back } else { WindowZOrder::Normal },
-            ORBITAL_FLAG_FRONT => self.zorder = if value { WindowZOrder::Front } else { WindowZOrder::Normal },
+            ORBITAL_FLAG_BACK => {
+                self.zorder = if value {
+                    WindowZOrder::Back
+                } else {
+                    WindowZOrder::Normal
+                }
+            }
+            ORBITAL_FLAG_FRONT => {
+                self.zorder = if value {
+                    WindowZOrder::Front
+                } else {
+                    WindowZOrder::Normal
+                }
+            }
             ORBITAL_FLAG_HIDDEN => self.hidden = value,
             ORBITAL_FLAG_BORDERLESS => self.borderless = value,
             ORBITAL_FLAG_RESIZABLE => self.resizable = value,
@@ -342,7 +465,7 @@ impl Window {
 
         let rect = Rect::new(0, 0, self.image.width(), self.image.height());
         let intersect = new_rect.intersection(&rect);
-        if ! intersect.is_empty() {
+        if !intersect.is_empty() {
             new_image.roi(&intersect).blit(&self.image.roi(&intersect));
         }
 
@@ -352,10 +475,10 @@ impl Window {
 
 #[cfg(test)]
 mod test {
-    use orbclient::{Color, Event};
-    use crate::window::Window;
-    use std::rc::Rc;
     use crate::config::Config;
+    use crate::window::Window;
+    use orbclient::{Color, Event};
+    use std::rc::Rc;
 
     // create a default config that can be used to create Windows for testing
     // TODO implement or derive Default for orbclient::Color and then just use Config::default()
@@ -398,11 +521,19 @@ mod test {
         window.events.push_back(event_3);
 
         // Our buffer (elements must be initialized!) will only have a length of 2
-        let mut buf: Vec<Event>= vec!(Event::new(), Event::new()); // code = 0
-        assert_eq!(buf.as_mut_slice().len(), 2, "Buffer is not of length 2 as expected");
+        let mut buf: Vec<Event> = vec![Event::new(), Event::new()]; // code = 0
+        assert_eq!(
+            buf.as_mut_slice().len(),
+            2,
+            "Buffer is not of length 2 as expected"
+        );
 
         // let's try and read three events from the queue into the buffer of size two
-        assert_eq!(window.read(buf.as_mut_slice()), 2, "Did not read two events as expected");
+        assert_eq!(
+            window.read(buf.as_mut_slice()),
+            2,
+            "Did not read two events as expected"
+        );
         // we should not crash with an indexing error beyond the length of the vectors/slices passed to read()
 
         // buf contains the correct events in the correct order
@@ -427,11 +558,19 @@ mod test {
         window.events.push_back(event_2);
 
         // Our buffer (elements must be initialized!) will have a length of 4
-        let mut buf: Vec<Event>= vec!(Event::new(), Event::new(), Event::new(), Event::new());
-        assert_eq!(buf.as_mut_slice().len(), 4, "Buffer is not of length 4 as expected");
+        let mut buf: Vec<Event> = vec![Event::new(), Event::new(), Event::new(), Event::new()];
+        assert_eq!(
+            buf.as_mut_slice().len(),
+            4,
+            "Buffer is not of length 4 as expected"
+        );
 
         // let's try and read 2 events from the queue into the buffer
-        assert_eq!(window.read(buf.as_mut_slice()), 2, "Did not read two events as expected");
+        assert_eq!(
+            window.read(buf.as_mut_slice()),
+            2,
+            "Did not read two events as expected"
+        );
         // we should not panic with an indexing error beyond the length of the windows event queue
 
         // buf contains the correct events in the correct order
@@ -448,10 +587,18 @@ mod test {
         let mut window = Window::new(0, 0, 100, 100, 1, Rc::new(dummy_config));
 
         // Our buffer (elements must be initialized!) will have a length of 2
-        let mut buf: Vec<Event>= vec!(Event::new(), Event::new());
-        assert_eq!(buf.as_mut_slice().len(), 2, "Buffer is not of length 2 as expected");
+        let mut buf: Vec<Event> = vec![Event::new(), Event::new()];
+        assert_eq!(
+            buf.as_mut_slice().len(),
+            2,
+            "Buffer is not of length 2 as expected"
+        );
 
         // let's try and read events from the empty queue into the buffer
-        assert_eq!(window.read(buf.as_mut_slice()), 0, "Did not expect to read any events");
+        assert_eq!(
+            window.read(buf.as_mut_slice()),
+            0,
+            "Did not expect to read any events"
+        );
     }
 }
