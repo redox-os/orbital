@@ -14,7 +14,9 @@ log = "0.4.14"
 orbclient = "0.3.47"
 orbfont = "0.1"
 redox-daemon = "0.1.2"
-redox_syscall = "0.5"
+redox_syscall = { version = "0.5", features = ["std"] }
+#redox-scheme = "0.5"
+redox-scheme = { git = "https://gitlab.redox-os.org/4lDO2/redox-scheme.git", branch = "migrate-orbital" }
 serde = "1"
 serde_derive = "1"
 thiserror = "2.0.12"
