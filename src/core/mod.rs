@@ -13,11 +13,12 @@ use libredox::flag;
 use log::{debug, error, info};
 use orbclient::{Color, Event};
 use redox_scheme::{
-    scheme::{Op, OpRead, SchemeSync},
+    scheme::{IntoTag, Op, OpRead, SchemeSync},
     CallerCtx, OpenResult, RequestKind, Response, SignalBehavior, Socket,
 };
 use syscall::{
-    error::EINVAL, flag::EventFlags, schemev2::NewFdFlags, EAGAIN, EOPNOTSUPP, EWOULDBLOCK,
+    error::EINVAL, flag::EventFlags, schemev2::NewFdFlags, EAGAIN, ECANCELED, EOPNOTSUPP,
+    EWOULDBLOCK,
 };
 
 use display::Display;
@@ -447,6 +448,23 @@ impl Orbital {
                                 RequestKind::Call(req) => req,
                                 RequestKind::OnClose { id } => {
                                     me.on_close(id);
+                                    continue;
+                                }
+                                // TODO: faster than search?
+                                RequestKind::Cancellation(req) => {
+                                    if let Some(idx) = me
+                                        .orb
+                                        .delayed
+                                        .iter()
+                                        .position(|(_, op)| op.req_id() == req.id)
+                                    {
+                                        let (_, op) = me
+                                            .orb
+                                            .delayed
+                                            .remove(idx)
+                                            .expect("already found at index");
+                                        me.orb.scheme_write(Response::err(ECANCELED, op))?;
+                                    }
                                     continue;
                                 }
                                 _ => continue, // TODO?
