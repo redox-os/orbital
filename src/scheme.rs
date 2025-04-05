@@ -283,12 +283,12 @@ impl Handler for OrbitalScheme {
                 .unwrap_or(true)
     }
 
-    fn handle_scheme(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()> {
-        self.with_orbital(orb).scheme_event(packets)
+    fn handle_scheme_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
+        self.with_orbital(orb).scheme_event()
     }
 
-    fn handle_display(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()> {
-        self.with_orbital(orb).display_event(events)
+    fn handle_input(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()> {
+        self.with_orbital(orb).input_event(events)
     }
 
     fn handle_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
@@ -1723,19 +1723,19 @@ impl<'a> OrbitalSchemeEvent<'a> {
         }
     }
 
-    pub fn display_event(&mut self, events: &[Event]) -> io::Result<()> {
+    pub fn input_event(&mut self, events: &[Event]) -> io::Result<()> {
         for &event in events {
             self.event(event);
         }
 
-        self.scheme_event(&mut [])?;
+        self.scheme_event()?;
 
         // redrawn by handle_after
 
         Ok(())
     }
 
-    pub fn scheme_event(&mut self, _packets: &mut [Packet]) -> io::Result<()> {
+    pub fn scheme_event(&mut self) -> io::Result<()> {
         for (id, window) in self.scheme.windows.iter_mut() {
             if !window.events.is_empty() {
                 if !window.notified_read || window.asynchronous {

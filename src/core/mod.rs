@@ -78,23 +78,13 @@ pub trait Handler {
     /// Return true if a packet should be delayed until a display event
     fn should_delay(&mut self, packet: &Packet) -> bool;
 
-    /// Callback to handle events over the scheme
-    fn handle_scheme(&mut self, orb: &mut Orbital, packets: &mut [Packet]) -> io::Result<()>;
-    /// Callback to handle events over the display socket
-    fn handle_display(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()>;
+    /// Callback to handle events over the input handle
+    fn handle_input(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()>;
 
     /// Called after a batch of scheme events have been handled
-    fn handle_scheme_after(&mut self, _orb: &mut Orbital) -> io::Result<()> {
-        Ok(())
-    }
-    /// Called after a batch of display events have been handled
-    fn handle_display_after(&mut self, _orb: &mut Orbital) -> io::Result<()> {
-        Ok(())
-    }
+    fn handle_scheme_after(&mut self, _orb: &mut Orbital) -> io::Result<()>;
     /// Called after a batch of any events have been handled
-    fn handle_after(&mut self, _orb: &mut Orbital) -> io::Result<()> {
-        Ok(())
-    }
+    fn handle_after(&mut self, _orb: &mut Orbital) -> io::Result<()>;
 
     /// Called when a new window is requested by the scheme.
     /// Return a window ID that will be used to identify it later.
@@ -450,7 +440,6 @@ impl Orbital {
                                         me.orb.scheme_write(packet)?;
                                     }
                                 }
-                                me.handler.handle_scheme(&mut me.orb, packets)?;
 
                                 me.handler.handle_scheme_after(&mut me.orb)?;
                                 me.handler.handle_after(&mut me.orb)?;
@@ -489,11 +478,10 @@ impl Orbital {
                                     }
                                 }
 
-                                me.handler.handle_display(&mut me.orb, events)?;
+                                me.handler.handle_input(&mut me.orb, events)?;
                             }
                         }
                     }
-                    me.handler.handle_display_after(&mut me.orb)?;
                     me.handler.handle_after(&mut me.orb)?;
                 }
             }
