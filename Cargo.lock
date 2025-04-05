@@ -615,7 +615,7 @@ dependencies = [
 [[package]]
 name = "redox-scheme"
 version = "0.5.0"
-source = "git+https://gitlab.redox-os.org/4lDO2/redox-scheme.git?branch=migrate-orbital#c044a1cea9788df6df5b97fbe6272150e170c0b2"
+source = "git+https://gitlab.redox-os.org/4lDO2/redox-scheme.git?branch=migrate-orbital#ce4eead6798c2d1d1d5a6d57b45481a4909ec62e"
 dependencies = [
  "libredox",
  "redox_syscall",
