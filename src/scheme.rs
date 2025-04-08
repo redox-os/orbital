@@ -710,7 +710,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
     }
 
     fn volume(&mut self, volume: Volume) {
-        let value = match fs::read_to_string("audio:volume") {
+        let value = match fs::read_to_string("/scheme/audio/volume") {
             Ok(string) => match string.parse::<i32>() {
                 Ok(value) => value,
                 Err(err) => {
@@ -737,7 +737,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         };
 
-        match fs::write("audio:volume", format!("{}", self.scheme.volume_value)) {
+        match fs::write("/scheme/audio/volume", format!("{}", self.scheme.volume_value)) {
             Ok(()) => (),
             Err(err) => {
                 error!("failed to write volume: {}", err);
