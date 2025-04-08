@@ -14,9 +14,9 @@ use orbclient::{
     MouseEvent, MouseRelativeEvent, MoveEvent, QuitEvent, Renderer, ResizeEvent, ScreenEvent,
     TextInputEvent,
 };
-use syscall::data::Packet;
+use redox_scheme::Response;
 use syscall::error::{Error, Result, EBADF};
-use syscall::number::SYS_READ;
+use syscall::EVENT_READ;
 
 use crate::config::Config;
 use crate::core::image::ImageRef;
@@ -274,13 +274,11 @@ impl OrbitalScheme {
 }
 
 impl Handler for OrbitalScheme {
-    fn should_delay(&mut self, packet: &Packet) -> bool {
-        packet.a == SYS_READ
-            && self
-                .windows
-                .get(&packet.b)
-                .map(|window| !window.asynchronous)
-                .unwrap_or(true)
+    fn should_delay(&mut self, id: usize) -> bool {
+        self.windows
+            .get(&id)
+            .map(|window| !window.asynchronous)
+            .unwrap_or(true)
     }
 
     fn handle_scheme_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
@@ -493,13 +491,13 @@ impl Handler for OrbitalScheme {
         Ok(window.properties())
     }
 
-    fn handle_window_sync(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
+    fn handle_window_sync(&mut self, _orb: &mut Orbital, id: usize) -> Result<()> {
         let window = self.windows.get(&id).ok_or(Error::new(EBADF))?;
         schedule(&mut self.redraws, window.rect());
-        Ok(0)
+        Ok(())
     }
 
-    fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> Result<usize> {
+    fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> Result<()> {
         // Unfocus current front window
         if let Some(id) = self.order.front() {
             self.focus(*id, false);
@@ -510,7 +508,7 @@ impl Handler for OrbitalScheme {
         let res = if let Some(window) = self.windows.remove(&id) {
             schedule(&mut self.redraws, window.title_rect());
             schedule(&mut self.redraws, window.rect());
-            Ok(0)
+            Ok(())
         } else {
             Err(Error::new(EBADF))
         };
@@ -1740,16 +1738,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
             if !window.events.is_empty() {
                 if !window.notified_read || window.asynchronous {
                     window.notified_read = true;
-                    self.orb.scheme_write(&Packet {
-                        id: 0,
-                        pid: 0,
-                        uid: 0,
-                        gid: 0,
-                        a: syscall::number::SYS_FEVENT,
-                        b: *id,
-                        c: syscall::flag::EVENT_READ.bits(),
-                        d: window.events.len() * mem::size_of::<Event>(),
-                    })?;
+                    self.orb
+                        .scheme_write(Response::post_fevent(*id, EVENT_READ.bits()))?;
                 }
             } else {
                 window.notified_read = false;
