@@ -215,9 +215,14 @@ pub trait Handler {
     fn handle_clipboard_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
 }
 
+pub struct PendingRequest {
+    pub packet: Packet,
+    pub canceling: bool,
+}
+
 pub struct Orbital {
     pub scheme: File,
-    pub todo: Vec<Packet>,
+    pub todo: Vec<PendingRequest>,
     pub displays: Vec<Display>,
     pub maps: BTreeMap<usize, (usize, usize)>,
 
@@ -420,7 +425,10 @@ impl Orbital {
         event_queue.subscribe(scheme_fd as usize, Source::Scheme, event::EventFlags::READ)?;
         event_queue.subscribe(input_fd as usize, Source::Input, event::EventFlags::READ)?;
 
-        'events: for event_res in event_queue.map(|e| e.map(|e| e.user_data)) {
+        let mut event_iter = event_queue.map(|e| e.map(|e| e.user_data));
+        let mut fake_input_event = None; // TODO: a hack
+
+        'events: while let Some(event_res) = fake_input_event.take().or_else(|| event_iter.next()) {
             match event_res? {
                 Source::Scheme => {
                     let mut packets = [Packet::default(); 16];
@@ -432,10 +440,26 @@ impl Orbital {
                                 for packet in packets.iter_mut() {
                                     let delay = me.handler.should_delay(packet);
 
+                                    if packet.id == 0 && packet.a == syscall::KSMSG_CANCEL {
+                                        if let Some(idx) = me
+                                            .orb
+                                            .todo
+                                            .iter()
+                                            .position(|req| req.packet.id == packet.b as u64)
+                                        {
+                                            me.orb.todo[idx].canceling = true;
+                                        }
+                                        fake_input_event = Some(Ok(Source::Input));
+                                        continue;
+                                    }
+
                                     me.handle(packet);
 
                                     if delay && packet.a == 0 {
-                                        me.orb.todo.push(*packet);
+                                        me.orb.todo.push(PendingRequest {
+                                            packet: *packet,
+                                            canceling: false,
+                                        });
                                     } else {
                                         me.orb.scheme_write(packet)?;
                                     }
@@ -464,14 +488,23 @@ impl Orbital {
 
                                 let mut i = 0;
                                 while i < me.orb.todo.len() {
-                                    let mut packet = me.orb.todo[i];
+                                    let PendingRequest {
+                                        mut packet,
+                                        canceling,
+                                    } = me.orb.todo[i];
 
                                     let delay = me.handler.should_delay(&packet);
 
                                     me.handle(&mut packet);
 
-                                    if delay && packet.a == 0 {
+                                    if delay && packet.a == 0 && !canceling {
                                         i += 1;
+                                    } else if canceling {
+                                        me.orb.todo.remove(i);
+                                        packet.a = syscall::Error::mux(Err(syscall::Error::new(
+                                            syscall::ECANCELED,
+                                        )));
+                                        me.orb.scheme_write(&packet)?;
                                     } else {
                                         me.orb.todo.remove(i);
                                         me.orb.scheme_write(&packet)?;
