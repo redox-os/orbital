@@ -695,12 +695,17 @@ impl<'a> OrbitalSchemeEvent<'a> {
                         h: display_redraw.height(),
                     };
 
-                    match display.file.write(unsafe {
+                    let cmd_type: u32 = 0;
+                    let mut buf = Vec::with_capacity(4 + mem::size_of::<SyncRect>());
+                    buf.extend_from_slice(&cmd_type.to_le_bytes());
+                    buf.extend_from_slice(unsafe {
                         slice::from_raw_parts(
                             &sync_rect as *const SyncRect as *const u8,
                             mem::size_of::<SyncRect>(),
                         )
-                    }) {
+                    });
+
+                    match display.file.write(&buf) {
                         Ok(_) => (),
                         Err(err) => error!("failed to sync display {}: {}", i, err),
                     }
@@ -1895,13 +1900,18 @@ impl<'a> OrbitalSchemeEvent<'a> {
             cursor_img,
         };
 
+        let cmd_type: u32 = 1;
+        let mut buf = Vec::with_capacity(4 + mem::size_of::<SyncRect>());
+        buf.extend_from_slice(&cmd_type.to_le_bytes());
+        buf.extend_from_slice(unsafe {
+            slice::from_raw_parts(
+                &sync_rect as *const SyncRect as *const u8,
+                mem::size_of::<SyncRect>(),
+            )
+        });
+
         for (i, display) in self.orb.displays.iter_mut().enumerate() {
-            match display.file.write(unsafe {
-                slice::from_raw_parts(
-                    &sync_rect as *const SyncRect as *const u8,
-                    mem::size_of::<SyncRect>(),
-                )
-            }) {
+            match display.file.write(&buf) {
                 Ok(_) => (),
                 Err(err) => error!("failed to sync display {}: {}", i, err),
             }
