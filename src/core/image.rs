@@ -338,7 +338,6 @@ pub struct ImageAligned {
     w: i32,
     h: i32,
     data: &'static mut [Color],
-    mode: Cell<Mode>,
 }
 
 impl Drop for ImageAligned {
@@ -368,7 +367,6 @@ impl ImageAligned {
             w,
             h,
             data,
-            mode: Cell::new(Mode::Blend),
         }
     }
 
@@ -387,34 +385,8 @@ impl ImageAligned {
             data: self.data,
         }
     }
-}
 
-impl Renderer for ImageAligned {
-    /// Get the width of the image in pixels
-    fn width(&self) -> u32 {
-        self.w as u32
-    }
-
-    /// Get the height of the image in pixels
-    fn height(&self) -> u32 {
-        self.h as u32
-    }
-
-    /// Return a reference to a slice of colors making up the image
-    fn data(&self) -> &[Color] {
-        self.data
-    }
-
-    /// Return a mutable reference to a slice of colors making up the image
-    fn data_mut(&mut self) -> &mut [Color] {
-        self.data
-    }
-
-    fn sync(&mut self) -> bool {
-        true
-    }
-
-    fn mode(&self) -> &Cell<Mode> {
-        &self.mode
+    pub fn data_mut(&mut self) -> &mut [Color] {
+        &mut self.data
     }
 }
