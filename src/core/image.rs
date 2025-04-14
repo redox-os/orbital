@@ -346,11 +346,7 @@ impl ImageAligned {
                 size_aligned / mem::size_of::<Color>(),
             );
         }
-        ImageAligned {
-            w,
-            h,
-            data,
-        }
+        ImageAligned { w, h, data }
     }
 
     pub fn width(&self) -> i32 {

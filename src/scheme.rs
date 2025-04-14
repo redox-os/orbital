@@ -737,7 +737,10 @@ impl<'a> OrbitalSchemeEvent<'a> {
             }
         };
 
-        match fs::write("/scheme/audio/volume", format!("{}", self.scheme.volume_value)) {
+        match fs::write(
+            "/scheme/audio/volume",
+            format!("{}", self.scheme.volume_value),
+        ) {
             Ok(()) => (),
             Err(err) => {
                 error!("failed to write volume: {}", err);
