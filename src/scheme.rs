@@ -244,8 +244,8 @@ impl OrbitalScheme {
         self.displays[0].resize(width, height);
     }
 
-    pub fn with_orbital<'a>(&'a mut self, orb: &'a mut Orbital) -> OrbitalSchemeEvent<'a> {
-        OrbitalSchemeEvent { scheme: self, orb }
+    pub fn with_orbital<'a>(&'a mut self) -> OrbitalSchemeEvent<'a> {
+        OrbitalSchemeEvent { scheme: self }
     }
 
     fn cursor_rect(&self) -> Rect {
@@ -329,17 +329,41 @@ impl OrbitalScheme {
 
     /// Called after a batch of scheme events have been handled
     pub fn handle_scheme_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
-        self.with_orbital(orb).scheme_event()
+        for (id, window) in self.windows.iter_mut() {
+            if !window.events.is_empty() {
+                if !window.notified_read || window.asynchronous {
+                    window.notified_read = true;
+                    orb.scheme_write(&Packet {
+                        id: 0,
+                        pid: 0,
+                        uid: 0,
+                        gid: 0,
+                        a: syscall::number::SYS_FEVENT,
+                        b: *id,
+                        c: syscall::flag::EVENT_READ.bits(),
+                        d: window.events.len() * mem::size_of::<Event>(),
+                    })?;
+                }
+            } else {
+                window.notified_read = false;
+            }
+        }
+
+        // redrawn by handle_after
+
+        Ok(())
     }
 
     /// Callback to handle events over the input handle
     pub fn handle_input(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()> {
-        self.with_orbital(orb).input_event(events)
+        self.with_orbital().input_event(events)?;
+
+        self.handle_scheme_after(orb)
     }
 
     /// Called after a batch of any events have been handled
-    pub fn handle_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
-        self.with_orbital(orb).redraw();
+    pub fn handle_after(&mut self) -> io::Result<()> {
+        self.with_orbital().redraw();
         Ok(())
     }
 
@@ -348,7 +372,6 @@ impl OrbitalScheme {
     #[allow(clippy::too_many_arguments)]
     pub fn handle_window_new(
         &mut self,
-        orb: &mut Orbital,
         x: i32,
         y: i32,
         width: i32,
@@ -356,39 +379,25 @@ impl OrbitalScheme {
         parts: &str,
         title: String,
     ) -> Result<usize> {
-        self.with_orbital(orb)
+        self.with_orbital()
             .window_new(x, y, width, height, parts, title)
     }
 
     /// Called when the scheme is read for events
-    pub fn handle_window_read(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize,
-        buf: &mut [Event],
-    ) -> Result<usize> {
+    pub fn handle_window_read(&mut self, id: usize, buf: &mut [Event]) -> Result<usize> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         Ok(window.read(buf))
     }
 
     /// Called when the window asks to set async
-    pub fn handle_window_async(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize,
-        is_async: bool,
-    ) -> Result<()> {
+    pub fn handle_window_async(&mut self, id: usize, is_async: bool) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.asynchronous = is_async;
         Ok(())
     }
 
     /// Called when the window asks to be dragged
-    pub fn handle_window_drag(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize, /*TODO: resize sides */
-    ) -> Result<()> {
+    pub fn handle_window_drag(&mut self, id: usize /*TODO: resize sides */) -> Result<()> {
         let _window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         if self.cursor_left {
             self.dragging = DragMode::Title(id, self.cursor_x, self.cursor_y);
@@ -397,36 +406,21 @@ impl OrbitalScheme {
     }
 
     /// Called when the window asks to set mouse cursor visibility
-    pub fn handle_window_mouse_cursor(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize,
-        visible: bool,
-    ) -> Result<()> {
+    pub fn handle_window_mouse_cursor(&mut self, id: usize, visible: bool) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.mouse_cursor = visible;
         Ok(())
     }
 
     /// Called when the window asks to set mouse grabbing
-    pub fn handle_window_mouse_grab(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize,
-        grab: bool,
-    ) -> Result<()> {
+    pub fn handle_window_mouse_grab(&mut self, id: usize, grab: bool) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.mouse_grab = grab;
         Ok(())
     }
 
     /// Called when the window asks to set mouse relative mode
-    pub fn handle_window_mouse_relative(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize,
-        relative: bool,
-    ) -> Result<()> {
+    pub fn handle_window_mouse_relative(&mut self, id: usize, relative: bool) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.mouse_relative = relative;
         Ok(())
@@ -435,7 +429,6 @@ impl OrbitalScheme {
     /// Called when the window asks to be repositioned
     pub fn handle_window_position(
         &mut self,
-        _orb: &mut Orbital,
         id: usize,
         x: Option<i32>,
         y: Option<i32>,
@@ -456,7 +449,6 @@ impl OrbitalScheme {
     /// Called when the window asks to be resized
     pub fn handle_window_resize(
         &mut self,
-        _orb: &mut Orbital,
         id: usize,
         w: Option<i32>,
         h: Option<i32>,
@@ -477,13 +469,7 @@ impl OrbitalScheme {
     }
 
     /// Called when the window wants to set a flag
-    pub fn handle_window_set_flag(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        flag: char,
-        value: bool,
-    ) -> Result<()> {
+    pub fn handle_window_set_flag(&mut self, id: usize, flag: char, value: bool) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
 
         // Handle maximized flag custom
@@ -495,7 +481,7 @@ impl OrbitalScheme {
                 window.restore.is_some()
             };
             if toggle_tile {
-                self.with_orbital(orb)
+                self.with_orbital()
                     .tile_window(Some(&id), TilePosition::FullScreen);
             }
         } else {
@@ -514,12 +500,7 @@ impl OrbitalScheme {
     }
 
     /// Called when the window asks to change title
-    pub fn handle_window_title(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize,
-        title: String,
-    ) -> Result<()> {
+    pub fn handle_window_title(&mut self, id: usize, title: String) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.title = title;
         window.render_title(&self.font);
@@ -531,19 +512,14 @@ impl OrbitalScheme {
 
     /// Called by fevent to clear notified status, assuming you're sending edge-triggered notifications
     /// TODO: Abstract event system away completely.
-    pub fn handle_window_clear_notified(&mut self, _orb: &mut Orbital, id: usize) -> Result<()> {
+    pub fn handle_window_clear_notified(&mut self, id: usize) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.notified_read = false;
         Ok(())
     }
 
     /// Return a reference the window's image that will be mapped in the scheme's fmap function
-    pub fn handle_window_map(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize,
-        create_new: bool,
-    ) -> Result<&mut [Color]> {
+    pub fn handle_window_map(&mut self, id: usize, create_new: bool) -> Result<&mut [Color]> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         if create_new {
             window.maps += 1;
@@ -552,7 +528,7 @@ impl OrbitalScheme {
     }
 
     /// Free a reference to the window's image, for use by funmap
-    pub fn handle_window_unmap(&mut self, _orb: &mut Orbital, id: usize) -> Result<()> {
+    pub fn handle_window_unmap(&mut self, id: usize) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         if window.maps > 0 {
             window.maps -= 1;
@@ -563,24 +539,20 @@ impl OrbitalScheme {
     }
 
     /// Called to get window properties
-    pub fn handle_window_properties(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize,
-    ) -> Result<Properties> {
+    pub fn handle_window_properties(&mut self, id: usize) -> Result<Properties> {
         let window = self.windows.get(&id).ok_or(Error::new(EBADF))?;
         Ok(window.properties())
     }
 
     /// Called to flush a window. It's usually a good idea to redraw here.
-    pub fn handle_window_sync(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
+    pub fn handle_window_sync(&mut self, id: usize) -> Result<usize> {
         let window = self.windows.get(&id).ok_or(Error::new(EBADF))?;
         schedule(&mut self.redraws, window.rect());
         Ok(0)
     }
 
     /// Called when a window should be closed
-    pub fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> Result<usize> {
+    pub fn handle_window_close(&mut self, id: usize) -> Result<usize> {
         // Unfocus current front window
         if let Some(id) = self.order.front() {
             self.focus(*id, false);
@@ -606,12 +578,12 @@ impl OrbitalScheme {
             x: self.cursor_x,
             y: self.cursor_y,
         };
-        self.with_orbital(orb).mouse_event(event);
+        self.with_orbital().mouse_event(event);
 
         res
     }
     /// Create a clipboard from a window
-    pub fn handle_clipboard_new(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
+    pub fn handle_clipboard_new(&mut self, id: usize) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.clipboard_seek = 0;
@@ -619,12 +591,7 @@ impl OrbitalScheme {
     }
 
     /// Read window clipboard
-    pub fn handle_clipboard_read(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize,
-        buf: &mut [u8],
-    ) -> Result<usize> {
+    pub fn handle_clipboard_read(&mut self, id: usize, buf: &mut [u8]) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         let mut i = 0;
@@ -637,12 +604,7 @@ impl OrbitalScheme {
     }
 
     /// Write window clipboard
-    pub fn handle_clipboard_write(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize,
-        buf: &[u8],
-    ) -> Result<usize> {
+    pub fn handle_clipboard_write(&mut self, id: usize, buf: &[u8]) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         let mut i = 0;
@@ -656,7 +618,7 @@ impl OrbitalScheme {
     }
 
     /// Close the window's clipboard access
-    pub fn handle_clipboard_close(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
+    pub fn handle_clipboard_close(&mut self, id: usize) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         if self.windows.contains_key(&id) {
             Ok(0)
@@ -667,7 +629,6 @@ impl OrbitalScheme {
 }
 pub struct OrbitalSchemeEvent<'a> {
     scheme: &'a mut OrbitalScheme,
-    orb: &'a mut Orbital,
 }
 
 impl<'a> OrbitalSchemeEvent<'a> {
@@ -1815,34 +1776,6 @@ impl<'a> OrbitalSchemeEvent<'a> {
     pub fn input_event(&mut self, events: &[Event]) -> io::Result<()> {
         for &event in events {
             self.event(event);
-        }
-
-        self.scheme_event()?;
-
-        // redrawn by handle_after
-
-        Ok(())
-    }
-
-    pub fn scheme_event(&mut self) -> io::Result<()> {
-        for (id, window) in self.scheme.windows.iter_mut() {
-            if !window.events.is_empty() {
-                if !window.notified_read || window.asynchronous {
-                    window.notified_read = true;
-                    self.orb.scheme_write(&Packet {
-                        id: 0,
-                        pid: 0,
-                        uid: 0,
-                        gid: 0,
-                        a: syscall::number::SYS_FEVENT,
-                        b: *id,
-                        c: syscall::flag::EVENT_READ.bits(),
-                        d: window.events.len() * mem::size_of::<Event>(),
-                    })?;
-                }
-            } else {
-                window.notified_read = false;
-            }
         }
 
         // redrawn by handle_after

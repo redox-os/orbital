@@ -282,7 +282,7 @@ impl Orbital {
                                 }
 
                                 me.handler.handle_scheme_after(&mut me.orb)?;
-                                me.handler.handle_after(&mut me.orb)?;
+                                me.handler.handle_after()?;
                             }
                             Err(err) => {
                                 if err.kind() == ErrorKind::WouldBlock {
@@ -331,7 +331,7 @@ impl Orbital {
                             }
                         }
                     }
-                    me.handler.handle_after(&mut me.orb)?;
+                    me.handler.handle_after()?;
                 }
             }
         }
@@ -362,13 +362,13 @@ impl SchemeMut for OrbitalHandler {
         }
 
         self.handler
-            .handle_window_new(&mut self.orb, x, y, width, height, flags, title)
+            .handle_window_new(x, y, width, height, flags, title)
     }
     fn dup(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
         if buf == b"clipboard" {
             //TODO: implement better clipboard mechanism
             self.handler
-                .handle_clipboard_new(&mut self.orb, id)
+                .handle_clipboard_new(id)
                 .map(|id| id | CLIPBOARD_FLAG)
         } else {
             Err(syscall::Error::new(EINVAL))
@@ -379,7 +379,7 @@ impl SchemeMut for OrbitalHandler {
         if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
             return self
                 .handler
-                .handle_clipboard_read(&mut self.orb, id & !CLIPBOARD_FLAG, buf);
+                .handle_clipboard_read(id & !CLIPBOARD_FLAG, buf);
         }
 
         let slice: &mut [Event] = unsafe {
@@ -388,7 +388,7 @@ impl SchemeMut for OrbitalHandler {
                 buf.len() / mem::size_of::<Event>(),
             )
         };
-        let n = self.handler.handle_window_read(&mut self.orb, id, slice)?;
+        let n = self.handler.handle_window_read(id, slice)?;
         Ok(n * mem::size_of::<Event>())
     }
     fn write(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
@@ -396,7 +396,7 @@ impl SchemeMut for OrbitalHandler {
         if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
             return self
                 .handler
-                .handle_clipboard_write(&mut self.orb, id & !CLIPBOARD_FLAG, buf);
+                .handle_clipboard_write(id & !CLIPBOARD_FLAG, buf);
         }
 
         if let Ok(msg) = str::from_utf8(buf) {
@@ -409,18 +409,18 @@ impl SchemeMut for OrbitalHandler {
             match kind {
                 "A" => match data {
                     "0" => {
-                        self.handler.handle_window_async(&mut self.orb, id, false)?;
+                        self.handler.handle_window_async(id, false)?;
                         Ok(buf.len())
                     }
                     "1" => {
-                        self.handler.handle_window_async(&mut self.orb, id, true)?;
+                        self.handler.handle_window_async(id, true)?;
                         Ok(buf.len())
                     }
                     _ => Err(syscall::Error::new(EINVAL)),
                 },
                 "D" => match data {
                     "" => {
-                        self.handler.handle_window_drag(&mut self.orb, id)?;
+                        self.handler.handle_window_drag(id)?;
                         Ok(buf.len())
                     }
                     //TODO: resize by dragging edge
@@ -440,40 +440,33 @@ impl SchemeMut for OrbitalHandler {
                         _ => return Err(syscall::Error::new(EINVAL)),
                     };
                     for flag in flags.chars() {
-                        self.handler
-                            .handle_window_set_flag(&mut self.orb, id, flag, value)?;
+                        self.handler.handle_window_set_flag(id, flag, value)?;
                     }
                     Ok(buf.len())
                 }
                 "M" => match data {
                     "C,0" => {
-                        self.handler
-                            .handle_window_mouse_cursor(&mut self.orb, id, false)?;
+                        self.handler.handle_window_mouse_cursor(id, false)?;
                         Ok(buf.len())
                     }
                     "C,1" => {
-                        self.handler
-                            .handle_window_mouse_cursor(&mut self.orb, id, true)?;
+                        self.handler.handle_window_mouse_cursor(id, true)?;
                         Ok(buf.len())
                     }
                     "G,0" => {
-                        self.handler
-                            .handle_window_mouse_grab(&mut self.orb, id, false)?;
+                        self.handler.handle_window_mouse_grab(id, false)?;
                         Ok(buf.len())
                     }
                     "G,1" => {
-                        self.handler
-                            .handle_window_mouse_grab(&mut self.orb, id, true)?;
+                        self.handler.handle_window_mouse_grab(id, true)?;
                         Ok(buf.len())
                     }
                     "R,0" => {
-                        self.handler
-                            .handle_window_mouse_relative(&mut self.orb, id, false)?;
+                        self.handler.handle_window_mouse_relative(id, false)?;
                         Ok(buf.len())
                     }
                     "R,1" => {
-                        self.handler
-                            .handle_window_mouse_relative(&mut self.orb, id, true)?;
+                        self.handler.handle_window_mouse_relative(id, true)?;
                         Ok(buf.len())
                     }
                     _ => Err(syscall::Error::new(EINVAL)),
@@ -483,8 +476,7 @@ impl SchemeMut for OrbitalHandler {
                     let x = parts.next().unwrap_or("").parse::<i32>().ok();
                     let y = parts.next().unwrap_or("").parse::<i32>().ok();
 
-                    self.handler
-                        .handle_window_position(&mut self.orb, id, x, y)?;
+                    self.handler.handle_window_position(id, x, y)?;
 
                     Ok(buf.len())
                 }
@@ -493,13 +485,12 @@ impl SchemeMut for OrbitalHandler {
                     let w = parts.next().unwrap_or("").parse::<i32>().ok();
                     let h = parts.next().unwrap_or("").parse::<i32>().ok();
 
-                    self.handler.handle_window_resize(&mut self.orb, id, w, h)?;
+                    self.handler.handle_window_resize(id, w, h)?;
 
                     Ok(buf.len())
                 }
                 "T" => {
-                    self.handler
-                        .handle_window_title(&mut self.orb, id, data.to_string())?;
+                    self.handler.handle_window_title(id, data.to_string())?;
 
                     Ok(buf.len())
                 }
@@ -511,7 +502,7 @@ impl SchemeMut for OrbitalHandler {
     }
     fn fevent(&mut self, id: usize, _flags: EventFlags) -> syscall::Result<EventFlags> {
         self.handler
-            .handle_window_clear_notified(&mut self.orb, id)
+            .handle_window_clear_notified(id)
             .and(Ok(EventFlags::empty()))
     }
     /*
@@ -547,7 +538,7 @@ impl SchemeMut for OrbitalHandler {
     }
     */
     fn fpath(&mut self, id: usize, mut buf: &mut [u8]) -> syscall::Result<usize> {
-        let props = self.handler.handle_window_properties(&mut self.orb, id)?;
+        let props = self.handler.handle_window_properties(id)?;
         let original_len = buf.len();
         #[allow(clippy::write_literal)] // TODO: Z order
         let _ = write!(
@@ -558,17 +549,15 @@ impl SchemeMut for OrbitalHandler {
         Ok(original_len - buf.len())
     }
     fn fsync(&mut self, id: usize) -> syscall::Result<usize> {
-        self.handler.handle_window_sync(&mut self.orb, id)
+        self.handler.handle_window_sync(id)
     }
     fn close(&mut self, id: usize) -> syscall::Result<usize> {
         //TODO: implement better clipboard mechanism
         if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
-            return self
-                .handler
-                .handle_clipboard_close(&mut self.orb, id & !CLIPBOARD_FLAG);
+            return self.handler.handle_clipboard_close(id & !CLIPBOARD_FLAG);
         }
 
-        self.handler.handle_window_close(&mut self.orb, id)
+        self.handler.handle_window_close(id)
     }
     fn mmap_prep(
         &mut self,
@@ -578,7 +567,7 @@ impl SchemeMut for OrbitalHandler {
         _flags: syscall::MapFlags,
     ) -> syscall::Result<usize> {
         //TODO: handle offset, flags?
-        let data = self.handler.handle_window_map(&mut self.orb, id, true)?;
+        let data = self.handler.handle_window_map(id, true)?;
 
         if size > data.len() * core::mem::size_of::<Color>() {
             return Err(syscall::Error::new(EINVAL));
@@ -594,7 +583,7 @@ impl SchemeMut for OrbitalHandler {
         _flags: syscall::MunmapFlags,
     ) -> syscall::Result<usize> {
         //TODO: handle offset, size, flags?
-        self.handler.handle_window_unmap(&mut self.orb, id)?;
+        self.handler.handle_window_unmap(id)?;
 
         Ok(0)
     }
