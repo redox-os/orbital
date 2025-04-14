@@ -16,8 +16,6 @@ use syscall::{data::Packet, error::EINVAL, flag::EventFlags, SchemeMut};
 
 use crate::scheme::OrbitalScheme;
 use display::Display;
-use image::ImageRef;
-use rect::Rect;
 
 pub(crate) mod display;
 pub(crate) mod image;
@@ -78,7 +76,6 @@ pub struct PendingRequest {
 pub struct Orbital {
     pub scheme: File,
     pub todo: Vec<PendingRequest>,
-    pub displays: Vec<Display>,
     pub maps: BTreeMap<usize, (usize, usize)>,
 
     /// Handle to "/scheme/input/consumer" to recieve input events.
@@ -111,7 +108,7 @@ impl Orbital {
     }
 
     /// Open an orbital display and connect to the scheme
-    pub fn open_display(vt: &str) -> io::Result<Self> {
+    pub fn open_display(vt: &str) -> io::Result<(Self, Vec<Display>)> {
         let mut buffer = [0; 1024];
 
         let input_handle = File::open(format!("/scheme/input/consumer/{vt}"))?;
@@ -222,39 +219,24 @@ impl Orbital {
             }
         }
 
-        Ok(Orbital {
-            scheme,
-            todo: Vec::new(),
+        Ok((
+            Orbital {
+                scheme,
+                todo: Vec::new(),
+                maps: BTreeMap::new(),
+                input: input_handle,
+                hw_cursor,
+                hw_cursor_initialized: false,
+            },
             displays,
-            maps: BTreeMap::new(),
-            input: input_handle,
-            hw_cursor,
-            hw_cursor_initialized: false,
-        })
-    }
-
-    //TODO: replace these adapter functions
-    pub fn image(&self) -> &ImageRef<'static> {
-        &self.displays[0].image
-    }
-    pub fn image_mut(&mut self) -> &mut ImageRef<'static> {
-        &mut self.displays[0].image
-    }
-    /// Return the screen rectangle
-    pub fn screen_rect(&self) -> Rect {
-        self.displays[0].screen_rect()
+        ))
     }
 
     /// Write a Packet to scheme I/O
     pub fn scheme_write(&mut self, packet: &Packet) -> io::Result<()> {
         self.scheme.write(packet).map(|_| ())
     }
-    /// Resize the inner image buffer. You're responsible for redrawing.
-    pub fn resize(&mut self, width: i32, height: i32) {
-        //TODO: should other screens be moved after a resize?
-        //TODO: support resizing other screens?
-        self.displays[0].resize(width, height);
-    }
+
     /// Start the main loop
     pub fn run(self, handler: OrbitalScheme) -> Result<(), Error> {
         user_data! {

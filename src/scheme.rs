@@ -89,6 +89,7 @@ const ALT_ANY_MODIFIER: u8 = 1 << 6;
 const SUPER_MODIFIER: u8 = 1 << 7;
 
 pub struct OrbitalScheme {
+    pub displays: Vec<Display>,
     window_max: Image,
     window_max_unfocused: Image,
     window_close: Image,
@@ -126,7 +127,7 @@ pub struct OrbitalScheme {
 }
 
 impl OrbitalScheme {
-    pub(crate) fn new(displays: &[Display], config: Rc<Config>) -> Result<OrbitalScheme, String> {
+    pub(crate) fn new(displays: Vec<Display>, config: Rc<Config>) -> Result<OrbitalScheme, String> {
         let mut redraws = Vec::new();
         let mut scale = 1;
         for display in displays.iter() {
@@ -164,6 +165,7 @@ impl OrbitalScheme {
         let font = orbfont::Font::find(Some("Sans"), None, None)?;
 
         Ok(OrbitalScheme {
+            displays,
             window_max: Image::from_path_scale(&config.window_max, scale)
                 .unwrap_or(Image::new(0, 0)),
             window_max_unfocused: Image::from_path_scale(&config.window_max_unfocused, scale)
@@ -199,6 +201,25 @@ impl OrbitalScheme {
             popup_rect: Rect::default(),
             update_cursor_timer: Instant::now(),
         })
+    }
+
+    //TODO: replace these adapter functions
+    pub fn image(&self) -> &ImageRef<'static> {
+        &self.displays[0].image
+    }
+    pub fn image_mut(&mut self) -> &mut ImageRef<'static> {
+        &mut self.displays[0].image
+    }
+    /// Return the screen rectangle
+    pub fn screen_rect(&self) -> Rect {
+        self.displays[0].screen_rect()
+    }
+
+    /// Resize the inner image buffer. You're responsible for redrawing.
+    pub fn resize(&mut self, width: i32, height: i32) {
+        //TODO: should other screens be moved after a resize?
+        //TODO: support resizing other screens?
+        self.displays[0].resize(width, height);
     }
 
     pub fn with_orbital<'a>(&'a mut self, orb: &'a mut Orbital) -> OrbitalSchemeEvent<'a> {
@@ -644,7 +665,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 };
             }
 
-            for display in self.orb.displays.iter_mut() {
+            for display in self.scheme.displays.iter_mut() {
                 let rect = original_rect.intersection(&display.screen_rect());
                 if !rect.is_empty() {
                     display.rect(&rect, self.scheme.config.background_color.into());
@@ -717,7 +738,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         // Sync any parts of displays that changed
         if let Some(total_redraw) = total_redraw_opt {
-            for (i, display) in self.orb.displays.iter_mut().enumerate() {
+            for (i, display) in self.scheme.displays.iter_mut().enumerate() {
                 let display_redraw = total_redraw.intersection(&display.screen_rect());
                 if !display_redraw.is_empty() {
                     // Keep synced with vesad
@@ -887,7 +908,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             let list_h = (selectable_window_ids.len() as u32 * SELECT_ROW_HEIGHT
                 + (SELECT_POPUP_TOP_BOTTOM_MARGIN * 2)) as i32;
             let list_w = SELECT_ROW_WIDTH;
-            let popup_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
+            let popup_rect = Self::popup_rect(self.scheme.image(), list_w, list_h);
             let mut image = Image::from_color(list_w, list_h, bar_color.into());
 
             for (selectable_index, window_id) in selectable_window_ids.iter().enumerate() {
@@ -919,7 +940,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                     }
                 }
             }
-            self.orb
+            self.scheme
                 .image_mut()
                 .roi(&popup_rect)
                 .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
@@ -943,7 +964,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         //TODO: HiDPI
         let list_h = BAR_HEIGHT + (2 * POPUP_MARGIN);
         let list_w = BAR_WIDTH + (2 * POPUP_MARGIN);
-        let popup_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
+        let popup_rect = Self::popup_rect(self.scheme.image(), list_w, list_h);
         // Color copied over from orbtk's window background
         let mut image = Image::from_color(list_w, list_h, bar_color.into());
         image.rect(
@@ -953,7 +974,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             BAR_HEIGHT as u32,
             bar_highlight_color.into(),
         );
-        self.orb
+        self.scheme
             .image_mut()
             .roi(&popup_rect)
             .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
@@ -999,7 +1020,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         let list_h = (Self::SHORTCUTS_LIST.len() as u32 * ROW_HEIGHT + (POPUP_BORDER * 2)) as i32;
         let list_w = ROW_WIDTH;
-        let popup_rect = Self::popup_rect(self.orb.image(), list_w, list_h);
+        let popup_rect = Self::popup_rect(self.scheme.image(), list_w, list_h);
         let mut image = Image::from_color(list_w, list_h, bar_color.into());
 
         for (index, shortcut) in Self::SHORTCUTS_LIST.iter().enumerate() {
@@ -1020,7 +1041,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             );
         }
 
-        self.orb
+        self.scheme
             .image_mut()
             .roi(&popup_rect)
             .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
@@ -1082,11 +1103,11 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 // Ensure window remains visible
                 window.x = cmp::max(
                     -window.width() + GRID_SIZE,
-                    cmp::min(self.orb.image().width() - GRID_SIZE, window.x),
+                    cmp::min(self.scheme.displays[0].image.width() - GRID_SIZE, window.x),
                 );
                 window.y = cmp::max(
                     -window.height() + GRID_SIZE,
-                    cmp::min(self.orb.image().height() - GRID_SIZE, window.y),
+                    cmp::min(self.scheme.displays[0].image.height() - GRID_SIZE, window.y),
                 );
 
                 let move_event = MoveEvent {
@@ -1124,7 +1145,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
     fn tile_window(&mut self, window_id: Option<&usize>, position: TilePosition) {
         if let Some(id) = window_id.or(self.scheme.order.front()) {
             if let Some(window) = self.scheme.windows.get_mut(id) {
-                let display_index = Self::get_display_index(&self.orb.displays, &window.rect());
+                let display_index = Self::get_display_index(&self.scheme.displays, &window.rect());
                 schedule(&mut self.scheme.redraws, window.title_rect());
                 schedule(&mut self.scheme.redraws, window.rect());
 
@@ -1133,11 +1154,12 @@ impl<'a> OrbitalSchemeEvent<'a> {
                         // we are about to maximize window, so store current size for restore later
                         window.restore = Some(window.rect());
 
-                        let top = self.orb.displays[display_index].y + window.title_rect().height();
-                        let left = self.orb.displays[display_index].x;
-                        let max_height = self.orb.displays[display_index].image.height()
+                        let top =
+                            self.scheme.displays[display_index].y + window.title_rect().height();
+                        let left = self.scheme.displays[display_index].x;
+                        let max_height = self.scheme.displays[display_index].image.height()
                             - window.title_rect().height();
-                        let max_width = self.orb.displays[display_index].image.width();
+                        let max_width = self.scheme.displays[display_index].image.width();
                         let half_width = (max_width / 2) as u32;
                         let half_height = (max_height / 2) as u32;
 
@@ -1507,7 +1529,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
         // This logic assumes horizontal and touching, but not overlapping, screens
         let mut max_x = 0;
         let mut max_y = 0;
-        for display in self.orb.displays.iter() {
+        for display in self.scheme.displays.iter() {
             let rect = display.screen_rect();
             max_x = cmp::max(max_x, rect.right() - 1);
             max_y = cmp::max(max_y, rect.bottom() - 1);
@@ -1515,7 +1537,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         let x = cmp::max(0, cmp::min(max_x, self.scheme.cursor_x + event.dx));
         let mut y = cmp::max(0, cmp::min(max_y, self.scheme.cursor_y + event.dy));
-        for display in self.orb.displays.iter() {
+        for display in self.scheme.displays.iter() {
             let rect = display.screen_rect();
             if x >= rect.left() && x < rect.right() {
                 y = cmp::max(rect.top(), cmp::min(rect.bottom() - 1, y));
@@ -1710,14 +1732,14 @@ impl<'a> OrbitalSchemeEvent<'a> {
     }
 
     fn resize_event(&mut self, event: ResizeEvent) {
-        self.orb.resize(event.width as i32, event.height as i32);
+        self.scheme.resize(event.width as i32, event.height as i32);
 
-        let screen_rect = self.orb.screen_rect();
+        let screen_rect = self.scheme.screen_rect();
         schedule(&mut self.scheme.redraws, screen_rect);
 
         let screen_event = ScreenEvent {
-            width: self.orb.image().width() as u32,
-            height: self.orb.image().height() as u32,
+            width: self.scheme.image().width() as u32,
+            height: self.scheme.image().height() as u32,
         }
         .to_event();
         for (_window_id, window) in self.scheme.windows.iter_mut() {
@@ -1749,8 +1771,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
                 // which indicates the input device from which the event originated to use
                 // the correct display for getting the size.
                 self.mouse_event(MouseEvent {
-                    x: x * self.orb.displays[0].image.width() / 65536,
-                    y: y * self.orb.displays[0].image.height() / 65536,
+                    x: x * self.scheme.displays[0].image.width() / 65536,
+                    y: y * self.scheme.displays[0].image.height() / 65536,
                 });
             }
             EventOption::MouseRelative(event) => self.mouse_relative_event(event),
@@ -1845,10 +1867,10 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         if x < 0 && y < 0 {
             // Automatic placement
-            window.x = cmp::max(0, (self.orb.image().width() - width) / 2);
+            window.x = cmp::max(0, (self.scheme.image().width() - width) / 2);
             window.y = cmp::max(
                 window.title_rect().height(),
-                (self.orb.image().height() - height) / 2,
+                (self.scheme.image().height() - height) / 2,
             );
         }
 
@@ -1940,7 +1962,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             cursor_img,
         };
 
-        for (i, display) in self.orb.displays.iter_mut().enumerate() {
+        for (i, display) in self.scheme.displays.iter_mut().enumerate() {
             match display.file.write(unsafe {
                 slice::from_raw_parts(
                     &sync_rect as *const SyncRect as *const u8,

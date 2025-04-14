@@ -56,7 +56,7 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
     env::remove_var("VT");
     let login_cmd = args.next().ok_or("no login manager argument")?;
 
-    let orbital = Orbital::open_display(&vt)
+    let (orbital, displays) = Orbital::open_display(&vt)
         .map_err(|e| format!("could not open display, caused by: {}", e))?;
     daemon.ready().unwrap();
 
@@ -74,11 +74,11 @@ fn orbital(daemon: Daemon) -> Result<(), String> {
 
     debug!(
         "found display {}x{}",
-        orbital.image().width(),
-        orbital.image().height()
+        displays[0].image.width(),
+        displays[0].image.height()
     );
     let config = Rc::new(Config::from_path("/ui/orbital.toml"));
-    let scheme = OrbitalScheme::new(&orbital.displays, config)?;
+    let scheme = OrbitalScheme::new(displays, config)?;
 
     Command::new(login_cmd)
         .args(args)
