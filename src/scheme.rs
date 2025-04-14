@@ -113,7 +113,7 @@ pub struct OrbitalScheme {
     hover: Option<usize>,
     order: VecDeque<usize>,
     zbuffer: Vec<(usize, WindowZOrder, usize)>,
-    pub windows: BTreeMap<usize, Window>,
+    windows: BTreeMap<usize, Window>,
     redraws: Vec<Rect>,
     font: orbfont::Font,
     clipboard: Vec<u8>,
@@ -621,7 +621,7 @@ impl OrbitalScheme {
         }
     }
 
-    pub fn redraw(&mut self) {
+    fn redraw(&mut self) {
         self.rezbuffer();
 
         let cursor_rect = self.cursor_rect();
@@ -1688,7 +1688,7 @@ impl OrbitalScheme {
         }
     }
 
-    pub fn event(&mut self, event_union: Event) {
+    fn event(&mut self, event_union: Event) {
         self.rezbuffer();
 
         if self.hw_cursor
@@ -1731,7 +1731,7 @@ impl OrbitalScheme {
         }
     }
 
-    pub fn input_event(&mut self, events: &[Event]) -> io::Result<()> {
+    fn input_event(&mut self, events: &[Event]) -> io::Result<()> {
         for &event in events {
             self.event(event);
         }
