@@ -70,11 +70,6 @@ pub struct Properties<'a> {
 }
 
 pub trait Handler {
-    /// Called when the event loop is first ran
-    fn handle_startup(&mut self, _orb: &mut Orbital) -> io::Result<()> {
-        Ok(())
-    }
-
     /// Return true if a packet should be delayed until a display event
     fn should_delay(&mut self, packet: &Packet) -> bool;
 
@@ -401,7 +396,7 @@ impl Orbital {
         self.displays[0].resize(width, height);
     }
     /// Start the main loop
-    pub fn run<H>(mut self, mut handler: H) -> Result<(), Error>
+    pub fn run<H>(self, handler: H) -> Result<(), Error>
     where
         H: Handler + 'static,
     {
@@ -418,8 +413,6 @@ impl Orbital {
 
         let scheme_fd = self.scheme.as_raw_fd();
         let input_fd = self.input.as_raw_fd();
-
-        handler.handle_startup(&mut self)?;
 
         let mut me = OrbitalHandler { orb: self, handler };
         event_queue.subscribe(scheme_fd as usize, Source::Scheme, event::EventFlags::READ)?;
