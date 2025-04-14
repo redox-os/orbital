@@ -69,23 +69,6 @@ pub struct ImageRoi<'a> {
     data: &'a mut [Color],
 }
 
-impl<'a> IntoIterator for ImageRoi<'a> {
-    type Item = &'a [Color];
-    type IntoIter = ImageRoiRows<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let Self { rect, w, data } = self;
-        let data =
-            &mut data[rect.top() as usize * w as usize..][..rect.height() as usize * w as usize];
-        ImageRoiRows {
-            rect,
-            w,
-            data,
-            i: 0,
-        }
-    }
-}
-
 impl<'a> ImageRoi<'a> {
     pub fn rows(&'a self) -> ImageRoiRows<'a> {
         ImageRoiRows {
@@ -338,7 +321,6 @@ pub struct ImageAligned {
     w: i32,
     h: i32,
     data: &'static mut [Color],
-    mode: Cell<Mode>,
 }
 
 impl Drop for ImageAligned {
@@ -364,12 +346,7 @@ impl ImageAligned {
                 size_aligned / mem::size_of::<Color>(),
             );
         }
-        ImageAligned {
-            w,
-            h,
-            data,
-            mode: Cell::new(Mode::Blend),
-        }
+        ImageAligned { w, h, data }
     }
 
     pub fn width(&self) -> i32 {
@@ -387,34 +364,8 @@ impl ImageAligned {
             data: self.data,
         }
     }
-}
 
-impl Renderer for ImageAligned {
-    /// Get the width of the image in pixels
-    fn width(&self) -> u32 {
-        self.w as u32
-    }
-
-    /// Get the height of the image in pixels
-    fn height(&self) -> u32 {
-        self.h as u32
-    }
-
-    /// Return a reference to a slice of colors making up the image
-    fn data(&self) -> &[Color] {
-        self.data
-    }
-
-    /// Return a mutable reference to a slice of colors making up the image
-    fn data_mut(&mut self) -> &mut [Color] {
-        self.data
-    }
-
-    fn sync(&mut self) -> bool {
-        true
-    }
-
-    fn mode(&self) -> &Cell<Mode> {
-        &self.mode
+    pub fn data_mut(&mut self) -> &mut [Color] {
+        &mut self.data
     }
 }
