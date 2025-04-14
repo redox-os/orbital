@@ -69,23 +69,6 @@ pub struct ImageRoi<'a> {
     data: &'a mut [Color],
 }
 
-impl<'a> IntoIterator for ImageRoi<'a> {
-    type Item = &'a [Color];
-    type IntoIter = ImageRoiRows<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let Self { rect, w, data } = self;
-        let data =
-            &mut data[rect.top() as usize * w as usize..][..rect.height() as usize * w as usize];
-        ImageRoiRows {
-            rect,
-            w,
-            data,
-            i: 0,
-        }
-    }
-}
-
 impl<'a> ImageRoi<'a> {
     pub fn rows(&'a self) -> ImageRoiRows<'a> {
         ImageRoiRows {
