@@ -20,7 +20,7 @@ use syscall::number::SYS_READ;
 
 use crate::config::Config;
 use crate::core::image::ImageRef;
-use crate::core::{display::Display, image::Image, rect::Rect, Handler, Orbital, Properties};
+use crate::core::{display::Display, image::Image, rect::Rect, Orbital, Properties};
 use crate::scheme::TilePosition::{BottomHalf, FullScreen, LeftHalf, RightHalf, TopHalf};
 use crate::window::{Window, WindowZOrder};
 
@@ -273,8 +273,9 @@ impl OrbitalScheme {
     }
 }
 
-impl Handler for OrbitalScheme {
-    fn should_delay(&mut self, packet: &Packet) -> bool {
+impl OrbitalScheme {
+    /// Return true if a packet should be delayed until a display event
+    pub fn should_delay(&mut self, packet: &Packet) -> bool {
         packet.a == SYS_READ
             && self
                 .windows
@@ -283,20 +284,26 @@ impl Handler for OrbitalScheme {
                 .unwrap_or(true)
     }
 
-    fn handle_scheme_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
+    /// Called after a batch of scheme events have been handled
+    pub fn handle_scheme_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
         self.with_orbital(orb).scheme_event()
     }
 
-    fn handle_input(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()> {
+    /// Callback to handle events over the input handle
+    pub fn handle_input(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()> {
         self.with_orbital(orb).input_event(events)
     }
 
-    fn handle_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
+    /// Called after a batch of any events have been handled
+    pub fn handle_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
         self.with_orbital(orb).redraw();
         Ok(())
     }
 
-    fn handle_window_new(
+    /// Called when a new window is requested by the scheme.
+    /// Return a window ID that will be used to identify it later.
+    #[allow(clippy::too_many_arguments)]
+    pub fn handle_window_new(
         &mut self,
         orb: &mut Orbital,
         x: i32,
@@ -310,7 +317,8 @@ impl Handler for OrbitalScheme {
             .window_new(x, y, width, height, parts, title)
     }
 
-    fn handle_window_read(
+    /// Called when the scheme is read for events
+    pub fn handle_window_read(
         &mut self,
         _orb: &mut Orbital,
         id: usize,
@@ -320,13 +328,20 @@ impl Handler for OrbitalScheme {
         Ok(window.read(buf))
     }
 
-    fn handle_window_async(&mut self, _orb: &mut Orbital, id: usize, is_async: bool) -> Result<()> {
+    /// Called when the window asks to set async
+    pub fn handle_window_async(
+        &mut self,
+        _orb: &mut Orbital,
+        id: usize,
+        is_async: bool,
+    ) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.asynchronous = is_async;
         Ok(())
     }
 
-    fn handle_window_drag(
+    /// Called when the window asks to be dragged
+    pub fn handle_window_drag(
         &mut self,
         _orb: &mut Orbital,
         id: usize, /*TODO: resize sides */
@@ -338,7 +353,8 @@ impl Handler for OrbitalScheme {
         Ok(())
     }
 
-    fn handle_window_mouse_cursor(
+    /// Called when the window asks to set mouse cursor visibility
+    pub fn handle_window_mouse_cursor(
         &mut self,
         _orb: &mut Orbital,
         id: usize,
@@ -349,7 +365,8 @@ impl Handler for OrbitalScheme {
         Ok(())
     }
 
-    fn handle_window_mouse_grab(
+    /// Called when the window asks to set mouse grabbing
+    pub fn handle_window_mouse_grab(
         &mut self,
         _orb: &mut Orbital,
         id: usize,
@@ -360,7 +377,8 @@ impl Handler for OrbitalScheme {
         Ok(())
     }
 
-    fn handle_window_mouse_relative(
+    /// Called when the window asks to set mouse relative mode
+    pub fn handle_window_mouse_relative(
         &mut self,
         _orb: &mut Orbital,
         id: usize,
@@ -371,7 +389,8 @@ impl Handler for OrbitalScheme {
         Ok(())
     }
 
-    fn handle_window_position(
+    /// Called when the window asks to be repositioned
+    pub fn handle_window_position(
         &mut self,
         _orb: &mut Orbital,
         id: usize,
@@ -391,7 +410,8 @@ impl Handler for OrbitalScheme {
         Ok(())
     }
 
-    fn handle_window_resize(
+    /// Called when the window asks to be resized
+    pub fn handle_window_resize(
         &mut self,
         _orb: &mut Orbital,
         id: usize,
@@ -413,7 +433,8 @@ impl Handler for OrbitalScheme {
         Ok(())
     }
 
-    fn handle_window_set_flag(
+    /// Called when the window wants to set a flag
+    pub fn handle_window_set_flag(
         &mut self,
         orb: &mut Orbital,
         id: usize,
@@ -449,7 +470,13 @@ impl Handler for OrbitalScheme {
         Ok(())
     }
 
-    fn handle_window_title(&mut self, _orb: &mut Orbital, id: usize, title: String) -> Result<()> {
+    /// Called when the window asks to change title
+    pub fn handle_window_title(
+        &mut self,
+        _orb: &mut Orbital,
+        id: usize,
+        title: String,
+    ) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.title = title;
         window.render_title(&self.font);
@@ -459,13 +486,16 @@ impl Handler for OrbitalScheme {
         Ok(())
     }
 
-    fn handle_window_clear_notified(&mut self, _orb: &mut Orbital, id: usize) -> Result<()> {
+    /// Called by fevent to clear notified status, assuming you're sending edge-triggered notifications
+    /// TODO: Abstract event system away completely.
+    pub fn handle_window_clear_notified(&mut self, _orb: &mut Orbital, id: usize) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.notified_read = false;
         Ok(())
     }
 
-    fn handle_window_map(
+    /// Return a reference the window's image that will be mapped in the scheme's fmap function
+    pub fn handle_window_map(
         &mut self,
         _orb: &mut Orbital,
         id: usize,
@@ -478,7 +508,8 @@ impl Handler for OrbitalScheme {
         Ok(window.map())
     }
 
-    fn handle_window_unmap(&mut self, _orb: &mut Orbital, id: usize) -> Result<()> {
+    /// Free a reference to the window's image, for use by funmap
+    pub fn handle_window_unmap(&mut self, _orb: &mut Orbital, id: usize) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         if window.maps > 0 {
             window.maps -= 1;
@@ -488,18 +519,25 @@ impl Handler for OrbitalScheme {
         Ok(())
     }
 
-    fn handle_window_properties(&mut self, _orb: &mut Orbital, id: usize) -> Result<Properties> {
+    /// Called to get window properties
+    pub fn handle_window_properties(
+        &mut self,
+        _orb: &mut Orbital,
+        id: usize,
+    ) -> Result<Properties> {
         let window = self.windows.get(&id).ok_or(Error::new(EBADF))?;
         Ok(window.properties())
     }
 
-    fn handle_window_sync(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
+    /// Called to flush a window. It's usually a good idea to redraw here.
+    pub fn handle_window_sync(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
         let window = self.windows.get(&id).ok_or(Error::new(EBADF))?;
         schedule(&mut self.redraws, window.rect());
         Ok(0)
     }
 
-    fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> Result<usize> {
+    /// Called when a window should be closed
+    pub fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> Result<usize> {
         // Unfocus current front window
         if let Some(id) = self.order.front() {
             self.focus(*id, false);
@@ -529,14 +567,16 @@ impl Handler for OrbitalScheme {
 
         res
     }
-    fn handle_clipboard_new(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
+    /// Create a clipboard from a window
+    pub fn handle_clipboard_new(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         window.clipboard_seek = 0;
         Ok(id)
     }
 
-    fn handle_clipboard_read(
+    /// Read window clipboard
+    pub fn handle_clipboard_read(
         &mut self,
         _orb: &mut Orbital,
         id: usize,
@@ -553,7 +593,8 @@ impl Handler for OrbitalScheme {
         Ok(i)
     }
 
-    fn handle_clipboard_write(
+    /// Write window clipboard
+    pub fn handle_clipboard_write(
         &mut self,
         _orb: &mut Orbital,
         id: usize,
@@ -571,7 +612,8 @@ impl Handler for OrbitalScheme {
         Ok(i)
     }
 
-    fn handle_clipboard_close(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
+    /// Close the window's clipboard access
+    pub fn handle_clipboard_close(&mut self, _orb: &mut Orbital, id: usize) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         if self.windows.contains_key(&id) {
             Ok(0)

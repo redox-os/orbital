@@ -14,6 +14,7 @@ use log::{debug, error, info};
 use orbclient::{Color, Event};
 use syscall::{data::Packet, error::EINVAL, flag::EventFlags, SchemeMut};
 
+use crate::scheme::OrbitalScheme;
 use display::Display;
 use image::ImageRef;
 use rect::Rect;
@@ -67,147 +68,6 @@ pub struct Properties<'a> {
     pub width: i32,
     pub height: i32,
     pub title: &'a str,
-}
-
-pub trait Handler {
-    /// Return true if a packet should be delayed until a display event
-    fn should_delay(&mut self, packet: &Packet) -> bool;
-
-    /// Callback to handle events over the input handle
-    fn handle_input(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()>;
-
-    /// Called after a batch of scheme events have been handled
-    fn handle_scheme_after(&mut self, _orb: &mut Orbital) -> io::Result<()>;
-    /// Called after a batch of any events have been handled
-    fn handle_after(&mut self, _orb: &mut Orbital) -> io::Result<()>;
-
-    /// Called when a new window is requested by the scheme.
-    /// Return a window ID that will be used to identify it later.
-    #[allow(clippy::too_many_arguments)]
-    fn handle_window_new(
-        &mut self,
-        orb: &mut Orbital,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
-        flags: &str,
-        title: String,
-    ) -> syscall::Result<usize>;
-    /// Called when the scheme is read for events
-    fn handle_window_read(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        buf: &mut [Event],
-    ) -> syscall::Result<usize>;
-    /// Called when the window asks to set async
-    fn handle_window_async(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        is_async: bool,
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to be dragged
-    fn handle_window_drag(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize, /*TODO: resize sides */
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to set mouse cursor visibility
-    fn handle_window_mouse_cursor(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        visible: bool,
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to set mouse grabbing
-    fn handle_window_mouse_grab(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        grab: bool,
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to set mouse relative mode
-    fn handle_window_mouse_relative(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        relative: bool,
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to be repositioned
-    fn handle_window_position(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        x: Option<i32>,
-        y: Option<i32>,
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to be resized
-    fn handle_window_resize(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        w: Option<i32>,
-        h: Option<i32>,
-    ) -> syscall::Result<()>;
-    /// Called when the window wants to set a flag
-    fn handle_window_set_flag(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        flag: char,
-        value: bool,
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to change title
-    fn handle_window_title(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        title: String,
-    ) -> syscall::Result<()>;
-    /// Called by fevent to clear notified status, assuming you're sending edge-triggered notifications
-    /// TODO: Abstract event system away completely.
-    fn handle_window_clear_notified(&mut self, orb: &mut Orbital, id: usize)
-        -> syscall::Result<()>;
-    /// Return a reference the window's image that will be mapped in the scheme's fmap function
-    fn handle_window_map(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        create_new: bool,
-    ) -> syscall::Result<&mut [Color]>;
-    /// Free a reference to the window's image, for use by funmap
-    fn handle_window_unmap(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<()>;
-    /// Called to get window properties
-    fn handle_window_properties(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-    ) -> syscall::Result<Properties>;
-    /// Called to flush a window. It's usually a good idea to redraw here.
-    fn handle_window_sync(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
-    /// Called when a window should be closed
-    fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
-
-    // Create a clipboard from a window
-    fn handle_clipboard_new(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
-    // Read window clipboard
-    fn handle_clipboard_read(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        buf: &mut [u8],
-    ) -> syscall::Result<usize>;
-    // Write window clipboard
-    fn handle_clipboard_write(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        buf: &[u8],
-    ) -> syscall::Result<usize>;
-    // Close the window's clipboard access
-    fn handle_clipboard_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
 }
 
 pub struct PendingRequest {
@@ -396,10 +256,7 @@ impl Orbital {
         self.displays[0].resize(width, height);
     }
     /// Start the main loop
-    pub fn run<H>(self, handler: H) -> Result<(), Error>
-    where
-        H: Handler + 'static,
-    {
+    pub fn run(self, handler: OrbitalScheme) -> Result<(), Error> {
         user_data! {
             enum Source {
                 Scheme,
@@ -517,11 +374,11 @@ impl Orbital {
         Ok(())
     }
 }
-pub struct OrbitalHandler<H: Handler> {
+pub struct OrbitalHandler {
     orb: Orbital,
-    handler: H,
+    handler: OrbitalScheme,
 }
-impl<H: Handler> SchemeMut for OrbitalHandler<H> {
+impl SchemeMut for OrbitalHandler {
     fn open(&mut self, path: &str, _: usize, _: u32, _: u32) -> syscall::Result<usize> {
         let mut parts = path.split('/');
 
