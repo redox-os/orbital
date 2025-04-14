@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::rc::Rc;
 use std::{
     cmp,
@@ -89,7 +90,10 @@ const ALT_ANY_MODIFIER: u8 = 1 << 6;
 const SUPER_MODIFIER: u8 = 1 << 7;
 
 pub struct OrbitalScheme {
-    pub displays: Vec<Display>,
+    displays: Vec<Display>,
+    hw_cursor: bool,
+    hw_cursor_initialized: bool,
+
     window_max: Image,
     window_max_unfocused: Image,
     window_close: Image,
@@ -127,7 +131,10 @@ pub struct OrbitalScheme {
 }
 
 impl OrbitalScheme {
-    pub(crate) fn new(displays: Vec<Display>, config: Rc<Config>) -> Result<OrbitalScheme, String> {
+    pub(crate) fn new(
+        mut displays: Vec<Display>,
+        config: Rc<Config>,
+    ) -> Result<OrbitalScheme, String> {
         let mut redraws = Vec::new();
         let mut scale = 1;
         for display in displays.iter() {
@@ -164,8 +171,23 @@ impl OrbitalScheme {
 
         let font = orbfont::Font::find(Some("Sans"), None, None)?;
 
+        //Reading display file is only used to check if GPU cursor is supported
+        let mut buf_array = [0; 1];
+        let buf: &mut [u8] = &mut buf_array;
+        let _ret = displays[0].file.read(buf);
+
+        let mut hw_cursor: bool = false;
+
+        if buf[0] == 1 {
+            info!("Hardware cursor detected");
+            hw_cursor = true;
+        }
+
         Ok(OrbitalScheme {
             displays,
+            hw_cursor,
+            hw_cursor_initialized: false,
+
             window_max: Image::from_path_scale(&config.window_max, scale)
                 .unwrap_or(Image::new(0, 0)),
             window_max_unfocused: Image::from_path_scale(&config.window_max_unfocused, scale)
@@ -693,7 +715,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
                         }
                     }
 
-                    if !self.orb.hw_cursor {
+                    if !self.scheme.hw_cursor {
                         let cursor_intersect = rect.intersection(&cursor_rect);
                         if !cursor_intersect.is_empty() {
                             if let Some(cursor) = self.scheme.cursors.get_mut(&self.scheme.cursor_i)
@@ -1484,7 +1506,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
             self.scheme.hover = new_hover;
         }
 
-        if self.orb.hw_cursor {
+        if self.scheme.hw_cursor {
             self.scheme.cursor_x = event.x;
             self.scheme.cursor_y = event.y;
             self.update_hw_cursor(new_cursor);
@@ -1515,7 +1537,7 @@ impl<'a> OrbitalSchemeEvent<'a> {
 
         // Handle relative window cursor
         if let Some((x, y, kind)) = relative_cursor_opt {
-            if self.orb.hw_cursor {
+            if self.scheme.hw_cursor {
                 self.scheme.cursor_x = x;
                 self.scheme.cursor_y = y;
                 self.update_hw_cursor(kind);
@@ -1750,8 +1772,8 @@ impl<'a> OrbitalSchemeEvent<'a> {
     pub fn event(&mut self, event_union: Event) {
         self.scheme.rezbuffer();
 
-        if self.orb.hw_cursor
-            && (!self.orb.hw_cursor_initialized
+        if self.scheme.hw_cursor
+            && (!self.scheme.hw_cursor_initialized
                 || self.scheme.update_cursor_timer.elapsed().as_millis() > 1000)
         {
             let cursor_kind = self.scheme.cursor_i;
@@ -1908,10 +1930,10 @@ impl<'a> OrbitalSchemeEvent<'a> {
     fn update_hw_cursor(&mut self, new_cursor: CursorKind) {
         //header flag that indicates update_cursor or move_cursor
         let mut header: u32 = 0;
-        if self.scheme.cursor_i != new_cursor || !self.orb.hw_cursor_initialized {
+        if self.scheme.cursor_i != new_cursor || !self.scheme.hw_cursor_initialized {
             header = 1;
             self.scheme.cursor_i = new_cursor;
-            self.orb.hw_cursor_initialized = true;
+            self.scheme.hw_cursor_initialized = true;
         }
 
         //retrieve image data
