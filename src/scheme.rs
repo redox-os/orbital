@@ -15,9 +15,9 @@ use orbclient::{
     MouseEvent, MouseRelativeEvent, MoveEvent, QuitEvent, Renderer, ResizeEvent, ScreenEvent,
     TextInputEvent,
 };
-use syscall::data::Packet;
+use redox_scheme::Response;
 use syscall::error::{Error, Result, EBADF};
-use syscall::number::SYS_READ;
+use syscall::EVENT_READ;
 
 use crate::config::Config;
 use crate::core::image::ImageRef;
@@ -314,13 +314,11 @@ impl OrbitalScheme {
 
 impl OrbitalScheme {
     /// Return true if a packet should be delayed until a display event
-    pub fn should_delay(&mut self, packet: &Packet) -> bool {
-        packet.a == SYS_READ
-            && self
-                .windows
-                .get(&packet.b)
-                .map(|window| !window.asynchronous)
-                .unwrap_or(true)
+    pub fn should_delay(&mut self, id: usize) -> bool {
+        self.windows
+            .get(&id)
+            .map(|window| !window.asynchronous)
+            .unwrap_or(true)
     }
 
     /// Called after a batch of scheme events have been handled
@@ -329,16 +327,7 @@ impl OrbitalScheme {
             if !window.events.is_empty() {
                 if !window.notified_read || window.asynchronous {
                     window.notified_read = true;
-                    orb.scheme_write(&Packet {
-                        id: 0,
-                        pid: 0,
-                        uid: 0,
-                        gid: 0,
-                        a: syscall::number::SYS_FEVENT,
-                        b: *id,
-                        c: syscall::flag::EVENT_READ.bits(),
-                        d: window.events.len() * mem::size_of::<Event>(),
-                    })?;
+                    orb.scheme_write(Response::post_fevent(*id, EVENT_READ.bits()))?;
                 }
             } else {
                 window.notified_read = false;
@@ -539,14 +528,14 @@ impl OrbitalScheme {
     }
 
     /// Called to flush a window. It's usually a good idea to redraw here.
-    pub fn handle_window_sync(&mut self, id: usize) -> Result<usize> {
+    pub fn handle_window_sync(&mut self, id: usize) -> Result<()> {
         let window = self.windows.get(&id).ok_or(Error::new(EBADF))?;
         schedule(&mut self.redraws, window.rect());
-        Ok(0)
+        Ok(())
     }
 
     /// Called when a window should be closed
-    pub fn handle_window_close(&mut self, id: usize) -> Result<usize> {
+    pub fn handle_window_close(&mut self, id: usize) {
         // Unfocus current front window
         if let Some(id) = self.order.front() {
             self.focus(*id, false);
@@ -554,13 +543,10 @@ impl OrbitalScheme {
 
         self.order.retain(|&e| e != id);
 
-        let res = if let Some(window) = self.windows.remove(&id) {
+        if let Some(window) = self.windows.remove(&id) {
             schedule(&mut self.redraws, window.title_rect());
             schedule(&mut self.redraws, window.rect());
-            Ok(0)
-        } else {
-            Err(Error::new(EBADF))
-        };
+        }
 
         // Focus current front window
         if let Some(id) = self.order.front() {
@@ -573,8 +559,6 @@ impl OrbitalScheme {
             y: self.cursor_y,
         };
         self.mouse_event(event);
-
-        res
     }
     /// Create a clipboard from a window
     pub fn handle_clipboard_new(&mut self, id: usize) -> Result<usize> {
@@ -612,13 +596,8 @@ impl OrbitalScheme {
     }
 
     /// Close the window's clipboard access
-    pub fn handle_clipboard_close(&mut self, id: usize) -> Result<usize> {
+    pub fn handle_clipboard_close(&mut self, _id: usize) {
         //TODO: implement better clipboard mechanism
-        if self.windows.contains_key(&id) {
-            Ok(0)
-        } else {
-            Err(Error::new(EBADF))
-        }
     }
 
     fn redraw(&mut self) {
