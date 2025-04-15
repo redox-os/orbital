@@ -1,5 +1,6 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
+#![feature(let_chains)]
 
 use crate::core::Orbital;
 use log::{debug, error, info, warn};
