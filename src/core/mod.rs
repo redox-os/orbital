@@ -602,7 +602,7 @@ impl SchemeSync for OrbitalHandler {
         #[allow(clippy::write_literal)] // TODO: Z order
         let _ = write!(
             buf,
-            "orbital:{}/{}/{}/{}/{}/{}",
+            "{}/{}/{}/{}/{}/{}",
             props.flags, props.x, props.y, props.width, props.height, props.title
         );
         Ok(original_len - buf.len())
