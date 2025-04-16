@@ -226,19 +226,19 @@ impl OrbitalScheme {
     }
 
     //TODO: replace these adapter functions
-    pub fn image(&self) -> &ImageRef<'static> {
+    fn image(&self) -> &ImageRef<'static> {
         &self.displays[0].image
     }
-    pub fn image_mut(&mut self) -> &mut ImageRef<'static> {
+    fn image_mut(&mut self) -> &mut ImageRef<'static> {
         &mut self.displays[0].image
     }
     /// Return the screen rectangle
-    pub fn screen_rect(&self) -> Rect {
+    fn screen_rect(&self) -> Rect {
         self.displays[0].screen_rect()
     }
 
     /// Resize the inner image buffer. You're responsible for redrawing.
-    pub fn resize(&mut self, width: i32, height: i32) {
+    fn resize(&mut self, width: i32, height: i32) {
         //TODO: should other screens be moved after a resize?
         //TODO: support resizing other screens?
         self.displays[0].resize(width, height);
