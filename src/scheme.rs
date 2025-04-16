@@ -244,6 +244,16 @@ impl OrbitalScheme {
         self.displays[0].resize(width, height);
     }
 
+    fn update_window(redraws: &mut Vec<Rect>, window: &mut Window, f: impl FnOnce(&mut Window)) {
+        schedule(redraws, window.title_rect());
+        schedule(redraws, window.rect());
+
+        f(window);
+
+        schedule(redraws, window.title_rect());
+        schedule(redraws, window.rect());
+    }
+
     fn cursor_rect(&self) -> Rect {
         let cursor = &self.cursors[&self.cursor_i];
         let (off_x, off_y) = match self.cursor_i {
@@ -265,9 +275,9 @@ impl OrbitalScheme {
 
     fn focus(&mut self, id: usize, focused: bool) {
         if let Some(window) = self.windows.get_mut(&id) {
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
-            window.event(FocusEvent { focused }.to_event());
+            Self::update_window(&mut self.redraws, window, |window| {
+                window.event(FocusEvent { focused }.to_event());
+            });
         }
     }
 
@@ -418,14 +428,10 @@ impl OrbitalScheme {
         y: Option<i32>,
     ) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
-        schedule(&mut self.redraws, window.title_rect());
-        schedule(&mut self.redraws, window.rect());
-
-        window.x = x.unwrap_or(window.x);
-        window.y = y.unwrap_or(window.y);
-
-        schedule(&mut self.redraws, window.title_rect());
-        schedule(&mut self.redraws, window.rect());
+        Self::update_window(&mut self.redraws, window, |window| {
+            window.x = x.unwrap_or(window.x);
+            window.y = y.unwrap_or(window.y);
+        });
 
         Ok(())
     }
@@ -438,16 +444,11 @@ impl OrbitalScheme {
         h: Option<i32>,
     ) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
-        schedule(&mut self.redraws, window.title_rect());
-        schedule(&mut self.redraws, window.rect());
-
-        let w = w.unwrap_or(window.width());
-        let h = h.unwrap_or(window.height());
-
-        window.set_size(w, h);
-
-        schedule(&mut self.redraws, window.title_rect());
-        schedule(&mut self.redraws, window.rect());
+        Self::update_window(&mut self.redraws, window, |window| {
+            let w = w.unwrap_or(window.width());
+            let h = h.unwrap_or(window.height());
+            window.set_size(w, h);
+        });
 
         Ok(())
     }
@@ -469,14 +470,9 @@ impl OrbitalScheme {
             }
         } else {
             // Setting flag may change visibility, make sure to queue redraws both before and after
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
-
-            window.set_flag(flag, value);
-
-            // Setting flag may change visibility, make sure to queue redraws both before and after
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
+            Self::update_window(&mut self.redraws, window, |window| {
+                window.set_flag(flag, value);
+            });
         }
 
         Ok(())
@@ -1024,35 +1020,31 @@ impl OrbitalScheme {
     fn move_front_window(&mut self, h_movement: i32, v_movement: i32) {
         if let Some(id) = self.order.front() {
             if let Some(window) = self.windows.get_mut(id) {
-                schedule(&mut self.redraws, window.title_rect());
-                schedule(&mut self.redraws, window.rect());
+                Self::update_window(&mut self.redraws, window, |window| {
+                    // Align location to grid
+                    window.x -= window.x % GRID_SIZE;
+                    window.y -= window.y % GRID_SIZE;
 
-                // Align location to grid
-                window.x -= window.x % GRID_SIZE;
-                window.y -= window.y % GRID_SIZE;
+                    window.x += h_movement;
+                    window.y += v_movement;
 
-                window.x += h_movement;
-                window.y += v_movement;
+                    // Ensure window remains visible
+                    window.x = cmp::max(
+                        -window.width() + GRID_SIZE,
+                        cmp::min(self.displays[0].image.width() - GRID_SIZE, window.x),
+                    );
+                    window.y = cmp::max(
+                        -window.height() + GRID_SIZE,
+                        cmp::min(self.displays[0].image.height() - GRID_SIZE, window.y),
+                    );
 
-                // Ensure window remains visible
-                window.x = cmp::max(
-                    -window.width() + GRID_SIZE,
-                    cmp::min(self.displays[0].image.width() - GRID_SIZE, window.x),
-                );
-                window.y = cmp::max(
-                    -window.height() + GRID_SIZE,
-                    cmp::min(self.displays[0].image.height() - GRID_SIZE, window.y),
-                );
-
-                let move_event = MoveEvent {
-                    x: window.x,
-                    y: window.y,
-                }
-                .to_event();
-                window.event(move_event);
-
-                schedule(&mut self.redraws, window.title_rect());
-                schedule(&mut self.redraws, window.rect());
+                    let move_event = MoveEvent {
+                        x: window.x,
+                        y: window.y,
+                    }
+                    .to_event();
+                    window.event(move_event);
+                });
             }
         }
     }
@@ -1080,51 +1072,50 @@ impl OrbitalScheme {
         if let Some(id) = window_id.or(self.order.front()) {
             if let Some(window) = self.windows.get_mut(id) {
                 let display_index = Self::get_display_index(&self.displays, &window.rect());
-                schedule(&mut self.redraws, window.title_rect());
-                schedule(&mut self.redraws, window.rect());
+                Self::update_window(&mut self.redraws, window, |window| {
+                    let (x, y, width, height) = match window.restore.take() {
+                        None => {
+                            // we are about to maximize window, so store current size for restore later
+                            window.restore = Some(window.rect());
 
-                let (x, y, width, height) = match window.restore.take() {
-                    None => {
-                        // we are about to maximize window, so store current size for restore later
-                        window.restore = Some(window.rect());
+                            let top = self.displays[display_index].y + window.title_rect().height();
+                            let left = self.displays[display_index].x;
+                            let max_height = self.displays[display_index].image.height()
+                                - window.title_rect().height();
+                            let max_width = self.displays[display_index].image.width();
+                            let half_width = (max_width / 2) as u32;
+                            let half_height = (max_height / 2) as u32;
 
-                        let top = self.displays[display_index].y + window.title_rect().height();
-                        let left = self.displays[display_index].x;
-                        let max_height = self.displays[display_index].image.height()
-                            - window.title_rect().height();
-                        let max_width = self.displays[display_index].image.width();
-                        let half_width = (max_width / 2) as u32;
-                        let half_height = (max_height / 2) as u32;
-
-                        match position {
-                            LeftHalf => (left, top, half_width, max_height as u32),
-                            RightHalf => {
-                                (left + half_width as i32, top, half_width, max_height as u32)
+                            match position {
+                                LeftHalf => (left, top, half_width, max_height as u32),
+                                RightHalf => {
+                                    (left + half_width as i32, top, half_width, max_height as u32)
+                                }
+                                TopHalf => (left, top, max_width as u32, half_height),
+                                BottomHalf => (
+                                    left,
+                                    top + half_height as i32,
+                                    max_width as u32,
+                                    half_height,
+                                ),
+                                FullScreen => (left, top, max_width as u32, max_height as u32),
                             }
-                            TopHalf => (left, top, max_width as u32, half_height),
-                            BottomHalf => (
-                                left,
-                                top + half_height as i32,
-                                max_width as u32,
-                                half_height,
-                            ),
-                            FullScreen => (left, top, max_width as u32, max_height as u32),
                         }
-                    }
-                    Some(restore) => (
-                        restore.left(),
-                        restore.top(),
-                        restore.width() as u32,
-                        restore.height() as u32,
-                    ),
-                };
+                        Some(restore) => (
+                            restore.left(),
+                            restore.top(),
+                            restore.width() as u32,
+                            restore.height() as u32,
+                        ),
+                    };
 
-                // TODO understand why this is needed and why handle_window_position isn't enough
-                window.x = x;
-                window.y = y;
-                window.event(MoveEvent { x, y }.to_event());
+                    // TODO understand why this is needed and why handle_window_position isn't enough
+                    window.x = x;
+                    window.y = y;
+                    window.event(MoveEvent { x, y }.to_event());
 
-                window.event(ResizeEvent { width, height }.to_event());
+                    window.event(ResizeEvent { width, height }.to_event());
+                });
             };
         }
     }
@@ -1265,24 +1256,20 @@ impl OrbitalScheme {
             DragMode::Title(window_id, drag_x, drag_y) => {
                 if let Some(window) = self.windows.get_mut(&window_id) {
                     if drag_x != event.x || drag_y != event.y {
-                        schedule(&mut self.redraws, window.title_rect());
-                        schedule(&mut self.redraws, window.rect());
+                        Self::update_window(&mut self.redraws, window, |window| {
+                            //TODO: Min and max
+                            window.x += event.x - drag_x;
+                            window.y += event.y - drag_y;
 
-                        //TODO: Min and max
-                        window.x += event.x - drag_x;
-                        window.y += event.y - drag_y;
+                            let move_event = MoveEvent {
+                                x: window.x,
+                                y: window.y,
+                            }
+                            .to_event();
+                            window.event(move_event);
 
-                        let move_event = MoveEvent {
-                            x: window.x,
-                            y: window.y,
-                        }
-                        .to_event();
-                        window.event(move_event);
-
-                        self.dragging = DragMode::Title(window_id, event.x, event.y);
-
-                        schedule(&mut self.redraws, window.title_rect());
-                        schedule(&mut self.redraws, window.rect());
+                            self.dragging = DragMode::Title(window_id, event.x, event.y);
+                        });
                     }
                 } else {
                     self.dragging = DragMode::None;
@@ -1297,15 +1284,10 @@ impl OrbitalScheme {
 
                     if w > 0 {
                         if x != window.x {
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
-
-                            window.x = x;
-                            let move_event = MoveEvent { x, y: window.y }.to_event();
-                            window.event(move_event);
-
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
+                            Self::update_window(&mut self.redraws, window, |window| {
+                                window.x = x;
+                                window.event(MoveEvent { x, y: window.y }.to_event());
+                            });
                         }
 
                         if w != window.width() {
@@ -1363,15 +1345,10 @@ impl OrbitalScheme {
 
                     if w > 0 && h > 0 {
                         if x != window.x {
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
-
-                            window.x = x;
-                            let move_event = MoveEvent { x, y: window.y }.to_event();
-                            window.event(move_event);
-
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
+                            Self::update_window(&mut self.redraws, window, |window| {
+                                window.x = x;
+                                window.event(MoveEvent { x, y: window.y }.to_event());
+                            });
                         }
 
                         if w != window.width() || h != window.height() {
