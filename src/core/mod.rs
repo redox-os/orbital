@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::VecDeque,
     env,
     fs::File,
     io::{self, ErrorKind, Read, Write},
@@ -12,7 +12,14 @@ use event::{user_data, EventQueue};
 use libredox::flag;
 use log::{debug, error};
 use orbclient::{Color, Event};
-use syscall::{data::Packet, error::EINVAL, flag::EventFlags, SchemeMut};
+use redox_scheme::{
+    scheme::{IntoTag, Op, OpRead, SchemeSync},
+    CallerCtx, OpenResult, RequestKind, Response, SignalBehavior, Socket,
+};
+use syscall::{
+    error::EINVAL, flag::EventFlags, schemev2::NewFdFlags, EAGAIN, ECANCELED, EOPNOTSUPP,
+    EWOULDBLOCK,
+};
 
 use crate::scheme::OrbitalScheme;
 use display::Display;
@@ -68,15 +75,9 @@ pub struct Properties<'a> {
     pub title: &'a str,
 }
 
-pub struct PendingRequest {
-    pub packet: Packet,
-    pub canceling: bool,
-}
-
 pub struct Orbital {
-    pub scheme: File,
-    pub todo: Vec<PendingRequest>,
-    pub maps: BTreeMap<usize, (usize, usize)>,
+    pub scheme: Socket,
+    pub delayed: VecDeque<(CallerCtx, OpRead)>,
 
     /// Handle to "/scheme/input/consumer" to recieve input events.
     pub input: File,
@@ -133,15 +134,9 @@ impl Orbital {
             io::Error::from_raw_os_error(err.errno())
         })?;
 
-        let scheme = libredox::call::open(
-            ":orbital",
-            flag::O_CREAT | flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR,
-            0,
-        )
-        .map(|socket| unsafe { File::from_raw_fd(socket as RawFd) })
-        .map_err(|err| {
-            error!("failed to open ':orbital': {}", err);
-            io::Error::from_raw_os_error(err.errno())
+        let scheme = Socket::nonblock("orbital").map_err(|err| {
+            error!("failed to open '/scheme/orbital': {}", err);
+            err
         })?;
 
         let mut buf: [u8; 4096] = [0; 4096];
@@ -208,8 +203,7 @@ impl Orbital {
         Ok((
             Orbital {
                 scheme,
-                todo: Vec::new(),
-                maps: BTreeMap::new(),
+                delayed: VecDeque::new(),
                 input: input_handle,
             },
             displays,
@@ -217,8 +211,10 @@ impl Orbital {
     }
 
     /// Write a Packet to scheme I/O
-    pub fn scheme_write(&mut self, packet: &Packet) -> io::Result<()> {
-        self.scheme.write(packet).map(|_| ())
+    pub fn scheme_write(&mut self, response: Response) -> io::Result<()> {
+        self.scheme
+            .write_response(response, SignalBehavior::Restart)?;
+        Ok(())
     }
 
     /// Start the main loop
@@ -234,64 +230,96 @@ impl Orbital {
 
         //TODO: Figure out why rand: gets opened after this: libredox::call::setrens(0, 0)?;
 
-        let scheme_fd = self.scheme.as_raw_fd();
+        let scheme_fd = self.scheme.inner().raw();
         let input_fd = self.input.as_raw_fd();
 
         let mut me = OrbitalHandler { orb: self, handler };
-        event_queue.subscribe(scheme_fd as usize, Source::Scheme, event::EventFlags::READ)?;
+        event_queue.subscribe(scheme_fd, Source::Scheme, event::EventFlags::READ)?;
         event_queue.subscribe(input_fd as usize, Source::Input, event::EventFlags::READ)?;
 
         let mut event_iter = event_queue.map(|e| e.map(|e| e.user_data));
         let mut fake_input_event = None; // TODO: a hack
+        let mut request_buf = Vec::with_capacity(16);
 
         'events: while let Some(event_res) = fake_input_event.take().or_else(|| event_iter.next()) {
             match event_res? {
                 Source::Scheme => {
-                    let mut packets = [Packet::default(); 16];
                     loop {
-                        match read_to_slice(&mut me.orb.scheme, &mut packets) {
-                            Ok(0) => break 'events,
-                            Ok(count) => {
-                                let packets = &mut packets[..count];
-                                for packet in packets.iter_mut() {
-                                    let delay = me.handler.should_delay(packet);
-
-                                    if packet.id == 0 && packet.a == syscall::KSMSG_CANCEL {
-                                        if let Some(idx) = me
-                                            .orb
-                                            .todo
-                                            .iter()
-                                            .position(|req| req.packet.id == packet.b as u64)
-                                        {
-                                            me.orb.todo[idx].canceling = true;
-                                        }
-                                        fake_input_event = Some(Ok(Source::Input));
-                                        continue;
-                                    }
-
-                                    me.handle(packet);
-
-                                    if delay && packet.a == 0 {
-                                        me.orb.todo.push(PendingRequest {
-                                            packet: *packet,
-                                            canceling: false,
-                                        });
-                                    } else {
-                                        me.orb.scheme_write(packet)?;
-                                    }
-                                }
-
-                                me.handler.handle_scheme_after(&mut me.orb)?;
-                                me.handler.handle_after()?;
-                            }
+                        match me
+                            .orb
+                            .scheme
+                            .read_requests(&mut request_buf, SignalBehavior::Restart)
+                        {
+                            Ok(()) => (),
                             Err(err) => {
-                                if err.kind() == ErrorKind::WouldBlock {
+                                if err.errno == EWOULDBLOCK || err.errno == EAGAIN {
                                     continue 'events;
                                 } else {
                                     return Err(err.into());
                                 }
                             }
                         }
+                        if request_buf.is_empty() {
+                            break 'events;
+                        }
+                        for request in request_buf.drain(..) {
+                            let req = match request.kind() {
+                                RequestKind::Call(req) => req,
+                                RequestKind::OnClose { id } => {
+                                    me.on_close(id);
+                                    continue;
+                                }
+                                // TODO: faster than search?
+                                RequestKind::Cancellation(req) => {
+                                    if let Some(idx) = me
+                                        .orb
+                                        .delayed
+                                        .iter()
+                                        .position(|(_, op)| op.req_id() == req.id)
+                                    {
+                                        let (_, op) = me
+                                            .orb
+                                            .delayed
+                                            .remove(idx)
+                                            .expect("already found at index");
+                                        me.orb.scheme_write(Response::err(ECANCELED, op))?;
+                                    }
+                                    fake_input_event = Some(Ok(Source::Input));
+                                    continue;
+                                }
+                                _ => continue, // TODO?
+                            };
+                            let caller_ctx = req.caller();
+                            let op = match req.op() {
+                                Ok(op) => op,
+                                Err(req) => {
+                                    me.orb.scheme_write(Response::err(EOPNOTSUPP, req))?;
+                                    continue;
+                                }
+                            };
+                            if let Op::Read(mut read_op) = op {
+                                let should_delay = me.handler.should_delay(read_op.fd);
+                                let res = me.read(
+                                    read_op.fd,
+                                    read_op.buf(),
+                                    // dont-care
+                                    0,
+                                    // dont-care
+                                    0,
+                                    &caller_ctx,
+                                );
+                                if should_delay && res == Ok(0) {
+                                    me.orb.delayed.push_back((caller_ctx, read_op));
+                                } else {
+                                    me.orb.scheme_write(Response::new(res, read_op))?;
+                                }
+                            } else {
+                                let resp = op.handle_sync(caller_ctx, &mut me);
+                                me.orb.scheme_write(resp)?;
+                            }
+                        }
+                        me.handler.handle_scheme_after(&mut me.orb)?;
+                        me.handler.handle_after()?;
                     }
                 }
                 Source::Input => {
@@ -302,28 +330,29 @@ impl Orbital {
                             count => {
                                 let events = &mut events[..count];
 
-                                let mut i = 0;
-                                while i < me.orb.todo.len() {
-                                    let PendingRequest {
-                                        mut packet,
-                                        canceling,
-                                    } = me.orb.todo[i];
+                                let mut delayed_left = me.orb.delayed.len();
 
-                                    let delay = me.handler.should_delay(&packet);
+                                while delayed_left > 0
+                                    && let Some((ctx, mut read_op)) = me.orb.delayed.pop_front()
+                                {
+                                    delayed_left -= 1;
 
-                                    me.handle(&mut packet);
+                                    let should_delay = me.handler.should_delay(read_op.fd);
 
-                                    if delay && packet.a == 0 && !canceling {
-                                        i += 1;
-                                    } else if canceling {
-                                        me.orb.todo.remove(i);
-                                        packet.a = syscall::Error::mux(Err(syscall::Error::new(
-                                            syscall::ECANCELED,
-                                        )));
-                                        me.orb.scheme_write(&packet)?;
+                                    // TODO: deduplicate with the same code above
+                                    let res = me.read(
+                                        read_op.fd,
+                                        read_op.buf(),
+                                        // dont-care
+                                        0,
+                                        // dont-care
+                                        0,
+                                        &ctx,
+                                    );
+                                    if should_delay && res == Ok(0) {
+                                        me.orb.delayed.push_back((ctx, read_op));
                                     } else {
-                                        me.orb.todo.remove(i);
-                                        me.orb.scheme_write(&packet)?;
+                                        me.orb.scheme_write(Response::new(res, read_op))?;
                                     }
                                 }
 
@@ -331,6 +360,7 @@ impl Orbital {
                             }
                         }
                     }
+                    me.handler.handle_scheme_after(&mut me.orb)?;
                     me.handler.handle_after()?;
                 }
             }
@@ -344,8 +374,8 @@ pub struct OrbitalHandler {
     orb: Orbital,
     handler: OrbitalScheme,
 }
-impl SchemeMut for OrbitalHandler {
-    fn open(&mut self, path: &str, _: usize, _: u32, _: u32) -> syscall::Result<usize> {
+impl SchemeSync for OrbitalHandler {
+    fn open(&mut self, path: &str, _flags: usize, _ctx: &CallerCtx) -> syscall::Result<OpenResult> {
         let mut parts = path.split('/');
 
         let flags = parts.next().unwrap_or("");
@@ -361,20 +391,37 @@ impl SchemeMut for OrbitalHandler {
             title.push_str(part);
         }
 
-        self.handler
-            .handle_window_new(x, y, width, height, flags, title)
+        let id = self
+            .handler
+            .handle_window_new(x, y, width, height, flags, title)?;
+        Ok(OpenResult::ThisScheme {
+            number: id,
+            flags: NewFdFlags::empty(),
+        })
     }
-    fn dup(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
+    fn dup(&mut self, id: usize, buf: &[u8], _ctx: &CallerCtx) -> syscall::Result<OpenResult> {
         if buf == b"clipboard" {
             //TODO: implement better clipboard mechanism
-            self.handler
+            let id = self
+                .handler
                 .handle_clipboard_new(id)
-                .map(|id| id | CLIPBOARD_FLAG)
+                .map(|id| id | CLIPBOARD_FLAG)?;
+            Ok(OpenResult::ThisScheme {
+                number: id,
+                flags: NewFdFlags::empty(),
+            })
         } else {
             Err(syscall::Error::new(EINVAL))
         }
     }
-    fn read(&mut self, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
+    fn read(
+        &mut self,
+        id: usize,
+        buf: &mut [u8],
+        _offset: u64,
+        _flags: u32,
+        _ctx: &CallerCtx,
+    ) -> syscall::Result<usize> {
         //TODO: implement better clipboard mechanism
         if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
             return self
@@ -391,7 +438,14 @@ impl SchemeMut for OrbitalHandler {
         let n = self.handler.handle_window_read(id, slice)?;
         Ok(n * mem::size_of::<Event>())
     }
-    fn write(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
+    fn write(
+        &mut self,
+        id: usize,
+        buf: &[u8],
+        _offset: u64,
+        _flags: u32,
+        _ctx: &CallerCtx,
+    ) -> syscall::Result<usize> {
         //TODO: implement better clipboard mechanism
         if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
             return self
@@ -500,7 +554,12 @@ impl SchemeMut for OrbitalHandler {
             Err(syscall::Error::new(EINVAL))
         }
     }
-    fn fevent(&mut self, id: usize, _flags: EventFlags) -> syscall::Result<EventFlags> {
+    fn fevent(
+        &mut self,
+        id: usize,
+        _flags: EventFlags,
+        _ctx: &CallerCtx,
+    ) -> syscall::Result<EventFlags> {
         self.handler
             .handle_window_clear_notified(id)
             .and(Ok(EventFlags::empty()))
@@ -537,27 +596,19 @@ impl SchemeMut for OrbitalHandler {
         Ok(0)
     }
     */
-    fn fpath(&mut self, id: usize, mut buf: &mut [u8]) -> syscall::Result<usize> {
+    fn fpath(&mut self, id: usize, mut buf: &mut [u8], _ctx: &CallerCtx) -> syscall::Result<usize> {
         let props = self.handler.handle_window_properties(id)?;
         let original_len = buf.len();
         #[allow(clippy::write_literal)] // TODO: Z order
         let _ = write!(
             buf,
-            "orbital:{}/{}/{}/{}/{}/{}",
+            "{}/{}/{}/{}/{}/{}",
             props.flags, props.x, props.y, props.width, props.height, props.title
         );
         Ok(original_len - buf.len())
     }
-    fn fsync(&mut self, id: usize) -> syscall::Result<usize> {
+    fn fsync(&mut self, id: usize, _ctx: &CallerCtx) -> syscall::Result<()> {
         self.handler.handle_window_sync(id)
-    }
-    fn close(&mut self, id: usize) -> syscall::Result<usize> {
-        //TODO: implement better clipboard mechanism
-        if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
-            return self.handler.handle_clipboard_close(id & !CLIPBOARD_FLAG);
-        }
-
-        self.handler.handle_window_close(id)
     }
     fn mmap_prep(
         &mut self,
@@ -565,6 +616,7 @@ impl SchemeMut for OrbitalHandler {
         _offset: u64,
         size: usize,
         _flags: syscall::MapFlags,
+        _ctx: &CallerCtx,
     ) -> syscall::Result<usize> {
         //TODO: handle offset, flags?
         let data = self.handler.handle_window_map(id, true)?;
@@ -581,11 +633,22 @@ impl SchemeMut for OrbitalHandler {
         _offset: u64,
         _size: usize,
         _flags: syscall::MunmapFlags,
-    ) -> syscall::Result<usize> {
+        _ctx: &CallerCtx,
+    ) -> syscall::Result<()> {
         //TODO: handle offset, size, flags?
         self.handler.handle_window_unmap(id)?;
 
-        Ok(0)
+        Ok(())
+    }
+}
+impl OrbitalHandler {
+    fn on_close(&mut self, id: usize) {
+        //TODO: implement better clipboard mechanism
+        if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
+            return self.handler.handle_clipboard_close(id & !CLIPBOARD_FLAG);
+        }
+
+        self.handler.handle_window_close(id)
     }
 }
 
