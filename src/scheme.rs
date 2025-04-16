@@ -298,6 +298,13 @@ impl OrbitalScheme {
     // - Window sets cursor on/off
     // - Window moves
     fn update_cursor(&mut self, x: i32, y: i32, kind: CursorKind) {
+        if self.hw_cursor {
+            self.cursor_x = x;
+            self.cursor_y = y;
+            self.update_hw_cursor(kind);
+            return;
+        }
+
         if kind != self.cursor_i {
             let cursor_rect = self.cursor_rect();
             schedule(&mut self.redraws, cursor_rect);
@@ -1394,13 +1401,7 @@ impl OrbitalScheme {
             self.hover = new_hover;
         }
 
-        if self.hw_cursor {
-            self.cursor_x = event.x;
-            self.cursor_y = event.y;
-            self.update_hw_cursor(new_cursor);
-        } else {
-            self.update_cursor(event.x, event.y, new_cursor);
-        }
+        self.update_cursor(event.x, event.y, new_cursor);
     }
 
     fn mouse_relative_event(&mut self, event: MouseRelativeEvent) {
@@ -1425,13 +1426,7 @@ impl OrbitalScheme {
 
         // Handle relative window cursor
         if let Some((x, y, kind)) = relative_cursor_opt {
-            if self.hw_cursor {
-                self.cursor_x = x;
-                self.cursor_y = y;
-                self.update_hw_cursor(kind);
-            } else {
-                self.update_cursor(x, y, kind);
-            }
+            self.update_cursor(x, y, kind);
             return;
         }
 
