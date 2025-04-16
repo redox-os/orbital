@@ -11,6 +11,7 @@ use std::{env, process::Command, rc::Rc};
 use config::Config;
 use scheme::OrbitalScheme;
 
+mod compositor;
 mod config;
 mod core;
 mod scheme;
