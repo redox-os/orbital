@@ -260,7 +260,36 @@ impl OrbitalScheme {
         if self.compositor.hw_cursor {
             self.cursor_x = x;
             self.cursor_y = y;
-            self.update_hw_cursor(kind);
+
+            if self.cursor_i != kind || !self.compositor.hw_cursor_initialized {
+                self.cursor_i = kind;
+
+                let cursor = self.cursors.get(&kind).unwrap();
+
+                let w: i32 = cursor.width();
+                let h: i32 = cursor.height();
+
+                let (hot_x, hot_y) = match kind {
+                    CursorKind::None => (0, 0),
+                    CursorKind::LeftPtr => (0, 0),
+                    CursorKind::BottomLeftCorner => (0, h),
+                    CursorKind::BottomRightCorner => (w, h),
+                    CursorKind::BottomSide => (w / 2, h),
+                    CursorKind::LeftSide => (0, h / 2),
+                    CursorKind::RightSide => (w, h / 2),
+                };
+
+                self.compositor.update_hw_cursor(
+                    self.cursor_x,
+                    self.cursor_y,
+                    hot_x,
+                    hot_y,
+                    cursor,
+                );
+            } else {
+                self.compositor.move_hw_cursor(self.cursor_x, self.cursor_y);
+            }
+
             return;
         }
 
@@ -1574,7 +1603,7 @@ impl OrbitalScheme {
         {
             let cursor_kind = self.cursor_i;
             self.cursor_i = CursorKind::None;
-            self.update_hw_cursor(cursor_kind);
+            self.update_cursor(self.cursor_x, self.cursor_y, cursor_kind);
             self.update_cursor_timer = Instant::now();
         }
 
@@ -1686,31 +1715,5 @@ impl OrbitalScheme {
         self.mouse_event(event);
 
         Ok(id)
-    }
-
-    fn update_hw_cursor(&mut self, new_cursor: CursorKind) {
-        if self.cursor_i != new_cursor || !self.compositor.hw_cursor_initialized {
-            self.cursor_i = new_cursor;
-
-            let cursor = self.cursors.get(&new_cursor).unwrap();
-
-            let w: i32 = cursor.width();
-            let h: i32 = cursor.height();
-
-            let (hot_x, hot_y) = match new_cursor {
-                CursorKind::None => (0, 0),
-                CursorKind::LeftPtr => (0, 0),
-                CursorKind::BottomLeftCorner => (0, h),
-                CursorKind::BottomRightCorner => (w, h),
-                CursorKind::BottomSide => (w / 2, h),
-                CursorKind::LeftSide => (0, h / 2),
-                CursorKind::RightSide => (w, h / 2),
-            };
-
-            self.compositor
-                .update_hw_cursor(self.cursor_x, self.cursor_y, hot_x, hot_y, cursor);
-        } else {
-            self.compositor.move_hw_cursor(self.cursor_x, self.cursor_y);
-        }
     }
 }
