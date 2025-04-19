@@ -538,24 +538,10 @@ impl OrbitalScheme {
         // Call set_popup first as it adds elements to redraws
         self.compositor.set_popup(popup);
 
-        // go through the list of rectangles pending a redraw and expand the total redraw rectangle
-        // to encompass all of them
         let mut total_redraw_opt: Option<Rect> = None;
-        for original_rect in self.compositor.redraws.drain(..) {
-            if !original_rect.is_empty() {
-                total_redraw_opt = Some(
-                    total_redraw_opt
-                        .unwrap_or(original_rect)
-                        .container(&original_rect),
-                );
-            }
 
-            for display in self.compositor.displays.iter_mut() {
-                let rect = original_rect.intersection(&display.screen_rect());
-                if rect.is_empty() {
-                    continue;
-                }
-
+        self.compositor
+            .redraw_windows(&mut total_redraw_opt, |display, rect| {
                 display.rect(&rect, self.config.background_color.into());
 
                 for &(id, _, i) in self.zbuffer.iter().rev() {
@@ -578,8 +564,7 @@ impl OrbitalScheme {
                         window.draw(display, &rect);
                     }
                 }
-            }
-        }
+            });
 
         self.compositor.redraw_popup(&mut total_redraw_opt);
 

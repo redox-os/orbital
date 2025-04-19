@@ -26,7 +26,7 @@ pub struct Compositor {
     // FIXME make these private once possible
     pub displays: Vec<Display>,
 
-    pub redraws: Vec<Rect>,
+    redraws: Vec<Rect>,
 
     popup: Option<Image>,
 
@@ -191,6 +191,33 @@ impl Compositor {
             }) {
                 Ok(_) => (),
                 Err(err) => error!("failed to sync display {}: {}", i, err),
+            }
+        }
+    }
+
+    pub fn redraw_windows(
+        &mut self,
+        total_redraw_opt: &mut Option<Rect>,
+        draw_windows: impl Fn(&mut Display, Rect),
+    ) {
+        // go through the list of rectangles pending a redraw and expand the total redraw rectangle
+        // to encompass all of them
+        for original_rect in self.redraws.drain(..) {
+            if !original_rect.is_empty() {
+                *total_redraw_opt = Some(
+                    total_redraw_opt
+                        .unwrap_or(original_rect)
+                        .container(&original_rect),
+                );
+            }
+
+            for display in self.displays.iter_mut() {
+                let rect = original_rect.intersection(&display.screen_rect());
+                if rect.is_empty() {
+                    continue;
+                }
+
+                draw_windows(display, rect);
             }
         }
     }
