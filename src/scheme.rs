@@ -101,7 +101,6 @@ pub struct OrbitalScheme {
     win_tabbing: bool,
     volume_osd: bool,
     shortcuts_osd: bool,
-    popup_rect: Rect,
 }
 
 impl OrbitalScheme {
@@ -181,7 +180,6 @@ impl OrbitalScheme {
             win_tabbing: false,
             volume_osd: false,
             shortcuts_osd: false,
-            popup_rect: Rect::default(),
         };
 
         orbital_scheme.update_cursor(0, 0, CursorKind::LeftPtr);
@@ -528,6 +526,18 @@ impl OrbitalScheme {
     fn redraw(&mut self) {
         self.rezbuffer();
 
+        let popup = if self.shortcuts_osd {
+            Some(self.draw_shortcuts_osd())
+        } else if self.volume_osd {
+            Some(self.draw_volume_osd())
+        } else if self.win_tabbing {
+            self.draw_window_list_osd()
+        } else {
+            None
+        };
+        // Call set_popup first as it adds elements to redraws
+        self.compositor.set_popup(popup);
+
         // go through the list of rectangles pending a redraw and expand the total redraw rectangle
         // to encompass all of them
         let mut total_redraw_opt: Option<Rect> = None;
@@ -570,30 +580,7 @@ impl OrbitalScheme {
             }
         }
 
-        if self.win_tabbing {
-            //TODO: add to total_redraw?
-            self.draw_window_list_osd();
-        }
-
-        if self.volume_osd {
-            //TODO: add to total_redraw?
-            self.draw_volume_osd();
-        }
-
-        if self.shortcuts_osd {
-            //TODO: add to total_redraw?
-            self.draw_shortcuts_osd();
-        }
-
-        // Add any redraws from OSD's
-        for original_rect in self.compositor.redraws.drain(..) {
-            if !original_rect.is_empty() {
-                total_redraw_opt = match total_redraw_opt {
-                    Some(total_redraw) => Some(total_redraw.container(&original_rect)),
-                    None => Some(original_rect),
-                };
-            }
-        }
+        self.compositor.redraw_popup();
 
         self.compositor.redraw_cursor(total_redraw_opt);
 
@@ -682,20 +669,10 @@ impl OrbitalScheme {
         }
     }
 
-    // Create a [Rect][orbital-core::rect::Rect] that places a popup in the middle of the display
-    fn popup_rect(&self, width: i32, height: i32) -> Rect {
-        Rect::new(
-            self.compositor.image().width() / 2 - width / 2,
-            self.compositor.image().height() / 2 - height / 2,
-            width,
-            height,
-        )
-    }
-
     // Called by redraw() to draw the list of currently open windows in the middle of the screen.
     // Filter out app windows with no title.
     // If there are no windows to select, nothing is drawn.
-    fn draw_window_list_osd(&mut self) {
+    fn draw_window_list_osd(&mut self) -> Option<Image> {
         const SELECT_POPUP_TOP_BOTTOM_MARGIN: u32 = 2;
         const SELECT_POPUP_SIDE_MARGIN: i32 = 4;
         const SELECT_ROW_HEIGHT: u32 = 20;
@@ -717,62 +694,59 @@ impl OrbitalScheme {
             .copied()
             .collect();
 
-        if selectable_window_ids.len() > 1 {
-            // follow the look of the current config - in terms of colors
-            let Config {
-                bar_color,
-                bar_highlight_color,
-                text_color,
-                text_highlight_color,
-                ..
-            } = *self.config;
+        if selectable_window_ids.len() <= 1 {
+            return None;
+        }
 
-            let list_h = (selectable_window_ids.len() as u32 * SELECT_ROW_HEIGHT
-                + (SELECT_POPUP_TOP_BOTTOM_MARGIN * 2)) as i32;
-            let list_w = SELECT_ROW_WIDTH;
-            let popup_rect = self.popup_rect(list_w, list_h);
-            let mut image = Image::from_color(list_w, list_h, bar_color.into());
+        // follow the look of the current config - in terms of colors
+        let Config {
+            bar_color,
+            bar_highlight_color,
+            text_color,
+            text_highlight_color,
+            ..
+        } = *self.config;
 
-            for (selectable_index, window_id) in selectable_window_ids.iter().enumerate() {
-                if let Some(window) = self.windows.get(window_id) {
-                    let vertical_offset = selectable_index as i32 * SELECT_ROW_HEIGHT as i32
-                        + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32;
-                    let text = self.font.render(&window.title, FONT_HEIGHT);
-                    if selectable_index == 0 {
-                        image.rect(
-                            0,
-                            vertical_offset,
-                            list_w as u32,
-                            SELECT_ROW_HEIGHT,
-                            bar_highlight_color.into(),
-                        );
-                        text.draw(
-                            &mut image,
-                            SELECT_POPUP_SIDE_MARGIN,
-                            vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32,
-                            text_highlight_color.into(),
-                        );
-                    } else {
-                        text.draw(
-                            &mut image,
-                            SELECT_POPUP_SIDE_MARGIN,
-                            vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32,
-                            text_color.into(),
-                        );
-                    }
+        let list_h = (selectable_window_ids.len() as u32 * SELECT_ROW_HEIGHT
+            + (SELECT_POPUP_TOP_BOTTOM_MARGIN * 2)) as i32;
+        let list_w = SELECT_ROW_WIDTH;
+        let mut image = Image::from_color(list_w, list_h, bar_color.into());
+
+        for (selectable_index, window_id) in selectable_window_ids.iter().enumerate() {
+            if let Some(window) = self.windows.get(window_id) {
+                let vertical_offset = selectable_index as i32 * SELECT_ROW_HEIGHT as i32
+                    + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32;
+                let text = self.font.render(&window.title, FONT_HEIGHT);
+                if selectable_index == 0 {
+                    image.rect(
+                        0,
+                        vertical_offset,
+                        list_w as u32,
+                        SELECT_ROW_HEIGHT,
+                        bar_highlight_color.into(),
+                    );
+                    text.draw(
+                        &mut image,
+                        SELECT_POPUP_SIDE_MARGIN,
+                        vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32,
+                        text_highlight_color.into(),
+                    );
+                } else {
+                    text.draw(
+                        &mut image,
+                        SELECT_POPUP_SIDE_MARGIN,
+                        vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32,
+                        text_color.into(),
+                    );
                 }
             }
-            self.compositor
-                .image_mut()
-                .roi_mut(&popup_rect)
-                .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
-            self.popup_rect = popup_rect;
-            self.compositor.schedule(popup_rect);
         }
+
+        Some(image)
     }
 
     // Draw an on screen display (overlay) for volume control
-    fn draw_volume_osd(&mut self) {
+    fn draw_volume_osd(&mut self) -> Image {
         let Config {
             bar_color,
             bar_highlight_color,
@@ -786,7 +760,6 @@ impl OrbitalScheme {
         //TODO: HiDPI
         let list_h = BAR_HEIGHT + (2 * POPUP_MARGIN);
         let list_w = BAR_WIDTH + (2 * POPUP_MARGIN);
-        let popup_rect = self.popup_rect(list_w, list_h);
         // Color copied over from orbtk's window background
         let mut image = Image::from_color(list_w, list_h, bar_color.into());
         image.rect(
@@ -796,12 +769,8 @@ impl OrbitalScheme {
             BAR_HEIGHT as u32,
             bar_highlight_color.into(),
         );
-        self.compositor
-            .image_mut()
-            .roi_mut(&popup_rect)
-            .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
-        self.popup_rect = popup_rect;
-        self.compositor.schedule(popup_rect);
+
+        image
     }
 
     const SHORTCUTS_LIST: &'static [&'static str] = &[
@@ -826,7 +795,7 @@ impl OrbitalScheme {
     ];
 
     // Draw an on screen display (overlay) of available SUPER keyboard shortcuts
-    fn draw_shortcuts_osd(&mut self) {
+    fn draw_shortcuts_osd(&mut self) -> Image {
         const ROW_HEIGHT: u32 = 20;
         const ROW_WIDTH: i32 = 400;
         const POPUP_BORDER: u32 = 2;
@@ -842,7 +811,6 @@ impl OrbitalScheme {
 
         let list_h = (Self::SHORTCUTS_LIST.len() as u32 * ROW_HEIGHT + (POPUP_BORDER * 2)) as i32;
         let list_w = ROW_WIDTH;
-        let popup_rect = self.popup_rect(list_w, list_h);
         let mut image = Image::from_color(list_w, list_h, bar_color.into());
 
         for (index, shortcut) in Self::SHORTCUTS_LIST.iter().enumerate() {
@@ -863,12 +831,7 @@ impl OrbitalScheme {
             );
         }
 
-        self.compositor
-            .image_mut()
-            .roi_mut(&popup_rect)
-            .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
-        self.popup_rect = popup_rect;
-        self.compositor.schedule(popup_rect);
+        image
     }
 
     // Keep track of the modifier keys state based on past keydown/keyup events
@@ -1014,8 +977,6 @@ impl OrbitalScheme {
 
     // undraw any overlay that was being displayed and exit the mode causing it to be displayed
     fn close_overlays(&mut self) {
-        // redraw the area that was occupied by the popup
-        self.compositor.schedule(self.popup_rect);
         // disable drawing of the win-tab or volume popup or shortcuts overlay on redraw
         self.win_tabbing = false;
         self.volume_osd = false;

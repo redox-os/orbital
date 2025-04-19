@@ -28,6 +28,8 @@ pub struct Compositor {
 
     pub redraws: Vec<Rect>,
 
+    popup: Option<Image>,
+
     hw_cursor: bool,
     //QEMU UIs do not grab the pointer in case an absolute pointing device is present
     //and since releasing our gpu cursor makes it disappear, updating it every second fixes it
@@ -63,6 +65,8 @@ impl Compositor {
 
             redraws,
 
+            popup: None,
+
             hw_cursor,
             update_cursor_timer: Instant::now(),
             cursor: Arc::new(Image::new(0, 0)),
@@ -75,9 +79,6 @@ impl Compositor {
 
     pub fn image(&self) -> &ImageRef<'static> {
         &self.displays[0].image
-    }
-    pub fn image_mut(&mut self) -> &mut ImageRef<'static> {
-        &mut self.displays[0].image
     }
     /// Return the screen rectangle
     pub fn screen_rect(&self) -> Rect {
@@ -106,6 +107,25 @@ impl Compositor {
         if push {
             self.redraws.push(request);
         }
+    }
+
+    /// Create a [Rect] that places a popup in the middle of the display
+    fn popup_rect(&self, popup: &Image) -> Rect {
+        Rect::new(
+            self.image().width() / 2 - popup.width() / 2,
+            self.image().height() / 2 - popup.height() / 2,
+            popup.width(),
+            popup.height(),
+        )
+    }
+
+    pub fn set_popup(&mut self, image: Option<Image>) {
+        if let Some(popup) = &self.popup {
+            // Ensure content behind the popup is redrawn
+            self.schedule(self.popup_rect(popup));
+        }
+
+        self.popup = image;
     }
 
     fn cursor_rect(&self) -> Rect {
@@ -173,6 +193,17 @@ impl Compositor {
                 Ok(_) => (),
                 Err(err) => error!("failed to sync display {}: {}", i, err),
             }
+        }
+    }
+
+    pub fn redraw_popup(&mut self) {
+        if let Some(popup) = &self.popup {
+            let popup_rect = self.popup_rect(popup);
+
+            self.displays[0]
+                .image
+                .roi_mut(&popup_rect)
+                .blit(&popup.roi(&Rect::new(0, 0, popup.width(), popup.height())));
         }
     }
 
