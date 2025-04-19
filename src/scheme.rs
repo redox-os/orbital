@@ -607,20 +607,6 @@ impl OrbitalScheme {
                             window.draw(display, &rect);
                         }
                     }
-
-                    if !self.compositor.hw_cursor {
-                        let cursor_intersect = rect.intersection(&cursor_rect);
-                        if !cursor_intersect.is_empty() {
-                            if let Some(cursor) = self.cursors.get_mut(&self.cursor_i) {
-                                display.roi(&cursor_intersect).blend(
-                                    &cursor.roi(
-                                        &cursor_intersect
-                                            .offset(-cursor_rect.left(), -cursor_rect.top()),
-                                    ),
-                                );
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -650,8 +636,13 @@ impl OrbitalScheme {
             }
         }
 
-        // Sync any parts of displays that changed
         if let Some(total_redraw) = total_redraw_opt {
+            if let Some(cursor) = self.cursors.get_mut(&self.cursor_i) {
+                self.compositor
+                    .redraw_cursor(total_redraw, cursor_rect, cursor);
+            }
+
+            // Sync any parts of displays that changed
             self.compositor.sync_rect(total_redraw);
         }
     }

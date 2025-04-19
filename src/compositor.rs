@@ -4,7 +4,7 @@ use std::{mem, slice};
 use log::{error, info};
 
 use crate::core::display::Display;
-use crate::core::image::ImageRef;
+use crate::core::image::{Image, ImageRef};
 use crate::core::rect::Rect;
 
 pub struct Compositor {
@@ -51,6 +51,26 @@ impl Compositor {
         //TODO: should other screens be moved after a resize?
         //TODO: support resizing other screens?
         self.displays[0].resize(width, height);
+    }
+
+    pub fn redraw_cursor(&mut self, total_redraw: Rect, cursor_rect: Rect, cursor: &mut Image) {
+        if self.hw_cursor {
+            return;
+        }
+
+        for display in self.displays.iter_mut() {
+            let rect = total_redraw.intersection(&display.screen_rect());
+            if !rect.is_empty() {
+                let cursor_intersect = rect.intersection(&cursor_rect);
+                if !cursor_intersect.is_empty() {
+                    display
+                        .roi(&cursor_intersect)
+                        .blend(&cursor.roi(
+                            &cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top()),
+                        ));
+                }
+            }
+        }
     }
 
     pub fn sync_rect(&mut self, total_redraw: Rect) {
