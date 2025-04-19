@@ -204,12 +204,12 @@ impl Window {
     }
 
     pub fn draw_title(
-        &mut self,
+        &self,
         display: &mut Display,
         rect: &Rect,
         focused: bool,
-        window_max: &mut Image,
-        window_close: &mut Image,
+        window_max: &Image,
+        window_close: &Image,
     ) {
         let bar_color = Color::from(self.config.bar_color);
         let bar_highlight_color = Color::from(self.config.bar_highlight_color);
@@ -233,9 +233,9 @@ impl Window {
             ) - x;
             if w > 0 {
                 let title_image = if focused {
-                    &mut self.title_image
+                    &self.title_image
                 } else {
-                    &mut self.title_image_unfocused
+                    &self.title_image_unfocused
                 };
                 let image_rect = Rect::new(
                     x,
@@ -245,7 +245,7 @@ impl Window {
                 );
                 let image_intersect = rect.intersection(&image_rect);
                 if !image_intersect.is_empty() {
-                    display.roi(&image_intersect).blend(
+                    display.roi_mut(&image_intersect).blend(
                         &title_image
                             .roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())),
                     );
@@ -263,7 +263,7 @@ impl Window {
                     );
                     let image_intersect = rect.intersection(&image_rect);
                     if !image_intersect.is_empty() {
-                        display.roi(&image_intersect).blend(
+                        display.roi_mut(&image_intersect).blend(
                             &window_max.roi(
                                 &image_intersect.offset(-image_rect.left(), -image_rect.top()),
                             ),
@@ -286,7 +286,7 @@ impl Window {
                     );
                     let image_intersect = rect.intersection(&image_rect);
                     if !image_intersect.is_empty() {
-                        display.roi(&image_intersect).blend(
+                        display.roi_mut(&image_intersect).blend(
                             &window_close.roi(
                                 &image_intersect.offset(-image_rect.left(), -image_rect.top()),
                             ),
@@ -297,18 +297,18 @@ impl Window {
         }
     }
 
-    pub fn draw(&mut self, display: &mut Display, rect: &Rect) {
+    pub fn draw(&self, display: &mut Display, rect: &Rect) {
         let self_rect = self.rect();
         let intersect = self_rect.intersection(rect);
         if !intersect.is_empty() {
             if self.transparent {
-                display.roi(&intersect).blend(
+                display.roi_mut(&intersect).blend(
                     &self
                         .image
                         .roi(&intersect.offset(-self_rect.left(), -self_rect.top())),
                 );
             } else {
-                display.roi(&intersect).blit(
+                display.roi_mut(&intersect).blit(
                     &self
                         .image
                         .roi(&intersect.offset(-self_rect.left(), -self_rect.top())),
@@ -466,7 +466,9 @@ impl Window {
         let rect = Rect::new(0, 0, self.image.width(), self.image.height());
         let intersect = new_rect.intersection(&rect);
         if !intersect.is_empty() {
-            new_image.roi(&intersect).blit(&self.image.roi(&intersect));
+            new_image
+                .roi_mut(&intersect)
+                .blit(&self.image.roi(&intersect));
         }
 
         self.image = new_image;

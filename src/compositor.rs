@@ -53,7 +53,7 @@ impl Compositor {
         self.displays[0].resize(width, height);
     }
 
-    pub fn redraw_cursor(&mut self, total_redraw: Rect, cursor_rect: Rect, cursor: &mut Image) {
+    pub fn redraw_cursor(&mut self, total_redraw: Rect, cursor_rect: Rect, cursor: &Image) {
         if self.hw_cursor {
             return;
         }
@@ -64,7 +64,7 @@ impl Compositor {
                 let cursor_intersect = rect.intersection(&cursor_rect);
                 if !cursor_intersect.is_empty() {
                     display
-                        .roi(&cursor_intersect)
+                        .roi_mut(&cursor_intersect)
                         .blend(&cursor.roi(
                             &cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top()),
                         ));

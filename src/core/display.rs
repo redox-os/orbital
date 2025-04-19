@@ -4,7 +4,7 @@ use orbclient::{Color, Renderer};
 use std::{convert::TryInto, fs::File, io, os::unix::io::AsRawFd, slice};
 
 use crate::core::{
-    image::{ImageRef, ImageRoi},
+    image::{ImageRef, ImageRoiMut},
     rect::Rect,
 };
 
@@ -83,8 +83,8 @@ impl Display {
         }
     }
 
-    pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
-        self.image.roi(&Rect::new(
+    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut {
+        self.image.roi_mut(&Rect::new(
             rect.left() - self.x,
             rect.top() - self.y,
             rect.width(),

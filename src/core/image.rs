@@ -66,10 +66,31 @@ impl<'a> Iterator for ImageRoiRowsMut<'a> {
 pub struct ImageRoi<'a> {
     rect: Rect,
     w: i32,
-    data: &'a mut [Color],
+    data: &'a [Color],
 }
 
 impl<'a> ImageRoi<'a> {
+    pub fn rows(&'a self) -> ImageRoiRows<'a> {
+        ImageRoiRows {
+            rect: self.rect,
+            w: self.w,
+            data: self.data,
+            i: 0,
+        }
+    }
+}
+
+// ImageRoiMut seems to be a "window" onto an image, i.e. a Rectangular part of an image.
+// `rect` defined the area within the larger image, we need to know the width of the image (`w`)
+// to move through the data by rows, and `data` is a reference to the data in the actual image
+pub struct ImageRoiMut<'a> {
+    rect: Rect,
+    w: i32,
+    data: &'a mut [Color],
+}
+
+impl<'a> ImageRoiMut<'a> {
+    #[expect(dead_code)]
     pub fn rows(&'a self) -> ImageRoiRows<'a> {
         ImageRoiRows {
             rect: self.rect,
@@ -146,8 +167,17 @@ impl<'a> ImageRef<'a> {
         self.h
     }
 
-    pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
+    #[expect(dead_code)]
+    pub fn roi(&self, rect: &Rect) -> ImageRoi {
         ImageRoi {
+            rect: *rect,
+            w: self.w,
+            data: self.data,
+        }
+    }
+
+    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut {
+        ImageRoiMut {
             rect: *rect,
             w: self.w,
             data: self.data,
@@ -278,8 +308,17 @@ impl Image {
         img_data
     }
 
-    pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
+    pub fn roi(&self, rect: &Rect) -> ImageRoi {
         ImageRoi {
+            rect: *rect,
+            w: self.w,
+            data: &self.data,
+        }
+    }
+
+    #[expect(dead_code)]
+    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut {
+        ImageRoiMut {
             rect: *rect,
             w: self.w,
             data: &mut self.data,
@@ -357,8 +396,16 @@ impl ImageAligned {
         self.h
     }
 
-    pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
+    pub fn roi(&self, rect: &Rect) -> ImageRoi {
         ImageRoi {
+            rect: *rect,
+            w: self.w,
+            data: self.data,
+        }
+    }
+
+    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut {
+        ImageRoiMut {
             rect: *rect,
             w: self.w,
             data: self.data,

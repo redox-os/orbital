@@ -588,20 +588,20 @@ impl OrbitalScheme {
                     for entry in self.zbuffer.iter().rev() {
                         let id = entry.0;
                         let i = entry.2;
-                        if let Some(window) = self.windows.get_mut(&id) {
+                        if let Some(window) = self.windows.get(&id) {
                             window.draw_title(
                                 display,
                                 &rect,
                                 i == 0,
                                 if i == 0 {
-                                    &mut self.window_max
+                                    &self.window_max
                                 } else {
-                                    &mut self.window_max_unfocused
+                                    &self.window_max_unfocused
                                 },
                                 if i == 0 {
-                                    &mut self.window_close
+                                    &self.window_close
                                 } else {
-                                    &mut self.window_close_unfocused
+                                    &self.window_close_unfocused
                                 },
                             );
                             window.draw(display, &rect);
@@ -637,7 +637,7 @@ impl OrbitalScheme {
         }
 
         if let Some(total_redraw) = total_redraw_opt {
-            if let Some(cursor) = self.cursors.get_mut(&self.cursor_i) {
+            if let Some(cursor) = self.cursors.get(&self.cursor_i) {
                 self.compositor
                     .redraw_cursor(total_redraw, cursor_rect, cursor);
             }
@@ -808,7 +808,7 @@ impl OrbitalScheme {
             }
             self.compositor
                 .image_mut()
-                .roi(&popup_rect)
+                .roi_mut(&popup_rect)
                 .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
             self.popup_rect = popup_rect;
             schedule(&mut self.redraws, popup_rect);
@@ -842,7 +842,7 @@ impl OrbitalScheme {
         );
         self.compositor
             .image_mut()
-            .roi(&popup_rect)
+            .roi_mut(&popup_rect)
             .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
         self.popup_rect = popup_rect;
         schedule(&mut self.redraws, popup_rect);
@@ -909,7 +909,7 @@ impl OrbitalScheme {
 
         self.compositor
             .image_mut()
-            .roi(&popup_rect)
+            .roi_mut(&popup_rect)
             .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
         self.popup_rect = popup_rect;
         schedule(&mut self.redraws, popup_rect);
