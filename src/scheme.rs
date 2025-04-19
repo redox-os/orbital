@@ -580,7 +580,7 @@ impl OrbitalScheme {
             }
         }
 
-        self.compositor.redraw_popup();
+        self.compositor.redraw_popup(&mut total_redraw_opt);
 
         self.compositor.redraw_cursor(total_redraw_opt);
 

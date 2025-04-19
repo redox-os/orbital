@@ -195,9 +195,15 @@ impl Compositor {
         }
     }
 
-    pub fn redraw_popup(&mut self) {
+    pub fn redraw_popup(&mut self, total_redraw_opt: &mut Option<Rect>) {
         if let Some(popup) = &self.popup {
             let popup_rect = self.popup_rect(popup);
+
+            *total_redraw_opt = Some(
+                total_redraw_opt
+                    .unwrap_or(popup_rect)
+                    .container(&popup_rect),
+            );
 
             self.displays[0]
                 .image
