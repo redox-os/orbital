@@ -7,6 +7,19 @@ use crate::core::display::Display;
 use crate::core::image::{Image, ImageRef};
 use crate::core::rect::Rect;
 
+#[repr(C, packed)]
+struct CursorCommand {
+    //header flag that indicates update_cursor or move_cursor
+    header: u32,
+    x: i32,
+    y: i32,
+    hot_x: i32,
+    hot_y: i32,
+    w: i32,
+    h: i32,
+    cursor_img: [u32; 4096],
+}
+
 pub struct Compositor {
     // FIXME make these private once possible
     pub displays: Vec<Display>,
@@ -51,6 +64,50 @@ impl Compositor {
         //TODO: should other screens be moved after a resize?
         //TODO: support resizing other screens?
         self.displays[0].resize(width, height);
+    }
+
+    pub fn update_hw_cursor(&mut self, x: i32, y: i32, hot_x: i32, hot_y: i32, cursor: &Image) {
+        self.send_cursor_command(&CursorCommand {
+            header: 1,
+            x,
+            y,
+            hot_x,
+            hot_y,
+            w: cursor.width(),
+            h: cursor.height(),
+            cursor_img: cursor.get_cursor_data(),
+        });
+
+        self.hw_cursor_initialized = true;
+    }
+
+    pub fn move_hw_cursor(&mut self, x: i32, y: i32) {
+        assert!(self.hw_cursor_initialized);
+
+        self.send_cursor_command(&CursorCommand {
+            header: 0,
+            x,
+            y,
+            hot_x: 0,
+            hot_y: 0,
+            w: 0,
+            h: 0,
+            cursor_img: [0; 4096],
+        });
+    }
+
+    fn send_cursor_command(&mut self, cmd: &CursorCommand) {
+        for (i, display) in self.displays.iter_mut().enumerate() {
+            match display.file.write(unsafe {
+                slice::from_raw_parts(
+                    cmd as *const CursorCommand as *const u8,
+                    mem::size_of::<CursorCommand>(),
+                )
+            }) {
+                Ok(_) => (),
+                Err(err) => error!("failed to sync display {}: {}", i, err),
+            }
+        }
     }
 
     pub fn redraw_cursor(&mut self, total_redraw: Rect, cursor_rect: Rect, cursor: &Image) {

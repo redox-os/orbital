@@ -2,9 +2,7 @@ use std::rc::Rc;
 use std::{
     cmp,
     collections::{BTreeMap, VecDeque},
-    fs,
-    io::{self, Write},
-    mem, slice, str,
+    fs, io, str,
     time::Instant,
 };
 
@@ -1691,72 +1689,28 @@ impl OrbitalScheme {
     }
 
     fn update_hw_cursor(&mut self, new_cursor: CursorKind) {
-        //header flag that indicates update_cursor or move_cursor
-        let mut header: u32 = 0;
         if self.cursor_i != new_cursor || !self.compositor.hw_cursor_initialized {
-            header = 1;
             self.cursor_i = new_cursor;
-            self.compositor.hw_cursor_initialized = true;
-        }
 
-        //retrieve image data
-        let cursor = self.cursors.get_mut(&new_cursor).unwrap();
-        let cursor_img: [u32; 4096] = if header != 0 {
-            cursor.get_cursor_data()
+            let cursor = self.cursors.get(&new_cursor).unwrap();
+
+            let w: i32 = cursor.width();
+            let h: i32 = cursor.height();
+
+            let (hot_x, hot_y) = match new_cursor {
+                CursorKind::None => (0, 0),
+                CursorKind::LeftPtr => (0, 0),
+                CursorKind::BottomLeftCorner => (0, h),
+                CursorKind::BottomRightCorner => (w, h),
+                CursorKind::BottomSide => (w / 2, h),
+                CursorKind::LeftSide => (0, h / 2),
+                CursorKind::RightSide => (w, h / 2),
+            };
+
+            self.compositor
+                .update_hw_cursor(self.cursor_x, self.cursor_y, hot_x, hot_y, cursor);
         } else {
-            [0; 4096]
-        };
-
-        let w: i32 = cursor.width();
-        let h: i32 = cursor.height();
-
-        let x: i32 = self.cursor_x;
-        let y: i32 = self.cursor_y;
-
-        let (hot_x, hot_y) = match new_cursor {
-            CursorKind::None => (0, 0),
-            CursorKind::LeftPtr => (0, 0),
-            CursorKind::BottomLeftCorner => (0, h),
-            CursorKind::BottomRightCorner => (w, h),
-            CursorKind::BottomSide => (w / 2, h),
-            CursorKind::LeftSide => (0, h / 2),
-            CursorKind::RightSide => (w, h / 2),
-        };
-
-        //Construct object to send to the display
-        #[repr(C, packed)]
-        struct SyncRect {
-            header: u32,
-            x: i32,
-            y: i32,
-            hot_x: i32,
-            hot_y: i32,
-            w: i32,
-            h: i32,
-            cursor_img: [u32; 4096],
-        }
-
-        let sync_rect = SyncRect {
-            header,
-            x,
-            y,
-            hot_x,
-            hot_y,
-            w,
-            h,
-            cursor_img,
-        };
-
-        for (i, display) in self.compositor.displays.iter_mut().enumerate() {
-            match display.file.write(unsafe {
-                slice::from_raw_parts(
-                    &sync_rect as *const SyncRect as *const u8,
-                    mem::size_of::<SyncRect>(),
-                )
-            }) {
-                Ok(_) => (),
-                Err(err) => error!("failed to sync display {}: {}", i, err),
-            }
+            self.compositor.move_hw_cursor(self.cursor_x, self.cursor_y);
         }
     }
 }
