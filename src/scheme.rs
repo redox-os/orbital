@@ -543,38 +543,39 @@ impl OrbitalScheme {
         let mut total_redraw_opt: Option<Rect> = None;
         for original_rect in self.compositor.redraws.drain(..) {
             if !original_rect.is_empty() {
-                total_redraw_opt = match total_redraw_opt {
-                    Some(total_redraw) => Some(total_redraw.container(&original_rect)),
-                    None => Some(original_rect),
-                };
+                total_redraw_opt = Some(
+                    total_redraw_opt
+                        .unwrap_or(original_rect)
+                        .container(&original_rect),
+                );
             }
 
             for display in self.compositor.displays.iter_mut() {
                 let rect = original_rect.intersection(&display.screen_rect());
-                if !rect.is_empty() {
-                    display.rect(&rect, self.config.background_color.into());
+                if rect.is_empty() {
+                    continue;
+                }
 
-                    for entry in self.zbuffer.iter().rev() {
-                        let id = entry.0;
-                        let i = entry.2;
-                        if let Some(window) = self.windows.get(&id) {
-                            window.draw_title(
-                                display,
-                                &rect,
-                                i == 0,
-                                if i == 0 {
-                                    &self.window_max
-                                } else {
-                                    &self.window_max_unfocused
-                                },
-                                if i == 0 {
-                                    &self.window_close
-                                } else {
-                                    &self.window_close_unfocused
-                                },
-                            );
-                            window.draw(display, &rect);
-                        }
+                display.rect(&rect, self.config.background_color.into());
+
+                for &(id, _, i) in self.zbuffer.iter().rev() {
+                    if let Some(window) = self.windows.get(&id) {
+                        window.draw_title(
+                            display,
+                            &rect,
+                            i == 0,
+                            if i == 0 {
+                                &self.window_max
+                            } else {
+                                &self.window_max_unfocused
+                            },
+                            if i == 0 {
+                                &self.window_close
+                            } else {
+                                &self.window_close_unfocused
+                            },
+                        );
+                        window.draw(display, &rect);
                     }
                 }
             }
