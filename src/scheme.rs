@@ -163,7 +163,7 @@ impl OrbitalScheme {
 
         let font = orbfont::Font::find(Some("Sans"), None, None)?;
 
-        Ok(OrbitalScheme {
+        let mut orbital_scheme = OrbitalScheme {
             compositor: Compositor::new(displays),
 
             window_max: Image::from_path_scale(&config.window_max, scale)
@@ -175,7 +175,7 @@ impl OrbitalScheme {
             window_close_unfocused: Image::from_path_scale(&config.window_close_unfocused, scale)
                 .unwrap_or(Image::new(0, 0)),
             cursors,
-            cursor_i: CursorKind::LeftPtr,
+            cursor_i: CursorKind::None,
             cursor_x: 0,
             cursor_y: 0,
             cursor_left: false,
@@ -200,7 +200,11 @@ impl OrbitalScheme {
             shortcuts_osd: false,
             popup_rect: Rect::default(),
             update_cursor_timer: Instant::now(),
-        })
+        };
+
+        orbital_scheme.update_cursor(0, 0, CursorKind::LeftPtr);
+
+        Ok(orbital_scheme)
     }
 
     fn update_window(redraws: &mut Vec<Rect>, window: &mut Window, f: impl FnOnce(&mut Window)) {
@@ -261,7 +265,7 @@ impl OrbitalScheme {
             self.cursor_x = x;
             self.cursor_y = y;
 
-            if self.cursor_i != kind || !self.compositor.hw_cursor_initialized {
+            if self.cursor_i != kind {
                 self.cursor_i = kind;
 
                 let cursor = self.cursors.get(&kind).unwrap();
@@ -1597,10 +1601,7 @@ impl OrbitalScheme {
     fn event(&mut self, event_union: Event) {
         self.rezbuffer();
 
-        if self.compositor.hw_cursor
-            && (!self.compositor.hw_cursor_initialized
-                || self.update_cursor_timer.elapsed().as_millis() > 1000)
-        {
+        if self.compositor.hw_cursor && self.update_cursor_timer.elapsed().as_millis() > 1000 {
             let cursor_kind = self.cursor_i;
             self.cursor_i = CursorKind::None;
             self.update_cursor(self.cursor_x, self.cursor_y, cursor_kind);

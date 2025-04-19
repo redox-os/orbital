@@ -24,7 +24,7 @@ pub struct Compositor {
     // FIXME make these private once possible
     pub displays: Vec<Display>,
     pub hw_cursor: bool,
-    pub hw_cursor_initialized: bool,
+    hw_cursor_initialized: bool,
 }
 
 impl Compositor {
