@@ -6,7 +6,7 @@ use std::{mem, slice};
 use log::{error, info};
 
 use crate::core::display::Display;
-use crate::core::image::{Image, ImageRef};
+use crate::core::image::Image;
 use crate::core::rect::Rect;
 
 #[repr(C, packed)]
@@ -77,9 +77,6 @@ impl Compositor {
         }
     }
 
-    pub fn image(&self) -> &ImageRef<'static> {
-        &self.displays[0].image
-    }
     /// Return the screen rectangle
     pub fn screen_rect(&self) -> Rect {
         self.displays[0].screen_rect()
@@ -112,8 +109,8 @@ impl Compositor {
     /// Create a [Rect] that places a popup in the middle of the display
     fn popup_rect(&self, popup: &Image) -> Rect {
         Rect::new(
-            self.image().width() / 2 - popup.width() / 2,
-            self.image().height() / 2 - popup.height() / 2,
+            self.screen_rect().width() / 2 - popup.width() / 2,
+            self.screen_rect().height() / 2 - popup.height() / 2,
             popup.width(),
             popup.height(),
         )

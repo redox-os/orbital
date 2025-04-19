@@ -871,8 +871,8 @@ impl OrbitalScheme {
     fn move_front_window(&mut self, h_movement: i32, v_movement: i32) {
         if let Some(id) = self.order.front() {
             if let Some(window) = self.windows.get_mut(id) {
-                let display_width = self.compositor.image().width();
-                let display_height = self.compositor.image().height();
+                let display_width = self.compositor.screen_rect().width();
+                let display_height = self.compositor.screen_rect().height();
                 Self::update_window(&mut self.compositor, window, |_compositor, window| {
                     // Align location to grid
                     window.x -= window.x % GRID_SIZE;
@@ -1485,8 +1485,8 @@ impl OrbitalScheme {
         self.compositor.schedule(screen_rect);
 
         let screen_event = ScreenEvent {
-            width: self.compositor.image().width() as u32,
-            height: self.compositor.image().height() as u32,
+            width: screen_rect.width() as u32,
+            height: screen_rect.height() as u32,
         }
         .to_event();
         for (_window_id, window) in self.windows.iter_mut() {
@@ -1508,8 +1508,8 @@ impl OrbitalScheme {
                 // which indicates the input device from which the event originated to use
                 // the correct display for getting the size.
                 self.mouse_event(MouseEvent {
-                    x: x * self.compositor.image().width() / 65536,
-                    y: y * self.compositor.image().height() / 65536,
+                    x: x * self.compositor.screen_rect().width() / 65536,
+                    y: y * self.compositor.screen_rect().height() / 65536,
                 });
             }
             EventOption::MouseRelative(event) => self.mouse_relative_event(event),
@@ -1569,10 +1569,10 @@ impl OrbitalScheme {
 
         if x < 0 && y < 0 {
             // Automatic placement
-            window.x = cmp::max(0, (self.compositor.image().width() - width) / 2);
+            window.x = cmp::max(0, (self.compositor.screen_rect().width() - width) / 2);
             window.y = cmp::max(
                 window.title_rect().height(),
-                (self.compositor.image().height() - height) / 2,
+                (self.compositor.screen_rect().height() - height) / 2,
             );
         }
 
