@@ -1,9 +1,9 @@
 use std::rc::Rc;
+use std::sync::Arc;
 use std::{
     cmp,
     collections::{BTreeMap, VecDeque},
     fs, io, str,
-    time::Instant,
 };
 
 use log::{error, info, warn};
@@ -16,28 +16,11 @@ use redox_scheme::Response;
 use syscall::error::{Error, Result, EBADF};
 use syscall::EVENT_READ;
 
-use crate::compositor::Compositor;
+use crate::compositor::{schedule, Compositor};
 use crate::config::Config;
 use crate::core::{display::Display, image::Image, rect::Rect, Orbital, Properties};
 use crate::scheme::TilePosition::{BottomHalf, FullScreen, LeftHalf, RightHalf, TopHalf};
 use crate::window::{Window, WindowZOrder};
-
-fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
-    let mut push = true;
-    for rect in redraws.iter_mut() {
-        //If contained, ignore new redraw request
-        let container = rect.container(&request);
-        if container.area() <= rect.area() + request.area() {
-            *rect = container;
-            push = false;
-            break;
-        }
-    }
-
-    if push {
-        redraws.push(request);
-    }
-}
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 enum CursorKind {
@@ -93,8 +76,7 @@ pub struct OrbitalScheme {
     window_max_unfocused: Image,
     window_close: Image,
     window_close_unfocused: Image,
-    cursors: BTreeMap<CursorKind, Image>,
-    cursor_i: CursorKind,
+    cursors: BTreeMap<CursorKind, Arc<Image>>,
     cursor_x: i32,
     cursor_y: i32,
     cursor_left: bool,
@@ -121,8 +103,6 @@ pub struct OrbitalScheme {
     volume_osd: bool,
     shortcuts_osd: bool,
     popup_rect: Rect,
-    update_cursor_timer: Instant, //QEMU UIs do not grab the pointer in case an absolute pointing device is present
-                                  //and since releasing our gpu cursor makes it disappear, updating it every second fixes it
 }
 
 impl OrbitalScheme {
@@ -135,30 +115,38 @@ impl OrbitalScheme {
         }
 
         let mut cursors = BTreeMap::new();
-        cursors.insert(CursorKind::None, Image::new(0, 0));
+        cursors.insert(CursorKind::None, Arc::new(Image::new(0, 0)));
         cursors.insert(
             CursorKind::LeftPtr,
-            Image::from_path_scale(&config.cursor, scale).unwrap_or(Image::new(0, 0)),
+            Arc::new(Image::from_path_scale(&config.cursor, scale).unwrap_or(Image::new(0, 0))),
         );
         cursors.insert(
             CursorKind::BottomLeftCorner,
-            Image::from_path_scale(&config.bottom_left_corner, scale).unwrap_or(Image::new(0, 0)),
+            Arc::new(
+                Image::from_path_scale(&config.bottom_left_corner, scale)
+                    .unwrap_or(Image::new(0, 0)),
+            ),
         );
         cursors.insert(
             CursorKind::BottomRightCorner,
-            Image::from_path_scale(&config.bottom_right_corner, scale).unwrap_or(Image::new(0, 0)),
+            Arc::new(
+                Image::from_path_scale(&config.bottom_right_corner, scale)
+                    .unwrap_or(Image::new(0, 0)),
+            ),
         );
         cursors.insert(
             CursorKind::BottomSide,
-            Image::from_path_scale(&config.bottom_side, scale).unwrap_or(Image::new(0, 0)),
+            Arc::new(
+                Image::from_path_scale(&config.bottom_side, scale).unwrap_or(Image::new(0, 0)),
+            ),
         );
         cursors.insert(
             CursorKind::LeftSide,
-            Image::from_path_scale(&config.left_side, scale).unwrap_or(Image::new(0, 0)),
+            Arc::new(Image::from_path_scale(&config.left_side, scale).unwrap_or(Image::new(0, 0))),
         );
         cursors.insert(
             CursorKind::RightSide,
-            Image::from_path_scale(&config.right_side, scale).unwrap_or(Image::new(0, 0)),
+            Arc::new(Image::from_path_scale(&config.right_side, scale).unwrap_or(Image::new(0, 0))),
         );
 
         let font = orbfont::Font::find(Some("Sans"), None, None)?;
@@ -175,7 +163,6 @@ impl OrbitalScheme {
             window_close_unfocused: Image::from_path_scale(&config.window_close_unfocused, scale)
                 .unwrap_or(Image::new(0, 0)),
             cursors,
-            cursor_i: CursorKind::None,
             cursor_x: 0,
             cursor_y: 0,
             cursor_left: false,
@@ -199,7 +186,6 @@ impl OrbitalScheme {
             volume_osd: false,
             shortcuts_osd: false,
             popup_rect: Rect::default(),
-            update_cursor_timer: Instant::now(),
         };
 
         orbital_scheme.update_cursor(0, 0, CursorKind::LeftPtr);
@@ -215,25 +201,6 @@ impl OrbitalScheme {
 
         schedule(redraws, window.title_rect());
         schedule(redraws, window.rect());
-    }
-
-    fn cursor_rect(&self) -> Rect {
-        let cursor = &self.cursors[&self.cursor_i];
-        let (off_x, off_y) = match self.cursor_i {
-            CursorKind::None => (0, 0),
-            CursorKind::LeftPtr => (0, 0),
-            CursorKind::BottomLeftCorner => (0, -cursor.height()),
-            CursorKind::BottomRightCorner => (-cursor.width(), -cursor.height()),
-            CursorKind::BottomSide => (-cursor.width() / 2, -cursor.height()),
-            CursorKind::LeftSide => (0, -cursor.height() / 2),
-            CursorKind::RightSide => (-cursor.width(), -cursor.height() / 2),
-        };
-        Rect::new(
-            self.cursor_x + off_x,
-            self.cursor_y + off_y,
-            cursor.width(),
-            cursor.height(),
-        )
     }
 
     fn focus(&mut self, id: usize, focused: bool) {
@@ -261,63 +228,32 @@ impl OrbitalScheme {
     // - Window sets cursor on/off
     // - Window moves
     fn update_cursor(&mut self, x: i32, y: i32, kind: CursorKind) {
-        if self.compositor.hw_cursor {
-            self.cursor_x = x;
-            self.cursor_y = y;
+        self.cursor_x = x;
+        self.cursor_y = y;
 
-            if self.cursor_i != kind {
-                self.cursor_i = kind;
+        let cursor = self.cursors.get(&kind).unwrap();
 
-                let cursor = self.cursors.get(&kind).unwrap();
+        let w: i32 = cursor.width();
+        let h: i32 = cursor.height();
 
-                let w: i32 = cursor.width();
-                let h: i32 = cursor.height();
+        let (hot_x, hot_y) = match kind {
+            CursorKind::None => (0, 0),
+            CursorKind::LeftPtr => (0, 0),
+            CursorKind::BottomLeftCorner => (0, h),
+            CursorKind::BottomRightCorner => (w, h),
+            CursorKind::BottomSide => (w / 2, h),
+            CursorKind::LeftSide => (0, h / 2),
+            CursorKind::RightSide => (w, h / 2),
+        };
 
-                let (hot_x, hot_y) = match kind {
-                    CursorKind::None => (0, 0),
-                    CursorKind::LeftPtr => (0, 0),
-                    CursorKind::BottomLeftCorner => (0, h),
-                    CursorKind::BottomRightCorner => (w, h),
-                    CursorKind::BottomSide => (w / 2, h),
-                    CursorKind::LeftSide => (0, h / 2),
-                    CursorKind::RightSide => (w, h / 2),
-                };
-
-                self.compositor.update_hw_cursor(
-                    self.cursor_x,
-                    self.cursor_y,
-                    hot_x,
-                    hot_y,
-                    cursor,
-                );
-            } else {
-                self.compositor.move_hw_cursor(self.cursor_x, self.cursor_y);
-            }
-
-            return;
-        }
-
-        if kind != self.cursor_i {
-            let cursor_rect = self.cursor_rect();
-            schedule(&mut self.redraws, cursor_rect);
-
-            self.cursor_i = kind;
-
-            let cursor_rect = self.cursor_rect();
-            schedule(&mut self.redraws, cursor_rect);
-        }
-
-        // Update saved mouse information
-        if x != self.cursor_x || y != self.cursor_y {
-            let cursor_rect = self.cursor_rect();
-            schedule(&mut self.redraws, cursor_rect);
-
-            self.cursor_x = x;
-            self.cursor_y = y;
-
-            let cursor_rect = self.cursor_rect();
-            schedule(&mut self.redraws, cursor_rect);
-        }
+        self.compositor.update_cursor(
+            &mut self.redraws,
+            self.cursor_x,
+            self.cursor_y,
+            hot_x,
+            hot_y,
+            cursor,
+        );
     }
 }
 
@@ -598,8 +534,6 @@ impl OrbitalScheme {
     fn redraw(&mut self) {
         self.rezbuffer();
 
-        let cursor_rect = self.cursor_rect();
-
         // go through the list of rectangles pending a redraw and expand the total redraw rectangle
         // to encompass all of them
         let mut total_redraw_opt: Option<Rect> = None;
@@ -667,13 +601,10 @@ impl OrbitalScheme {
             }
         }
 
-        if let Some(total_redraw) = total_redraw_opt {
-            if let Some(cursor) = self.cursors.get(&self.cursor_i) {
-                self.compositor
-                    .redraw_cursor(total_redraw, cursor_rect, cursor);
-            }
+        self.compositor.redraw_cursor(total_redraw_opt);
 
-            // Sync any parts of displays that changed
+        // Sync any parts of displays that changed
+        if let Some(total_redraw) = total_redraw_opt {
             self.compositor.sync_rect(total_redraw);
         }
     }
@@ -1600,13 +1531,6 @@ impl OrbitalScheme {
 
     fn event(&mut self, event_union: Event) {
         self.rezbuffer();
-
-        if self.compositor.hw_cursor && self.update_cursor_timer.elapsed().as_millis() > 1000 {
-            let cursor_kind = self.cursor_i;
-            self.cursor_i = CursorKind::None;
-            self.update_cursor(self.cursor_x, self.cursor_y, cursor_kind);
-            self.update_cursor_timer = Instant::now();
-        }
 
         match event_union.to_option() {
             EventOption::Key(event) => self.key_event(event),

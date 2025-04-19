@@ -1,4 +1,6 @@
 use std::io::{Read, Write};
+use std::sync::Arc;
+use std::time::Instant;
 use std::{mem, slice};
 
 use log::{error, info};
@@ -20,11 +22,36 @@ struct CursorCommand {
     cursor_img: [u32; 4096],
 }
 
+pub fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
+    let mut push = true;
+    for rect in redraws.iter_mut() {
+        //If contained, ignore new redraw request
+        let container = rect.container(&request);
+        if container.area() <= rect.area() + request.area() {
+            *rect = container;
+            push = false;
+            break;
+        }
+    }
+
+    if push {
+        redraws.push(request);
+    }
+}
+
 pub struct Compositor {
     // FIXME make these private once possible
     pub displays: Vec<Display>,
-    pub hw_cursor: bool,
-    hw_cursor_initialized: bool,
+
+    hw_cursor: bool,
+    //QEMU UIs do not grab the pointer in case an absolute pointing device is present
+    //and since releasing our gpu cursor makes it disappear, updating it every second fixes it
+    update_cursor_timer: Instant,
+    cursor: Arc<Image>,
+    cursor_x: i32,
+    cursor_y: i32,
+    cursor_hot_x: i32,
+    cursor_hot_y: i32,
 }
 
 impl Compositor {
@@ -43,8 +70,14 @@ impl Compositor {
 
         Compositor {
             displays,
+
             hw_cursor,
-            hw_cursor_initialized: false,
+            update_cursor_timer: Instant::now(),
+            cursor: Arc::new(Image::new(0, 0)),
+            cursor_x: 0,
+            cursor_y: 0,
+            cursor_hot_x: 0,
+            cursor_hot_y: 0,
         }
     }
 
@@ -66,34 +99,66 @@ impl Compositor {
         self.displays[0].resize(width, height);
     }
 
-    pub fn update_hw_cursor(&mut self, x: i32, y: i32, hot_x: i32, hot_y: i32, cursor: &Image) {
-        self.send_cursor_command(&CursorCommand {
-            header: 1,
-            x,
-            y,
-            hot_x,
-            hot_y,
-            w: cursor.width(),
-            h: cursor.height(),
-            cursor_img: cursor.get_cursor_data(),
-        });
-
-        self.hw_cursor_initialized = true;
+    fn cursor_rect(&self) -> Rect {
+        Rect::new(
+            self.cursor_x - self.cursor_hot_x,
+            self.cursor_y - self.cursor_hot_y,
+            self.cursor.width(),
+            self.cursor.height(),
+        )
     }
 
-    pub fn move_hw_cursor(&mut self, x: i32, y: i32) {
-        assert!(self.hw_cursor_initialized);
+    pub fn update_cursor(
+        &mut self,
+        redraws: &mut Vec<Rect>,
+        x: i32,
+        y: i32,
+        hot_x: i32,
+        hot_y: i32,
+        cursor: &Arc<Image>,
+    ) {
+        if !self.hw_cursor {
+            schedule(redraws, self.cursor_rect());
+        }
 
-        self.send_cursor_command(&CursorCommand {
-            header: 0,
-            x,
-            y,
-            hot_x: 0,
-            hot_y: 0,
-            w: 0,
-            h: 0,
-            cursor_img: [0; 4096],
-        });
+        if self.hw_cursor {
+            if Arc::ptr_eq(&self.cursor, cursor)
+                && self.cursor_hot_x == hot_x
+                && self.cursor_hot_y == hot_y
+            {
+                self.send_cursor_command(&CursorCommand {
+                    header: 0,
+                    x,
+                    y,
+                    hot_x: 0,
+                    hot_y: 0,
+                    w: 0,
+                    h: 0,
+                    cursor_img: [0; 4096],
+                });
+            } else {
+                self.send_cursor_command(&CursorCommand {
+                    header: 1,
+                    x,
+                    y,
+                    hot_x,
+                    hot_y,
+                    w: cursor.width(),
+                    h: cursor.height(),
+                    cursor_img: cursor.get_cursor_data(),
+                });
+            }
+        }
+
+        self.cursor_x = x;
+        self.cursor_y = y;
+        self.cursor_hot_x = hot_x;
+        self.cursor_hot_y = hot_y;
+        self.cursor = cursor.clone();
+
+        if !self.hw_cursor {
+            schedule(redraws, self.cursor_rect());
+        }
     }
 
     fn send_cursor_command(&mut self, cmd: &CursorCommand) {
@@ -110,21 +175,41 @@ impl Compositor {
         }
     }
 
-    pub fn redraw_cursor(&mut self, total_redraw: Rect, cursor_rect: Rect, cursor: &Image) {
+    pub fn redraw_cursor(&mut self, total_redraw: Option<Rect>) {
         if self.hw_cursor {
+            if self.hw_cursor && self.update_cursor_timer.elapsed().as_millis() > 1000 {
+                self.send_cursor_command(&CursorCommand {
+                    header: 1,
+                    x: self.cursor_x,
+                    y: self.cursor_y,
+                    hot_x: self.cursor_hot_x,
+                    hot_y: self.cursor_hot_y,
+                    w: self.cursor.width(),
+                    h: self.cursor.height(),
+                    cursor_img: self.cursor.get_cursor_data(),
+                });
+                self.update_cursor_timer = Instant::now();
+            }
+
             return;
         }
+
+        let Some(total_redraw) = total_redraw else {
+            return;
+        };
+
+        let cursor_rect = self.cursor_rect();
 
         for display in self.displays.iter_mut() {
             let rect = total_redraw.intersection(&display.screen_rect());
             if !rect.is_empty() {
                 let cursor_intersect = rect.intersection(&cursor_rect);
                 if !cursor_intersect.is_empty() {
-                    display
-                        .roi_mut(&cursor_intersect)
-                        .blend(&cursor.roi(
-                            &cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top()),
-                        ));
+                    display.roi_mut(&cursor_intersect).blend(
+                        &self
+                            .cursor
+                            .roi(&cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())),
+                    );
                 }
             }
         }
