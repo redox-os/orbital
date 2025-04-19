@@ -22,26 +22,11 @@ struct CursorCommand {
     cursor_img: [u32; 4096],
 }
 
-pub fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
-    let mut push = true;
-    for rect in redraws.iter_mut() {
-        //If contained, ignore new redraw request
-        let container = rect.container(&request);
-        if container.area() <= rect.area() + request.area() {
-            *rect = container;
-            push = false;
-            break;
-        }
-    }
-
-    if push {
-        redraws.push(request);
-    }
-}
-
 pub struct Compositor {
     // FIXME make these private once possible
     pub displays: Vec<Display>,
+
+    pub redraws: Vec<Rect>,
 
     hw_cursor: bool,
     //QEMU UIs do not grab the pointer in case an absolute pointing device is present
@@ -56,6 +41,11 @@ pub struct Compositor {
 
 impl Compositor {
     pub fn new(mut displays: Vec<Display>) -> Self {
+        let mut redraws = Vec::new();
+        for display in displays.iter() {
+            redraws.push(display.screen_rect());
+        }
+
         //Reading display file is only used to check if GPU cursor is supported
         let mut buf_array = [0; 1];
         let buf: &mut [u8] = &mut buf_array;
@@ -70,6 +60,8 @@ impl Compositor {
 
         Compositor {
             displays,
+
+            redraws,
 
             hw_cursor,
             update_cursor_timer: Instant::now(),
@@ -99,6 +91,23 @@ impl Compositor {
         self.displays[0].resize(width, height);
     }
 
+    pub fn schedule(&mut self, request: Rect) {
+        let mut push = true;
+        for rect in self.redraws.iter_mut() {
+            //If contained, ignore new redraw request
+            let container = rect.container(&request);
+            if container.area() <= rect.area() + request.area() {
+                *rect = container;
+                push = false;
+                break;
+            }
+        }
+
+        if push {
+            self.redraws.push(request);
+        }
+    }
+
     fn cursor_rect(&self) -> Rect {
         Rect::new(
             self.cursor_x - self.cursor_hot_x,
@@ -108,17 +117,9 @@ impl Compositor {
         )
     }
 
-    pub fn update_cursor(
-        &mut self,
-        redraws: &mut Vec<Rect>,
-        x: i32,
-        y: i32,
-        hot_x: i32,
-        hot_y: i32,
-        cursor: &Arc<Image>,
-    ) {
+    pub fn update_cursor(&mut self, x: i32, y: i32, hot_x: i32, hot_y: i32, cursor: &Arc<Image>) {
         if !self.hw_cursor {
-            schedule(redraws, self.cursor_rect());
+            self.schedule(self.cursor_rect());
         }
 
         if self.hw_cursor {
@@ -157,7 +158,7 @@ impl Compositor {
         self.cursor = cursor.clone();
 
         if !self.hw_cursor {
-            schedule(redraws, self.cursor_rect());
+            self.schedule(self.cursor_rect());
         }
     }
 

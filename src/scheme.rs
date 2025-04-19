@@ -16,7 +16,7 @@ use redox_scheme::Response;
 use syscall::error::{Error, Result, EBADF};
 use syscall::EVENT_READ;
 
-use crate::compositor::{schedule, Compositor};
+use crate::compositor::Compositor;
 use crate::config::Config;
 use crate::core::{display::Display, image::Image, rect::Rect, Orbital, Properties};
 use crate::scheme::TilePosition::{BottomHalf, FullScreen, LeftHalf, RightHalf, TopHalf};
@@ -91,7 +91,6 @@ pub struct OrbitalScheme {
     order: VecDeque<usize>,
     zbuffer: Vec<(usize, WindowZOrder, usize)>,
     windows: BTreeMap<usize, Window>,
-    redraws: Vec<Rect>,
     font: orbfont::Font,
     clipboard: Vec<u8>,
     scale: i32,
@@ -107,10 +106,8 @@ pub struct OrbitalScheme {
 
 impl OrbitalScheme {
     pub(crate) fn new(displays: Vec<Display>, config: Rc<Config>) -> Result<OrbitalScheme, String> {
-        let mut redraws = Vec::new();
         let mut scale = 1;
         for display in displays.iter() {
-            redraws.push(display.screen_rect());
             scale = cmp::max(scale, display.scale);
         }
 
@@ -177,7 +174,6 @@ impl OrbitalScheme {
             order: VecDeque::new(),
             zbuffer: Vec::new(),
             windows: BTreeMap::new(),
-            redraws,
             font,
             clipboard: Vec::new(),
             scale,
@@ -193,19 +189,23 @@ impl OrbitalScheme {
         Ok(orbital_scheme)
     }
 
-    fn update_window(redraws: &mut Vec<Rect>, window: &mut Window, f: impl FnOnce(&mut Window)) {
-        schedule(redraws, window.title_rect());
-        schedule(redraws, window.rect());
+    fn update_window(
+        compositor: &mut Compositor,
+        window: &mut Window,
+        f: impl FnOnce(&Compositor, &mut Window),
+    ) {
+        compositor.schedule(window.title_rect());
+        compositor.schedule(window.rect());
 
-        f(window);
+        f(compositor, window);
 
-        schedule(redraws, window.title_rect());
-        schedule(redraws, window.rect());
+        compositor.schedule(window.title_rect());
+        compositor.schedule(window.rect());
     }
 
     fn focus(&mut self, id: usize, focused: bool) {
         if let Some(window) = self.windows.get_mut(&id) {
-            Self::update_window(&mut self.redraws, window, |window| {
+            Self::update_window(&mut self.compositor, window, |_compositor, window| {
                 window.event(FocusEvent { focused }.to_event());
             });
         }
@@ -246,14 +246,8 @@ impl OrbitalScheme {
             CursorKind::RightSide => (w, h / 2),
         };
 
-        self.compositor.update_cursor(
-            &mut self.redraws,
-            self.cursor_x,
-            self.cursor_y,
-            hot_x,
-            hot_y,
-            cursor,
-        );
+        self.compositor
+            .update_cursor(self.cursor_x, self.cursor_y, hot_x, hot_y, cursor);
     }
 }
 
@@ -363,7 +357,7 @@ impl OrbitalScheme {
         y: Option<i32>,
     ) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
-        Self::update_window(&mut self.redraws, window, |window| {
+        Self::update_window(&mut self.compositor, window, |_compositor, window| {
             window.x = x.unwrap_or(window.x);
             window.y = y.unwrap_or(window.y);
         });
@@ -379,7 +373,7 @@ impl OrbitalScheme {
         h: Option<i32>,
     ) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
-        Self::update_window(&mut self.redraws, window, |window| {
+        Self::update_window(&mut self.compositor, window, |_compositor, window| {
             let w = w.unwrap_or(window.width());
             let h = h.unwrap_or(window.height());
             window.set_size(w, h);
@@ -405,7 +399,7 @@ impl OrbitalScheme {
             }
         } else {
             // Setting flag may change visibility, make sure to queue redraws both before and after
-            Self::update_window(&mut self.redraws, window, |window| {
+            Self::update_window(&mut self.compositor, window, |_compositor, window| {
                 window.set_flag(flag, value);
             });
         }
@@ -419,7 +413,7 @@ impl OrbitalScheme {
         window.title = title;
         window.render_title(&self.font);
 
-        schedule(&mut self.redraws, window.title_rect());
+        self.compositor.schedule(window.title_rect());
 
         Ok(())
     }
@@ -461,7 +455,7 @@ impl OrbitalScheme {
     /// Called to flush a window. It's usually a good idea to redraw here.
     pub fn handle_window_sync(&mut self, id: usize) -> Result<()> {
         let window = self.windows.get(&id).ok_or(Error::new(EBADF))?;
-        schedule(&mut self.redraws, window.rect());
+        self.compositor.schedule(window.rect());
         Ok(())
     }
 
@@ -475,8 +469,8 @@ impl OrbitalScheme {
         self.order.retain(|&e| e != id);
 
         if let Some(window) = self.windows.remove(&id) {
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
+            self.compositor.schedule(window.title_rect());
+            self.compositor.schedule(window.rect());
         }
 
         // Focus current front window
@@ -537,7 +531,7 @@ impl OrbitalScheme {
         // go through the list of rectangles pending a redraw and expand the total redraw rectangle
         // to encompass all of them
         let mut total_redraw_opt: Option<Rect> = None;
-        for original_rect in self.redraws.drain(..) {
+        for original_rect in self.compositor.redraws.drain(..) {
             if !original_rect.is_empty() {
                 total_redraw_opt = match total_redraw_opt {
                     Some(total_redraw) => Some(total_redraw.container(&original_rect)),
@@ -592,7 +586,7 @@ impl OrbitalScheme {
         }
 
         // Add any redraws from OSD's
-        for original_rect in self.redraws.drain(..) {
+        for original_rect in self.compositor.redraws.drain(..) {
             if !original_rect.is_empty() {
                 total_redraw_opt = match total_redraw_opt {
                     Some(total_redraw) => Some(total_redraw.container(&original_rect)),
@@ -773,7 +767,7 @@ impl OrbitalScheme {
                 .roi_mut(&popup_rect)
                 .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
             self.popup_rect = popup_rect;
-            schedule(&mut self.redraws, popup_rect);
+            self.compositor.schedule(popup_rect);
         }
     }
 
@@ -807,7 +801,7 @@ impl OrbitalScheme {
             .roi_mut(&popup_rect)
             .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
         self.popup_rect = popup_rect;
-        schedule(&mut self.redraws, popup_rect);
+        self.compositor.schedule(popup_rect);
     }
 
     const SHORTCUTS_LIST: &'static [&'static str] = &[
@@ -874,7 +868,7 @@ impl OrbitalScheme {
             .roi_mut(&popup_rect)
             .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
         self.popup_rect = popup_rect;
-        schedule(&mut self.redraws, popup_rect);
+        self.compositor.schedule(popup_rect);
     }
 
     // Keep track of the modifier keys state based on past keydown/keyup events
@@ -914,7 +908,9 @@ impl OrbitalScheme {
     fn move_front_window(&mut self, h_movement: i32, v_movement: i32) {
         if let Some(id) = self.order.front() {
             if let Some(window) = self.windows.get_mut(id) {
-                Self::update_window(&mut self.redraws, window, |window| {
+                let display_width = self.compositor.image().width();
+                let display_height = self.compositor.image().height();
+                Self::update_window(&mut self.compositor, window, |_compositor, window| {
                     // Align location to grid
                     window.x -= window.x % GRID_SIZE;
                     window.y -= window.y % GRID_SIZE;
@@ -925,11 +921,11 @@ impl OrbitalScheme {
                     // Ensure window remains visible
                     window.x = cmp::max(
                         -window.width() + GRID_SIZE,
-                        cmp::min(self.compositor.image().width() - GRID_SIZE, window.x),
+                        cmp::min(display_width - GRID_SIZE, window.x),
                     );
                     window.y = cmp::max(
                         -window.height() + GRID_SIZE,
-                        cmp::min(self.compositor.image().height() - GRID_SIZE, window.y),
+                        cmp::min(display_height - GRID_SIZE, window.y),
                     );
 
                     let move_event = MoveEvent {
@@ -967,18 +963,18 @@ impl OrbitalScheme {
             if let Some(window) = self.windows.get_mut(id) {
                 let display_index =
                     Self::get_display_index(&self.compositor.displays, &window.rect());
-                Self::update_window(&mut self.redraws, window, |window| {
+                Self::update_window(&mut self.compositor, window, |compositor, window| {
                     let (x, y, width, height) = match window.restore.take() {
                         None => {
                             // we are about to maximize window, so store current size for restore later
                             window.restore = Some(window.rect());
 
-                            let top = self.compositor.displays[display_index].y
-                                + window.title_rect().height();
-                            let left = self.compositor.displays[display_index].x;
-                            let max_height = self.compositor.displays[display_index].image.height()
+                            let top =
+                                compositor.displays[display_index].y + window.title_rect().height();
+                            let left = compositor.displays[display_index].x;
+                            let max_height = compositor.displays[display_index].image.height()
                                 - window.title_rect().height();
-                            let max_width = self.compositor.displays[display_index].image.width();
+                            let max_width = compositor.displays[display_index].image.width();
                             let half_width = (max_width / 2) as u32;
                             let half_height = (max_height / 2) as u32;
 
@@ -1019,7 +1015,7 @@ impl OrbitalScheme {
     // undraw any overlay that was being displayed and exit the mode causing it to be displayed
     fn close_overlays(&mut self) {
         // redraw the area that was occupied by the popup
-        schedule(&mut self.redraws, self.popup_rect);
+        self.compositor.schedule(self.popup_rect);
         // disable drawing of the win-tab or volume popup or shortcuts overlay on redraw
         self.win_tabbing = false;
         self.volume_osd = false;
@@ -1152,7 +1148,7 @@ impl OrbitalScheme {
             DragMode::Title(window_id, drag_x, drag_y) => {
                 if let Some(window) = self.windows.get_mut(&window_id) {
                     if drag_x != event.x || drag_y != event.y {
-                        Self::update_window(&mut self.redraws, window, |window| {
+                        Self::update_window(&mut self.compositor, window, |_compositor, window| {
                             //TODO: Min and max
                             window.x += event.x - drag_x;
                             window.y += event.y - drag_y;
@@ -1180,10 +1176,14 @@ impl OrbitalScheme {
 
                     if w > 0 {
                         if x != window.x {
-                            Self::update_window(&mut self.redraws, window, |window| {
-                                window.x = x;
-                                window.event(MoveEvent { x, y: window.y }.to_event());
-                            });
+                            Self::update_window(
+                                &mut self.compositor,
+                                window,
+                                |_compositor, window| {
+                                    window.x = x;
+                                    window.event(MoveEvent { x, y: window.y }.to_event());
+                                },
+                            );
                         }
 
                         if w != window.width() {
@@ -1241,10 +1241,14 @@ impl OrbitalScheme {
 
                     if w > 0 && h > 0 {
                         if x != window.x {
-                            Self::update_window(&mut self.redraws, window, |window| {
-                                window.x = x;
-                                window.event(MoveEvent { x, y: window.y }.to_event());
-                            });
+                            Self::update_window(
+                                &mut self.compositor,
+                                window,
+                                |_compositor, window| {
+                                    window.x = x;
+                                    window.event(MoveEvent { x, y: window.y }.to_event());
+                                },
+                            );
                         }
 
                         if w != window.width() || h != window.height() {
@@ -1517,7 +1521,7 @@ impl OrbitalScheme {
             .resize(event.width as i32, event.height as i32);
 
         let screen_rect = self.compositor.screen_rect();
-        schedule(&mut self.redraws, screen_rect);
+        self.compositor.schedule(screen_rect);
 
         let screen_event = ScreenEvent {
             width: self.compositor.image().width() as u32,
@@ -1612,8 +1616,8 @@ impl OrbitalScheme {
         }
 
         // Redraw new window
-        schedule(&mut self.redraws, window.title_rect());
-        schedule(&mut self.redraws, window.rect());
+        self.compositor.schedule(window.title_rect());
+        self.compositor.schedule(window.rect());
 
         // Add to zorder as appropriate
         match window.zorder {
