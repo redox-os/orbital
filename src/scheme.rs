@@ -1,12 +1,9 @@
-use std::io::Read;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::{
     cmp,
     collections::{BTreeMap, VecDeque},
-    fs,
-    io::{self, Write},
-    mem, slice, str,
-    time::Instant,
+    fs, io, str,
 };
 
 use log::{error, info, warn};
@@ -19,28 +16,11 @@ use redox_scheme::Response;
 use syscall::error::{Error, Result, EBADF};
 use syscall::EVENT_READ;
 
+use crate::compositor::Compositor;
 use crate::config::Config;
-use crate::core::image::ImageRef;
 use crate::core::{display::Display, image::Image, rect::Rect, Orbital, Properties};
 use crate::scheme::TilePosition::{BottomHalf, FullScreen, LeftHalf, RightHalf, TopHalf};
 use crate::window::{Window, WindowZOrder};
-
-fn schedule(redraws: &mut Vec<Rect>, request: Rect) {
-    let mut push = true;
-    for rect in redraws.iter_mut() {
-        //If contained, ignore new redraw request
-        let container = rect.container(&request);
-        if container.area() <= rect.area() + request.area() {
-            *rect = container;
-            push = false;
-            break;
-        }
-    }
-
-    if push {
-        redraws.push(request);
-    }
-}
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 enum CursorKind {
@@ -90,16 +70,13 @@ const ALT_ANY_MODIFIER: u8 = 1 << 6;
 const SUPER_MODIFIER: u8 = 1 << 7;
 
 pub struct OrbitalScheme {
-    displays: Vec<Display>,
-    hw_cursor: bool,
-    hw_cursor_initialized: bool,
+    compositor: Compositor,
 
     window_max: Image,
     window_max_unfocused: Image,
     window_close: Image,
     window_close_unfocused: Image,
-    cursors: BTreeMap<CursorKind, Image>,
-    cursor_i: CursorKind,
+    cursors: BTreeMap<CursorKind, Arc<Image>>,
     cursor_x: i32,
     cursor_y: i32,
     cursor_left: bool,
@@ -114,7 +91,6 @@ pub struct OrbitalScheme {
     order: VecDeque<usize>,
     zbuffer: Vec<(usize, WindowZOrder, usize)>,
     windows: BTreeMap<usize, Window>,
-    redraws: Vec<Rect>,
     font: orbfont::Font,
     clipboard: Vec<u8>,
     scale: i32,
@@ -125,68 +101,54 @@ pub struct OrbitalScheme {
     win_tabbing: bool,
     volume_osd: bool,
     shortcuts_osd: bool,
-    popup_rect: Rect,
-    update_cursor_timer: Instant, //QEMU UIs do not grab the pointer in case an absolute pointing device is present
-                                  //and since releasing our gpu cursor makes it disappear, updating it every second fixes it
 }
 
 impl OrbitalScheme {
-    pub(crate) fn new(
-        mut displays: Vec<Display>,
-        config: Rc<Config>,
-    ) -> Result<OrbitalScheme, String> {
-        let mut redraws = Vec::new();
+    pub(crate) fn new(displays: Vec<Display>, config: Rc<Config>) -> Result<OrbitalScheme, String> {
         let mut scale = 1;
         for display in displays.iter() {
-            redraws.push(display.screen_rect());
             scale = cmp::max(scale, display.scale);
         }
 
         let mut cursors = BTreeMap::new();
-        cursors.insert(CursorKind::None, Image::new(0, 0));
+        cursors.insert(CursorKind::None, Arc::new(Image::new(0, 0)));
         cursors.insert(
             CursorKind::LeftPtr,
-            Image::from_path_scale(&config.cursor, scale).unwrap_or(Image::new(0, 0)),
+            Arc::new(Image::from_path_scale(&config.cursor, scale).unwrap_or(Image::new(0, 0))),
         );
         cursors.insert(
             CursorKind::BottomLeftCorner,
-            Image::from_path_scale(&config.bottom_left_corner, scale).unwrap_or(Image::new(0, 0)),
+            Arc::new(
+                Image::from_path_scale(&config.bottom_left_corner, scale)
+                    .unwrap_or(Image::new(0, 0)),
+            ),
         );
         cursors.insert(
             CursorKind::BottomRightCorner,
-            Image::from_path_scale(&config.bottom_right_corner, scale).unwrap_or(Image::new(0, 0)),
+            Arc::new(
+                Image::from_path_scale(&config.bottom_right_corner, scale)
+                    .unwrap_or(Image::new(0, 0)),
+            ),
         );
         cursors.insert(
             CursorKind::BottomSide,
-            Image::from_path_scale(&config.bottom_side, scale).unwrap_or(Image::new(0, 0)),
+            Arc::new(
+                Image::from_path_scale(&config.bottom_side, scale).unwrap_or(Image::new(0, 0)),
+            ),
         );
         cursors.insert(
             CursorKind::LeftSide,
-            Image::from_path_scale(&config.left_side, scale).unwrap_or(Image::new(0, 0)),
+            Arc::new(Image::from_path_scale(&config.left_side, scale).unwrap_or(Image::new(0, 0))),
         );
         cursors.insert(
             CursorKind::RightSide,
-            Image::from_path_scale(&config.right_side, scale).unwrap_or(Image::new(0, 0)),
+            Arc::new(Image::from_path_scale(&config.right_side, scale).unwrap_or(Image::new(0, 0))),
         );
 
         let font = orbfont::Font::find(Some("Sans"), None, None)?;
 
-        //Reading display file is only used to check if GPU cursor is supported
-        let mut buf_array = [0; 1];
-        let buf: &mut [u8] = &mut buf_array;
-        let _ret = displays[0].file.read(buf);
-
-        let mut hw_cursor: bool = false;
-
-        if buf[0] == 1 {
-            info!("Hardware cursor detected");
-            hw_cursor = true;
-        }
-
-        Ok(OrbitalScheme {
-            displays,
-            hw_cursor,
-            hw_cursor_initialized: false,
+        let mut orbital_scheme = OrbitalScheme {
+            compositor: Compositor::new(displays),
 
             window_max: Image::from_path_scale(&config.window_max, scale)
                 .unwrap_or(Image::new(0, 0)),
@@ -197,7 +159,6 @@ impl OrbitalScheme {
             window_close_unfocused: Image::from_path_scale(&config.window_close_unfocused, scale)
                 .unwrap_or(Image::new(0, 0)),
             cursors,
-            cursor_i: CursorKind::LeftPtr,
             cursor_x: 0,
             cursor_y: 0,
             cursor_left: false,
@@ -212,7 +173,6 @@ impl OrbitalScheme {
             order: VecDeque::new(),
             zbuffer: Vec::new(),
             windows: BTreeMap::new(),
-            redraws,
             font,
             clipboard: Vec::new(),
             scale,
@@ -220,54 +180,32 @@ impl OrbitalScheme {
             win_tabbing: false,
             volume_osd: false,
             shortcuts_osd: false,
-            popup_rect: Rect::default(),
-            update_cursor_timer: Instant::now(),
-        })
-    }
-
-    //TODO: replace these adapter functions
-    pub fn image(&self) -> &ImageRef<'static> {
-        &self.displays[0].image
-    }
-    pub fn image_mut(&mut self) -> &mut ImageRef<'static> {
-        &mut self.displays[0].image
-    }
-    /// Return the screen rectangle
-    pub fn screen_rect(&self) -> Rect {
-        self.displays[0].screen_rect()
-    }
-
-    /// Resize the inner image buffer. You're responsible for redrawing.
-    pub fn resize(&mut self, width: i32, height: i32) {
-        //TODO: should other screens be moved after a resize?
-        //TODO: support resizing other screens?
-        self.displays[0].resize(width, height);
-    }
-
-    fn cursor_rect(&self) -> Rect {
-        let cursor = &self.cursors[&self.cursor_i];
-        let (off_x, off_y) = match self.cursor_i {
-            CursorKind::None => (0, 0),
-            CursorKind::LeftPtr => (0, 0),
-            CursorKind::BottomLeftCorner => (0, -cursor.height()),
-            CursorKind::BottomRightCorner => (-cursor.width(), -cursor.height()),
-            CursorKind::BottomSide => (-cursor.width() / 2, -cursor.height()),
-            CursorKind::LeftSide => (0, -cursor.height() / 2),
-            CursorKind::RightSide => (-cursor.width(), -cursor.height() / 2),
         };
-        Rect::new(
-            self.cursor_x + off_x,
-            self.cursor_y + off_y,
-            cursor.width(),
-            cursor.height(),
-        )
+
+        orbital_scheme.update_cursor(0, 0, CursorKind::LeftPtr);
+
+        Ok(orbital_scheme)
+    }
+
+    fn update_window(
+        compositor: &mut Compositor,
+        window: &mut Window,
+        f: impl FnOnce(&Compositor, &mut Window),
+    ) {
+        compositor.schedule(window.title_rect());
+        compositor.schedule(window.rect());
+
+        f(compositor, window);
+
+        compositor.schedule(window.title_rect());
+        compositor.schedule(window.rect());
     }
 
     fn focus(&mut self, id: usize, focused: bool) {
         if let Some(window) = self.windows.get_mut(&id) {
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
-            window.event(FocusEvent { focused }.to_event());
+            Self::update_window(&mut self.compositor, window, |_compositor, window| {
+                window.event(FocusEvent { focused }.to_event());
+            });
         }
     }
 
@@ -288,27 +226,26 @@ impl OrbitalScheme {
     // - Window sets cursor on/off
     // - Window moves
     fn update_cursor(&mut self, x: i32, y: i32, kind: CursorKind) {
-        if kind != self.cursor_i {
-            let cursor_rect = self.cursor_rect();
-            schedule(&mut self.redraws, cursor_rect);
+        self.cursor_x = x;
+        self.cursor_y = y;
 
-            self.cursor_i = kind;
+        let cursor = self.cursors.get(&kind).unwrap();
 
-            let cursor_rect = self.cursor_rect();
-            schedule(&mut self.redraws, cursor_rect);
-        }
+        let w: i32 = cursor.width();
+        let h: i32 = cursor.height();
 
-        // Update saved mouse information
-        if x != self.cursor_x || y != self.cursor_y {
-            let cursor_rect = self.cursor_rect();
-            schedule(&mut self.redraws, cursor_rect);
+        let (hot_x, hot_y) = match kind {
+            CursorKind::None => (0, 0),
+            CursorKind::LeftPtr => (0, 0),
+            CursorKind::BottomLeftCorner => (0, h),
+            CursorKind::BottomRightCorner => (w, h),
+            CursorKind::BottomSide => (w / 2, h),
+            CursorKind::LeftSide => (0, h / 2),
+            CursorKind::RightSide => (w, h / 2),
+        };
 
-            self.cursor_x = x;
-            self.cursor_y = y;
-
-            let cursor_rect = self.cursor_rect();
-            schedule(&mut self.redraws, cursor_rect);
-        }
+        self.compositor
+            .update_cursor(self.cursor_x, self.cursor_y, hot_x, hot_y, cursor);
     }
 }
 
@@ -418,14 +355,10 @@ impl OrbitalScheme {
         y: Option<i32>,
     ) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
-        schedule(&mut self.redraws, window.title_rect());
-        schedule(&mut self.redraws, window.rect());
-
-        window.x = x.unwrap_or(window.x);
-        window.y = y.unwrap_or(window.y);
-
-        schedule(&mut self.redraws, window.title_rect());
-        schedule(&mut self.redraws, window.rect());
+        Self::update_window(&mut self.compositor, window, |_compositor, window| {
+            window.x = x.unwrap_or(window.x);
+            window.y = y.unwrap_or(window.y);
+        });
 
         Ok(())
     }
@@ -438,16 +371,11 @@ impl OrbitalScheme {
         h: Option<i32>,
     ) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
-        schedule(&mut self.redraws, window.title_rect());
-        schedule(&mut self.redraws, window.rect());
-
-        let w = w.unwrap_or(window.width());
-        let h = h.unwrap_or(window.height());
-
-        window.set_size(w, h);
-
-        schedule(&mut self.redraws, window.title_rect());
-        schedule(&mut self.redraws, window.rect());
+        Self::update_window(&mut self.compositor, window, |_compositor, window| {
+            let w = w.unwrap_or(window.width());
+            let h = h.unwrap_or(window.height());
+            window.set_size(w, h);
+        });
 
         Ok(())
     }
@@ -469,14 +397,9 @@ impl OrbitalScheme {
             }
         } else {
             // Setting flag may change visibility, make sure to queue redraws both before and after
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
-
-            window.set_flag(flag, value);
-
-            // Setting flag may change visibility, make sure to queue redraws both before and after
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
+            Self::update_window(&mut self.compositor, window, |_compositor, window| {
+                window.set_flag(flag, value);
+            });
         }
 
         Ok(())
@@ -488,7 +411,7 @@ impl OrbitalScheme {
         window.title = title;
         window.render_title(&self.font);
 
-        schedule(&mut self.redraws, window.title_rect());
+        self.compositor.schedule(window.title_rect());
 
         Ok(())
     }
@@ -530,7 +453,7 @@ impl OrbitalScheme {
     /// Called to flush a window. It's usually a good idea to redraw here.
     pub fn handle_window_sync(&mut self, id: usize) -> Result<()> {
         let window = self.windows.get(&id).ok_or(Error::new(EBADF))?;
-        schedule(&mut self.redraws, window.rect());
+        self.compositor.schedule(window.rect());
         Ok(())
     }
 
@@ -544,8 +467,8 @@ impl OrbitalScheme {
         self.order.retain(|&e| e != id);
 
         if let Some(window) = self.windows.remove(&id) {
-            schedule(&mut self.redraws, window.title_rect());
-            schedule(&mut self.redraws, window.rect());
+            self.compositor.schedule(window.title_rect());
+            self.compositor.schedule(window.rect());
         }
 
         // Focus current front window
@@ -603,122 +526,53 @@ impl OrbitalScheme {
     fn redraw(&mut self) {
         self.rezbuffer();
 
-        let cursor_rect = self.cursor_rect();
+        let popup = if self.shortcuts_osd {
+            Some(self.draw_shortcuts_osd())
+        } else if self.volume_osd {
+            Some(self.draw_volume_osd())
+        } else if self.win_tabbing {
+            self.draw_window_list_osd()
+        } else {
+            None
+        };
+        // Call set_popup first as it adds elements to redraws
+        self.compositor.set_popup(popup);
 
-        // go through the list of rectangles pending a redraw and expand the total redraw rectangle
-        // to encompass all of them
         let mut total_redraw_opt: Option<Rect> = None;
-        for original_rect in self.redraws.drain(..) {
-            if !original_rect.is_empty() {
-                total_redraw_opt = match total_redraw_opt {
-                    Some(total_redraw) => Some(total_redraw.container(&original_rect)),
-                    None => Some(original_rect),
-                };
-            }
 
-            for display in self.displays.iter_mut() {
-                let rect = original_rect.intersection(&display.screen_rect());
-                if !rect.is_empty() {
-                    display.rect(&rect, self.config.background_color.into());
+        self.compositor
+            .redraw_windows(&mut total_redraw_opt, |display, rect| {
+                display.rect(&rect, self.config.background_color.into());
 
-                    for entry in self.zbuffer.iter().rev() {
-                        let id = entry.0;
-                        let i = entry.2;
-                        if let Some(window) = self.windows.get_mut(&id) {
-                            window.draw_title(
-                                display,
-                                &rect,
-                                i == 0,
-                                if i == 0 {
-                                    &mut self.window_max
-                                } else {
-                                    &mut self.window_max_unfocused
-                                },
-                                if i == 0 {
-                                    &mut self.window_close
-                                } else {
-                                    &mut self.window_close_unfocused
-                                },
-                            );
-                            window.draw(display, &rect);
-                        }
-                    }
-
-                    if !self.hw_cursor {
-                        let cursor_intersect = rect.intersection(&cursor_rect);
-                        if !cursor_intersect.is_empty() {
-                            if let Some(cursor) = self.cursors.get_mut(&self.cursor_i) {
-                                display.roi(&cursor_intersect).blend(
-                                    &cursor.roi(
-                                        &cursor_intersect
-                                            .offset(-cursor_rect.left(), -cursor_rect.top()),
-                                    ),
-                                );
-                            }
-                        }
+                for &(id, _, i) in self.zbuffer.iter().rev() {
+                    if let Some(window) = self.windows.get(&id) {
+                        window.draw_title(
+                            display,
+                            &rect,
+                            i == 0,
+                            if i == 0 {
+                                &self.window_max
+                            } else {
+                                &self.window_max_unfocused
+                            },
+                            if i == 0 {
+                                &self.window_close
+                            } else {
+                                &self.window_close_unfocused
+                            },
+                        );
+                        window.draw(display, &rect);
                     }
                 }
-            }
-        }
+            });
 
-        if self.win_tabbing {
-            //TODO: add to total_redraw?
-            self.draw_window_list_osd();
-        }
+        self.compositor.redraw_popup(&mut total_redraw_opt);
 
-        if self.volume_osd {
-            //TODO: add to total_redraw?
-            self.draw_volume_osd();
-        }
-
-        if self.shortcuts_osd {
-            //TODO: add to total_redraw?
-            self.draw_shortcuts_osd();
-        }
-
-        // Add any redraws from OSD's
-        for original_rect in self.redraws.drain(..) {
-            if !original_rect.is_empty() {
-                total_redraw_opt = match total_redraw_opt {
-                    Some(total_redraw) => Some(total_redraw.container(&original_rect)),
-                    None => Some(original_rect),
-                };
-            }
-        }
+        self.compositor.redraw_cursor(total_redraw_opt);
 
         // Sync any parts of displays that changed
         if let Some(total_redraw) = total_redraw_opt {
-            for (i, display) in self.displays.iter_mut().enumerate() {
-                let display_redraw = total_redraw.intersection(&display.screen_rect());
-                if !display_redraw.is_empty() {
-                    // Keep synced with vesad
-                    #[allow(dead_code)]
-                    #[repr(packed)]
-                    struct SyncRect {
-                        x: i32,
-                        y: i32,
-                        w: i32,
-                        h: i32,
-                    }
-
-                    let sync_rect = SyncRect {
-                        x: display_redraw.left() - display.x,
-                        y: display_redraw.top() - display.y,
-                        w: display_redraw.width(),
-                        h: display_redraw.height(),
-                    };
-
-                    match display.file.write(unsafe {
-                        slice::from_raw_parts(
-                            &sync_rect as *const SyncRect as *const u8,
-                            mem::size_of::<SyncRect>(),
-                        )
-                    }) {
-                        Ok(_) => (),
-                        Err(err) => error!("failed to sync display {}: {}", i, err),
-                    }
-                }
-            }
+            self.compositor.sync_rect(total_redraw);
         }
     }
 
@@ -801,20 +655,10 @@ impl OrbitalScheme {
         }
     }
 
-    // Create a [Rect][orbital-core::rect::Rect] that places a popup in the middle of the display
-    fn popup_rect(image: &ImageRef, width: i32, height: i32) -> Rect {
-        Rect::new(
-            image.width() / 2 - width / 2,
-            image.height() / 2 - height / 2,
-            width,
-            height,
-        )
-    }
-
     // Called by redraw() to draw the list of currently open windows in the middle of the screen.
     // Filter out app windows with no title.
     // If there are no windows to select, nothing is drawn.
-    fn draw_window_list_osd(&mut self) {
+    fn draw_window_list_osd(&mut self) -> Option<Image> {
         const SELECT_POPUP_TOP_BOTTOM_MARGIN: u32 = 2;
         const SELECT_POPUP_SIDE_MARGIN: i32 = 4;
         const SELECT_ROW_HEIGHT: u32 = 20;
@@ -836,61 +680,59 @@ impl OrbitalScheme {
             .copied()
             .collect();
 
-        if selectable_window_ids.len() > 1 {
-            // follow the look of the current config - in terms of colors
-            let Config {
-                bar_color,
-                bar_highlight_color,
-                text_color,
-                text_highlight_color,
-                ..
-            } = *self.config;
+        if selectable_window_ids.len() <= 1 {
+            return None;
+        }
 
-            let list_h = (selectable_window_ids.len() as u32 * SELECT_ROW_HEIGHT
-                + (SELECT_POPUP_TOP_BOTTOM_MARGIN * 2)) as i32;
-            let list_w = SELECT_ROW_WIDTH;
-            let popup_rect = Self::popup_rect(self.image(), list_w, list_h);
-            let mut image = Image::from_color(list_w, list_h, bar_color.into());
+        // follow the look of the current config - in terms of colors
+        let Config {
+            bar_color,
+            bar_highlight_color,
+            text_color,
+            text_highlight_color,
+            ..
+        } = *self.config;
 
-            for (selectable_index, window_id) in selectable_window_ids.iter().enumerate() {
-                if let Some(window) = self.windows.get(window_id) {
-                    let vertical_offset = selectable_index as i32 * SELECT_ROW_HEIGHT as i32
-                        + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32;
-                    let text = self.font.render(&window.title, FONT_HEIGHT);
-                    if selectable_index == 0 {
-                        image.rect(
-                            0,
-                            vertical_offset,
-                            list_w as u32,
-                            SELECT_ROW_HEIGHT,
-                            bar_highlight_color.into(),
-                        );
-                        text.draw(
-                            &mut image,
-                            SELECT_POPUP_SIDE_MARGIN,
-                            vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32,
-                            text_highlight_color.into(),
-                        );
-                    } else {
-                        text.draw(
-                            &mut image,
-                            SELECT_POPUP_SIDE_MARGIN,
-                            vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32,
-                            text_color.into(),
-                        );
-                    }
+        let list_h = (selectable_window_ids.len() as u32 * SELECT_ROW_HEIGHT
+            + (SELECT_POPUP_TOP_BOTTOM_MARGIN * 2)) as i32;
+        let list_w = SELECT_ROW_WIDTH;
+        let mut image = Image::from_color(list_w, list_h, bar_color.into());
+
+        for (selectable_index, window_id) in selectable_window_ids.iter().enumerate() {
+            if let Some(window) = self.windows.get(window_id) {
+                let vertical_offset = selectable_index as i32 * SELECT_ROW_HEIGHT as i32
+                    + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32;
+                let text = self.font.render(&window.title, FONT_HEIGHT);
+                if selectable_index == 0 {
+                    image.rect(
+                        0,
+                        vertical_offset,
+                        list_w as u32,
+                        SELECT_ROW_HEIGHT,
+                        bar_highlight_color.into(),
+                    );
+                    text.draw(
+                        &mut image,
+                        SELECT_POPUP_SIDE_MARGIN,
+                        vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32,
+                        text_highlight_color.into(),
+                    );
+                } else {
+                    text.draw(
+                        &mut image,
+                        SELECT_POPUP_SIDE_MARGIN,
+                        vertical_offset + SELECT_POPUP_TOP_BOTTOM_MARGIN as i32,
+                        text_color.into(),
+                    );
                 }
             }
-            self.image_mut()
-                .roi(&popup_rect)
-                .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
-            self.popup_rect = popup_rect;
-            schedule(&mut self.redraws, popup_rect);
         }
+
+        Some(image)
     }
 
     // Draw an on screen display (overlay) for volume control
-    fn draw_volume_osd(&mut self) {
+    fn draw_volume_osd(&mut self) -> Image {
         let Config {
             bar_color,
             bar_highlight_color,
@@ -904,7 +746,6 @@ impl OrbitalScheme {
         //TODO: HiDPI
         let list_h = BAR_HEIGHT + (2 * POPUP_MARGIN);
         let list_w = BAR_WIDTH + (2 * POPUP_MARGIN);
-        let popup_rect = Self::popup_rect(self.image(), list_w, list_h);
         // Color copied over from orbtk's window background
         let mut image = Image::from_color(list_w, list_h, bar_color.into());
         image.rect(
@@ -914,11 +755,8 @@ impl OrbitalScheme {
             BAR_HEIGHT as u32,
             bar_highlight_color.into(),
         );
-        self.image_mut()
-            .roi(&popup_rect)
-            .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
-        self.popup_rect = popup_rect;
-        schedule(&mut self.redraws, popup_rect);
+
+        image
     }
 
     const SHORTCUTS_LIST: &'static [&'static str] = &[
@@ -943,7 +781,7 @@ impl OrbitalScheme {
     ];
 
     // Draw an on screen display (overlay) of available SUPER keyboard shortcuts
-    fn draw_shortcuts_osd(&mut self) {
+    fn draw_shortcuts_osd(&mut self) -> Image {
         const ROW_HEIGHT: u32 = 20;
         const ROW_WIDTH: i32 = 400;
         const POPUP_BORDER: u32 = 2;
@@ -959,7 +797,6 @@ impl OrbitalScheme {
 
         let list_h = (Self::SHORTCUTS_LIST.len() as u32 * ROW_HEIGHT + (POPUP_BORDER * 2)) as i32;
         let list_w = ROW_WIDTH;
-        let popup_rect = Self::popup_rect(self.image(), list_w, list_h);
         let mut image = Image::from_color(list_w, list_h, bar_color.into());
 
         for (index, shortcut) in Self::SHORTCUTS_LIST.iter().enumerate() {
@@ -980,11 +817,7 @@ impl OrbitalScheme {
             );
         }
 
-        self.image_mut()
-            .roi(&popup_rect)
-            .blit(&image.roi(&Rect::new(0, 0, list_w, list_h)));
-        self.popup_rect = popup_rect;
-        schedule(&mut self.redraws, popup_rect);
+        image
     }
 
     // Keep track of the modifier keys state based on past keydown/keyup events
@@ -1024,35 +857,33 @@ impl OrbitalScheme {
     fn move_front_window(&mut self, h_movement: i32, v_movement: i32) {
         if let Some(id) = self.order.front() {
             if let Some(window) = self.windows.get_mut(id) {
-                schedule(&mut self.redraws, window.title_rect());
-                schedule(&mut self.redraws, window.rect());
+                let display_width = self.compositor.screen_rect().width();
+                let display_height = self.compositor.screen_rect().height();
+                Self::update_window(&mut self.compositor, window, |_compositor, window| {
+                    // Align location to grid
+                    window.x -= window.x % GRID_SIZE;
+                    window.y -= window.y % GRID_SIZE;
 
-                // Align location to grid
-                window.x -= window.x % GRID_SIZE;
-                window.y -= window.y % GRID_SIZE;
+                    window.x += h_movement;
+                    window.y += v_movement;
 
-                window.x += h_movement;
-                window.y += v_movement;
+                    // Ensure window remains visible
+                    window.x = cmp::max(
+                        -window.width() + GRID_SIZE,
+                        cmp::min(display_width - GRID_SIZE, window.x),
+                    );
+                    window.y = cmp::max(
+                        -window.height() + GRID_SIZE,
+                        cmp::min(display_height - GRID_SIZE, window.y),
+                    );
 
-                // Ensure window remains visible
-                window.x = cmp::max(
-                    -window.width() + GRID_SIZE,
-                    cmp::min(self.displays[0].image.width() - GRID_SIZE, window.x),
-                );
-                window.y = cmp::max(
-                    -window.height() + GRID_SIZE,
-                    cmp::min(self.displays[0].image.height() - GRID_SIZE, window.y),
-                );
-
-                let move_event = MoveEvent {
-                    x: window.x,
-                    y: window.y,
-                }
-                .to_event();
-                window.event(move_event);
-
-                schedule(&mut self.redraws, window.title_rect());
-                schedule(&mut self.redraws, window.rect());
+                    let move_event = MoveEvent {
+                        x: window.x,
+                        y: window.y,
+                    }
+                    .to_event();
+                    window.event(move_event);
+                });
             }
         }
     }
@@ -1079,60 +910,57 @@ impl OrbitalScheme {
     fn tile_window(&mut self, window_id: Option<&usize>, position: TilePosition) {
         if let Some(id) = window_id.or(self.order.front()) {
             if let Some(window) = self.windows.get_mut(id) {
-                let display_index = Self::get_display_index(&self.displays, &window.rect());
-                schedule(&mut self.redraws, window.title_rect());
-                schedule(&mut self.redraws, window.rect());
+                Self::update_window(&mut self.compositor, window, |compositor, window| {
+                    let (x, y, width, height) = match window.restore.take() {
+                        None => {
+                            // we are about to maximize window, so store current size for restore later
+                            window.restore = Some(window.rect());
 
-                let (x, y, width, height) = match window.restore.take() {
-                    None => {
-                        // we are about to maximize window, so store current size for restore later
-                        window.restore = Some(window.rect());
+                            let screen_rect =
+                                compositor.get_screen_rect_for_window(&window.rect());
+                            let top = screen_rect.top() + window.title_rect().height();
+                            let left = screen_rect.left();
+                            let max_height = screen_rect.height() - window.title_rect().height();
+                            let max_width = screen_rect.width();
+                            let half_width = (max_width / 2) as u32;
+                            let half_height = (max_height / 2) as u32;
 
-                        let top = self.displays[display_index].y + window.title_rect().height();
-                        let left = self.displays[display_index].x;
-                        let max_height = self.displays[display_index].image.height()
-                            - window.title_rect().height();
-                        let max_width = self.displays[display_index].image.width();
-                        let half_width = (max_width / 2) as u32;
-                        let half_height = (max_height / 2) as u32;
-
-                        match position {
-                            LeftHalf => (left, top, half_width, max_height as u32),
-                            RightHalf => {
-                                (left + half_width as i32, top, half_width, max_height as u32)
+                            match position {
+                                LeftHalf => (left, top, half_width, max_height as u32),
+                                RightHalf => {
+                                    (left + half_width as i32, top, half_width, max_height as u32)
+                                }
+                                TopHalf => (left, top, max_width as u32, half_height),
+                                BottomHalf => (
+                                    left,
+                                    top + half_height as i32,
+                                    max_width as u32,
+                                    half_height,
+                                ),
+                                FullScreen => (left, top, max_width as u32, max_height as u32),
                             }
-                            TopHalf => (left, top, max_width as u32, half_height),
-                            BottomHalf => (
-                                left,
-                                top + half_height as i32,
-                                max_width as u32,
-                                half_height,
-                            ),
-                            FullScreen => (left, top, max_width as u32, max_height as u32),
                         }
-                    }
-                    Some(restore) => (
-                        restore.left(),
-                        restore.top(),
-                        restore.width() as u32,
-                        restore.height() as u32,
-                    ),
-                };
+                        Some(restore) => (
+                            restore.left(),
+                            restore.top(),
+                            restore.width() as u32,
+                            restore.height() as u32,
+                        ),
+                    };
 
-                // TODO understand why this is needed and why handle_window_position isn't enough
-                window.x = x;
-                window.y = y;
-                window.event(MoveEvent { x, y }.to_event());
+                    // TODO understand why this is needed and why handle_window_position isn't enough
+                    window.x = x;
+                    window.y = y;
+                    window.event(MoveEvent { x, y }.to_event());
 
-                window.event(ResizeEvent { width, height }.to_event());
+                    window.event(ResizeEvent { width, height }.to_event());
+                });
             };
         }
     }
 
     // undraw any overlay that was being displayed and exit the mode causing it to be displayed
     fn close_overlays(&mut self) {
-        // redraw the area that was occupied by the popup
-        schedule(&mut self.redraws, self.popup_rect);
         // disable drawing of the win-tab or volume popup or shortcuts overlay on redraw
         self.win_tabbing = false;
         self.volume_osd = false;
@@ -1265,24 +1093,20 @@ impl OrbitalScheme {
             DragMode::Title(window_id, drag_x, drag_y) => {
                 if let Some(window) = self.windows.get_mut(&window_id) {
                     if drag_x != event.x || drag_y != event.y {
-                        schedule(&mut self.redraws, window.title_rect());
-                        schedule(&mut self.redraws, window.rect());
+                        Self::update_window(&mut self.compositor, window, |_compositor, window| {
+                            //TODO: Min and max
+                            window.x += event.x - drag_x;
+                            window.y += event.y - drag_y;
 
-                        //TODO: Min and max
-                        window.x += event.x - drag_x;
-                        window.y += event.y - drag_y;
+                            let move_event = MoveEvent {
+                                x: window.x,
+                                y: window.y,
+                            }
+                            .to_event();
+                            window.event(move_event);
 
-                        let move_event = MoveEvent {
-                            x: window.x,
-                            y: window.y,
-                        }
-                        .to_event();
-                        window.event(move_event);
-
-                        self.dragging = DragMode::Title(window_id, event.x, event.y);
-
-                        schedule(&mut self.redraws, window.title_rect());
-                        schedule(&mut self.redraws, window.rect());
+                            self.dragging = DragMode::Title(window_id, event.x, event.y);
+                        });
                     }
                 } else {
                     self.dragging = DragMode::None;
@@ -1297,15 +1121,14 @@ impl OrbitalScheme {
 
                     if w > 0 {
                         if x != window.x {
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
-
-                            window.x = x;
-                            let move_event = MoveEvent { x, y: window.y }.to_event();
-                            window.event(move_event);
-
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
+                            Self::update_window(
+                                &mut self.compositor,
+                                window,
+                                |_compositor, window| {
+                                    window.x = x;
+                                    window.event(MoveEvent { x, y: window.y }.to_event());
+                                },
+                            );
                         }
 
                         if w != window.width() {
@@ -1363,15 +1186,14 @@ impl OrbitalScheme {
 
                     if w > 0 && h > 0 {
                         if x != window.x {
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
-
-                            window.x = x;
-                            let move_event = MoveEvent { x, y: window.y }.to_event();
-                            window.event(move_event);
-
-                            schedule(&mut self.redraws, window.title_rect());
-                            schedule(&mut self.redraws, window.rect());
+                            Self::update_window(
+                                &mut self.compositor,
+                                window,
+                                |_compositor, window| {
+                                    window.x = x;
+                                    window.event(MoveEvent { x, y: window.y }.to_event());
+                                },
+                            );
                         }
 
                         if w != window.width() || h != window.height() {
@@ -1417,13 +1239,7 @@ impl OrbitalScheme {
             self.hover = new_hover;
         }
 
-        if self.hw_cursor {
-            self.cursor_x = event.x;
-            self.cursor_y = event.y;
-            self.update_hw_cursor(new_cursor);
-        } else {
-            self.update_cursor(event.x, event.y, new_cursor);
-        }
+        self.update_cursor(event.x, event.y, new_cursor);
     }
 
     fn mouse_relative_event(&mut self, event: MouseRelativeEvent) {
@@ -1448,13 +1264,7 @@ impl OrbitalScheme {
 
         // Handle relative window cursor
         if let Some((x, y, kind)) = relative_cursor_opt {
-            if self.hw_cursor {
-                self.cursor_x = x;
-                self.cursor_y = y;
-                self.update_hw_cursor(kind);
-            } else {
-                self.update_cursor(x, y, kind);
-            }
+            self.update_cursor(x, y, kind);
             return;
         }
 
@@ -1462,7 +1272,7 @@ impl OrbitalScheme {
         // This logic assumes horizontal and touching, but not overlapping, screens
         let mut max_x = 0;
         let mut max_y = 0;
-        for display in self.displays.iter() {
+        for display in self.compositor.displays() {
             let rect = display.screen_rect();
             max_x = cmp::max(max_x, rect.right() - 1);
             max_y = cmp::max(max_y, rect.bottom() - 1);
@@ -1470,7 +1280,7 @@ impl OrbitalScheme {
 
         let x = cmp::max(0, cmp::min(max_x, self.cursor_x + event.dx));
         let mut y = cmp::max(0, cmp::min(max_y, self.cursor_y + event.dy));
-        for display in self.displays.iter() {
+        for display in self.compositor.displays() {
             let rect = display.screen_rect();
             if x >= rect.left() && x < rect.right() {
                 y = cmp::max(rect.top(), cmp::min(rect.bottom() - 1, y));
@@ -1478,23 +1288,6 @@ impl OrbitalScheme {
         }
 
         self.mouse_event(MouseEvent { x, y });
-    }
-
-    // Find the display that a window (`rect`) most overlaps and return the index of it
-    fn get_display_index(displays: &[Display], rect: &Rect) -> usize {
-        // Find the index of the Display this window has the most overlap with
-        let mut display_index = 0;
-        let mut max_intersection_area = 0;
-        for (display_i, display) in displays.iter().enumerate() {
-            let intersect = display.screen_rect().intersection(rect);
-            let area = intersect.area();
-            if area > max_intersection_area {
-                display_index = display_i;
-                max_intersection_area = area;
-            }
-        }
-
-        display_index
     }
 
     fn button_event(&mut self, event: ButtonEvent) {
@@ -1652,14 +1445,12 @@ impl OrbitalScheme {
     }
 
     fn resize_event(&mut self, event: ResizeEvent) {
-        self.resize(event.width as i32, event.height as i32);
-
-        let screen_rect = self.screen_rect();
-        schedule(&mut self.redraws, screen_rect);
+        self.compositor
+            .resize(event.width as i32, event.height as i32);
 
         let screen_event = ScreenEvent {
-            width: self.image().width() as u32,
-            height: self.image().height() as u32,
+            width: self.compositor.screen_rect().width() as u32,
+            height: self.compositor.screen_rect().height() as u32,
         }
         .to_event();
         for (_window_id, window) in self.windows.iter_mut() {
@@ -1669,16 +1460,6 @@ impl OrbitalScheme {
 
     fn event(&mut self, event_union: Event) {
         self.rezbuffer();
-
-        if self.hw_cursor
-            && (!self.hw_cursor_initialized
-                || self.update_cursor_timer.elapsed().as_millis() > 1000)
-        {
-            let cursor_kind = self.cursor_i;
-            self.cursor_i = CursorKind::None;
-            self.update_hw_cursor(cursor_kind);
-            self.update_cursor_timer = Instant::now();
-        }
 
         match event_union.to_option() {
             EventOption::Key(event) => self.key_event(event),
@@ -1691,8 +1472,8 @@ impl OrbitalScheme {
                 // which indicates the input device from which the event originated to use
                 // the correct display for getting the size.
                 self.mouse_event(MouseEvent {
-                    x: x * self.displays[0].image.width() / 65536,
-                    y: y * self.displays[0].image.height() / 65536,
+                    x: x * self.compositor.screen_rect().width() / 65536,
+                    y: y * self.compositor.screen_rect().height() / 65536,
                 });
             }
             EventOption::MouseRelative(event) => self.mouse_relative_event(event),
@@ -1752,16 +1533,16 @@ impl OrbitalScheme {
 
         if x < 0 && y < 0 {
             // Automatic placement
-            window.x = cmp::max(0, (self.image().width() - width) / 2);
+            window.x = cmp::max(0, (self.compositor.screen_rect().width() - width) / 2);
             window.y = cmp::max(
                 window.title_rect().height(),
-                (self.image().height() - height) / 2,
+                (self.compositor.screen_rect().height() - height) / 2,
             );
         }
 
         // Redraw new window
-        schedule(&mut self.redraws, window.title_rect());
-        schedule(&mut self.redraws, window.rect());
+        self.compositor.schedule(window.title_rect());
+        self.compositor.schedule(window.rect());
 
         // Add to zorder as appropriate
         match window.zorder {
@@ -1788,75 +1569,5 @@ impl OrbitalScheme {
         self.mouse_event(event);
 
         Ok(id)
-    }
-
-    fn update_hw_cursor(&mut self, new_cursor: CursorKind) {
-        //header flag that indicates update_cursor or move_cursor
-        let mut header: u32 = 0;
-        if self.cursor_i != new_cursor || !self.hw_cursor_initialized {
-            header = 1;
-            self.cursor_i = new_cursor;
-            self.hw_cursor_initialized = true;
-        }
-
-        //retrieve image data
-        let cursor = self.cursors.get_mut(&new_cursor).unwrap();
-        let cursor_img: [u32; 4096] = if header != 0 {
-            cursor.get_cursor_data()
-        } else {
-            [0; 4096]
-        };
-
-        let w: i32 = cursor.width();
-        let h: i32 = cursor.height();
-
-        let x: i32 = self.cursor_x;
-        let y: i32 = self.cursor_y;
-
-        let (hot_x, hot_y) = match new_cursor {
-            CursorKind::None => (0, 0),
-            CursorKind::LeftPtr => (0, 0),
-            CursorKind::BottomLeftCorner => (0, h),
-            CursorKind::BottomRightCorner => (w, h),
-            CursorKind::BottomSide => (w / 2, h),
-            CursorKind::LeftSide => (0, h / 2),
-            CursorKind::RightSide => (w, h / 2),
-        };
-
-        //Construct object to send to the display
-        #[repr(C, packed)]
-        struct SyncRect {
-            header: u32,
-            x: i32,
-            y: i32,
-            hot_x: i32,
-            hot_y: i32,
-            w: i32,
-            h: i32,
-            cursor_img: [u32; 4096],
-        }
-
-        let sync_rect = SyncRect {
-            header,
-            x,
-            y,
-            hot_x,
-            hot_y,
-            w,
-            h,
-            cursor_img,
-        };
-
-        for (i, display) in self.displays.iter_mut().enumerate() {
-            match display.file.write(unsafe {
-                slice::from_raw_parts(
-                    &sync_rect as *const SyncRect as *const u8,
-                    mem::size_of::<SyncRect>(),
-                )
-            }) {
-                Ok(_) => (),
-                Err(err) => error!("failed to sync display {}: {}", i, err),
-            }
-        }
     }
 }
