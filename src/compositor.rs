@@ -23,8 +23,7 @@ struct CursorCommand {
 }
 
 pub struct Compositor {
-    // FIXME make these private once possible
-    pub displays: Vec<Display>,
+    displays: Vec<Display>,
 
     redraws: Vec<Rect>,
 
@@ -77,9 +76,27 @@ impl Compositor {
         }
     }
 
+    pub fn displays(&self) -> &[Display] {
+        &self.displays
+    }
+
     /// Return the screen rectangle
     pub fn screen_rect(&self) -> Rect {
         self.displays[0].screen_rect()
+    }
+
+    /// Find the display that a window (`rect`) most overlaps and return it's screen_rect
+    pub fn get_screen_rect_for_window(&self, rect: &Rect) -> Rect {
+        let mut screen_rect = self.displays[0].screen_rect();
+        let mut max_intersection_area = 0;
+        for display in &self.displays {
+            let intersect = display.screen_rect().intersection(rect);
+            if intersect.area() > max_intersection_area {
+                screen_rect = display.screen_rect();
+                max_intersection_area = intersect.area();
+            }
+        }
+        screen_rect
     }
 
     /// Resize the inner image buffer.

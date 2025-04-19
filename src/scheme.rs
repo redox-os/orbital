@@ -910,20 +910,18 @@ impl OrbitalScheme {
     fn tile_window(&mut self, window_id: Option<&usize>, position: TilePosition) {
         if let Some(id) = window_id.or(self.order.front()) {
             if let Some(window) = self.windows.get_mut(id) {
-                let display_index =
-                    Self::get_display_index(&self.compositor.displays, &window.rect());
                 Self::update_window(&mut self.compositor, window, |compositor, window| {
                     let (x, y, width, height) = match window.restore.take() {
                         None => {
                             // we are about to maximize window, so store current size for restore later
                             window.restore = Some(window.rect());
 
-                            let top =
-                                compositor.displays[display_index].y + window.title_rect().height();
-                            let left = compositor.displays[display_index].x;
-                            let max_height = compositor.displays[display_index].image.height()
-                                - window.title_rect().height();
-                            let max_width = compositor.displays[display_index].image.width();
+                            let screen_rect =
+                                compositor.get_screen_rect_for_window(&window.rect());
+                            let top = screen_rect.top() + window.title_rect().height();
+                            let left = screen_rect.left();
+                            let max_height = screen_rect.height() - window.title_rect().height();
+                            let max_width = screen_rect.width();
                             let half_width = (max_width / 2) as u32;
                             let half_height = (max_height / 2) as u32;
 
@@ -1274,7 +1272,7 @@ impl OrbitalScheme {
         // This logic assumes horizontal and touching, but not overlapping, screens
         let mut max_x = 0;
         let mut max_y = 0;
-        for display in self.compositor.displays.iter() {
+        for display in self.compositor.displays() {
             let rect = display.screen_rect();
             max_x = cmp::max(max_x, rect.right() - 1);
             max_y = cmp::max(max_y, rect.bottom() - 1);
@@ -1282,7 +1280,7 @@ impl OrbitalScheme {
 
         let x = cmp::max(0, cmp::min(max_x, self.cursor_x + event.dx));
         let mut y = cmp::max(0, cmp::min(max_y, self.cursor_y + event.dy));
-        for display in self.compositor.displays.iter() {
+        for display in self.compositor.displays() {
             let rect = display.screen_rect();
             if x >= rect.left() && x < rect.right() {
                 y = cmp::max(rect.top(), cmp::min(rect.bottom() - 1, y));
@@ -1290,23 +1288,6 @@ impl OrbitalScheme {
         }
 
         self.mouse_event(MouseEvent { x, y });
-    }
-
-    // Find the display that a window (`rect`) most overlaps and return the index of it
-    fn get_display_index(displays: &[Display], rect: &Rect) -> usize {
-        // Find the index of the Display this window has the most overlap with
-        let mut display_index = 0;
-        let mut max_intersection_area = 0;
-        for (display_i, display) in displays.iter().enumerate() {
-            let intersect = display.screen_rect().intersection(rect);
-            let area = intersect.area();
-            if area > max_intersection_area {
-                display_index = display_i;
-                max_intersection_area = area;
-            }
-        }
-
-        display_index
     }
 
     fn button_event(&mut self, event: ButtonEvent) {
