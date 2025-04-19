@@ -1481,12 +1481,9 @@ impl OrbitalScheme {
         self.compositor
             .resize(event.width as i32, event.height as i32);
 
-        let screen_rect = self.compositor.screen_rect();
-        self.compositor.schedule(screen_rect);
-
         let screen_event = ScreenEvent {
-            width: screen_rect.width() as u32,
-            height: screen_rect.height() as u32,
+            width: self.compositor.screen_rect().width() as u32,
+            height: self.compositor.screen_rect().height() as u32,
         }
         .to_event();
         for (_window_id, window) in self.windows.iter_mut() {

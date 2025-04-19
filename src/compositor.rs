@@ -82,11 +82,13 @@ impl Compositor {
         self.displays[0].screen_rect()
     }
 
-    /// Resize the inner image buffer. You're responsible for redrawing.
+    /// Resize the inner image buffer.
     pub fn resize(&mut self, width: i32, height: i32) {
         //TODO: should other screens be moved after a resize?
         //TODO: support resizing other screens?
         self.displays[0].resize(width, height);
+
+        self.schedule(self.screen_rect());
     }
 
     pub fn schedule(&mut self, request: Rect) {
