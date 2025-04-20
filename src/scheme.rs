@@ -101,6 +101,7 @@ pub struct OrbitalScheme {
     win_tabbing: bool,
     volume_osd: bool,
     shortcuts_osd: bool,
+    last_popup_rect: Option<Rect>,
 }
 
 impl OrbitalScheme {
@@ -180,6 +181,7 @@ impl OrbitalScheme {
             win_tabbing: false,
             volume_osd: false,
             shortcuts_osd: false,
+            last_popup_rect: None,
         };
 
         orbital_scheme.update_cursor(0, 0, CursorKind::LeftPtr);
@@ -535,8 +537,22 @@ impl OrbitalScheme {
         } else {
             None
         };
-        // Call set_popup first as it adds elements to redraws
-        self.compositor.set_popup(popup);
+        if let Some(last_popup_rect) = self.last_popup_rect {
+            self.compositor.schedule(last_popup_rect);
+        }
+        let popup_rect = if let Some(popup) = &popup {
+            let rect = Rect::new(
+                self.compositor.screen_rect().width() / 2 - popup.width() / 2,
+                self.compositor.screen_rect().height() / 2 - popup.height() / 2,
+                popup.width(),
+                popup.height(),
+            );
+            self.last_popup_rect = Some(rect);
+            self.compositor.schedule(rect);
+            Some(rect)
+        } else {
+            None
+        };
 
         let mut total_redraw_opt: Option<Rect> = None;
 
@@ -564,9 +580,13 @@ impl OrbitalScheme {
                         window.draw(display, &rect);
                     }
                 }
-            });
 
-        self.compositor.redraw_popup(&mut total_redraw_opt);
+                if let Some(popup) = &popup {
+                    display
+                        .roi_mut(popup_rect.as_ref().unwrap())
+                        .blend(&popup.roi(&Rect::new(0, 0, popup.width(), popup.height())));
+                }
+            });
 
         self.compositor.redraw_cursor(total_redraw_opt);
 
@@ -916,8 +936,7 @@ impl OrbitalScheme {
                             // we are about to maximize window, so store current size for restore later
                             window.restore = Some(window.rect());
 
-                            let screen_rect =
-                                compositor.get_screen_rect_for_window(&window.rect());
+                            let screen_rect = compositor.get_screen_rect_for_window(&window.rect());
                             let top = screen_rect.top() + window.title_rect().height();
                             let left = screen_rect.left();
                             let max_height = screen_rect.height() - window.title_rect().height();

@@ -27,8 +27,6 @@ pub struct Compositor {
 
     redraws: Vec<Rect>,
 
-    popup: Option<Image>,
-
     hw_cursor: bool,
     //QEMU UIs do not grab the pointer in case an absolute pointing device is present
     //and since releasing our gpu cursor makes it disappear, updating it every second fixes it
@@ -63,8 +61,6 @@ impl Compositor {
             displays,
 
             redraws,
-
-            popup: None,
 
             hw_cursor,
             update_cursor_timer: Instant::now(),
@@ -123,25 +119,6 @@ impl Compositor {
         if push {
             self.redraws.push(request);
         }
-    }
-
-    /// Create a [Rect] that places a popup in the middle of the display
-    fn popup_rect(&self, popup: &Image) -> Rect {
-        Rect::new(
-            self.screen_rect().width() / 2 - popup.width() / 2,
-            self.screen_rect().height() / 2 - popup.height() / 2,
-            popup.width(),
-            popup.height(),
-        )
-    }
-
-    pub fn set_popup(&mut self, image: Option<Image>) {
-        if let Some(popup) = &self.popup {
-            // Ensure content behind the popup is redrawn
-            self.schedule(self.popup_rect(popup));
-        }
-
-        self.popup = image;
     }
 
     fn cursor_rect(&self) -> Rect {
@@ -236,23 +213,6 @@ impl Compositor {
 
                 draw_windows(display, rect);
             }
-        }
-    }
-
-    pub fn redraw_popup(&mut self, total_redraw_opt: &mut Option<Rect>) {
-        if let Some(popup) = &self.popup {
-            let popup_rect = self.popup_rect(popup);
-
-            *total_redraw_opt = Some(
-                total_redraw_opt
-                    .unwrap_or(popup_rect)
-                    .container(&popup_rect),
-            );
-
-            self.displays[0]
-                .image
-                .roi_mut(&popup_rect)
-                .blit(&popup.roi(&Rect::new(0, 0, popup.width(), popup.height())));
         }
     }
 
