@@ -66,27 +66,31 @@ impl<'a> Iterator for ImageRoiRowsMut<'a> {
 pub struct ImageRoi<'a> {
     rect: Rect,
     w: i32,
-    data: &'a mut [Color],
+    data: &'a [Color],
 }
 
-impl<'a> IntoIterator for ImageRoi<'a> {
-    type Item = &'a [Color];
-    type IntoIter = ImageRoiRows<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let Self { rect, w, data } = self;
-        let data =
-            &mut data[rect.top() as usize * w as usize..][..rect.height() as usize * w as usize];
+impl<'a> ImageRoi<'a> {
+    pub fn rows(&'a self) -> ImageRoiRows<'a> {
         ImageRoiRows {
-            rect,
-            w,
-            data,
+            rect: self.rect,
+            w: self.w,
+            data: self.data,
             i: 0,
         }
     }
 }
 
-impl<'a> ImageRoi<'a> {
+// ImageRoiMut seems to be a "window" onto an image, i.e. a Rectangular part of an image.
+// `rect` defined the area within the larger image, we need to know the width of the image (`w`)
+// to move through the data by rows, and `data` is a reference to the data in the actual image
+pub struct ImageRoiMut<'a> {
+    rect: Rect,
+    w: i32,
+    data: &'a mut [Color],
+}
+
+impl<'a> ImageRoiMut<'a> {
+    #[expect(dead_code)]
     pub fn rows(&'a self) -> ImageRoiRows<'a> {
         ImageRoiRows {
             rect: self.rect,
@@ -163,8 +167,17 @@ impl<'a> ImageRef<'a> {
         self.h
     }
 
-    pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
+    #[expect(dead_code)]
+    pub fn roi(&self, rect: &Rect) -> ImageRoi {
         ImageRoi {
+            rect: *rect,
+            w: self.w,
+            data: self.data,
+        }
+    }
+
+    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut {
+        ImageRoiMut {
             rect: *rect,
             w: self.w,
             data: self.data,
@@ -295,8 +308,17 @@ impl Image {
         img_data
     }
 
-    pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
+    pub fn roi(&self, rect: &Rect) -> ImageRoi {
         ImageRoi {
+            rect: *rect,
+            w: self.w,
+            data: &self.data,
+        }
+    }
+
+    #[expect(dead_code)]
+    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut {
+        ImageRoiMut {
             rect: *rect,
             w: self.w,
             data: &mut self.data,
@@ -338,7 +360,6 @@ pub struct ImageAligned {
     w: i32,
     h: i32,
     data: &'static mut [Color],
-    mode: Cell<Mode>,
 }
 
 impl Drop for ImageAligned {
@@ -364,12 +385,7 @@ impl ImageAligned {
                 size_aligned / mem::size_of::<Color>(),
             );
         }
-        ImageAligned {
-            w,
-            h,
-            data,
-            mode: Cell::new(Mode::Blend),
-        }
+        ImageAligned { w, h, data }
     }
 
     pub fn width(&self) -> i32 {
@@ -380,41 +396,23 @@ impl ImageAligned {
         self.h
     }
 
-    pub fn roi(&mut self, rect: &Rect) -> ImageRoi {
+    pub fn roi(&self, rect: &Rect) -> ImageRoi {
         ImageRoi {
             rect: *rect,
             w: self.w,
             data: self.data,
         }
     }
-}
 
-impl Renderer for ImageAligned {
-    /// Get the width of the image in pixels
-    fn width(&self) -> u32 {
-        self.w as u32
+    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut {
+        ImageRoiMut {
+            rect: *rect,
+            w: self.w,
+            data: self.data,
+        }
     }
 
-    /// Get the height of the image in pixels
-    fn height(&self) -> u32 {
-        self.h as u32
-    }
-
-    /// Return a reference to a slice of colors making up the image
-    fn data(&self) -> &[Color] {
-        self.data
-    }
-
-    /// Return a mutable reference to a slice of colors making up the image
-    fn data_mut(&mut self) -> &mut [Color] {
-        self.data
-    }
-
-    fn sync(&mut self) -> bool {
-        true
-    }
-
-    fn mode(&self) -> &Cell<Mode> {
-        &self.mode
+    pub fn data_mut(&mut self) -> &mut [Color] {
+        &mut self.data
     }
 }

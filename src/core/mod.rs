@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::VecDeque,
     env,
     fs::File,
     io::{self, ErrorKind, Read, Write},
@@ -10,13 +10,19 @@ use std::{
 
 use event::{user_data, EventQueue};
 use libredox::flag;
-use log::{debug, error, info};
+use log::{debug, error};
 use orbclient::{Color, Event};
-use syscall::{data::Packet, error::EINVAL, flag::EventFlags, SchemeMut};
+use redox_scheme::{
+    scheme::{IntoTag, Op, OpRead, SchemeSync},
+    CallerCtx, OpenResult, RequestKind, Response, SignalBehavior, Socket,
+};
+use syscall::{
+    error::EINVAL, flag::EventFlags, schemev2::NewFdFlags, EAGAIN, ECANCELED, EOPNOTSUPP,
+    EWOULDBLOCK,
+};
 
+use crate::scheme::OrbitalScheme;
 use display::Display;
-use image::ImageRef;
-use rect::Rect;
 
 pub(crate) mod display;
 pub(crate) mod image;
@@ -69,167 +75,12 @@ pub struct Properties<'a> {
     pub title: &'a str,
 }
 
-pub trait Handler {
-    /// Called when the event loop is first ran
-    fn handle_startup(&mut self, _orb: &mut Orbital) -> io::Result<()> {
-        Ok(())
-    }
-
-    /// Return true if a packet should be delayed until a display event
-    fn should_delay(&mut self, packet: &Packet) -> bool;
-
-    /// Callback to handle events over the input handle
-    fn handle_input(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()>;
-
-    /// Called after a batch of scheme events have been handled
-    fn handle_scheme_after(&mut self, _orb: &mut Orbital) -> io::Result<()>;
-    /// Called after a batch of any events have been handled
-    fn handle_after(&mut self, _orb: &mut Orbital) -> io::Result<()>;
-
-    /// Called when a new window is requested by the scheme.
-    /// Return a window ID that will be used to identify it later.
-    #[allow(clippy::too_many_arguments)]
-    fn handle_window_new(
-        &mut self,
-        orb: &mut Orbital,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
-        flags: &str,
-        title: String,
-    ) -> syscall::Result<usize>;
-    /// Called when the scheme is read for events
-    fn handle_window_read(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        buf: &mut [Event],
-    ) -> syscall::Result<usize>;
-    /// Called when the window asks to set async
-    fn handle_window_async(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        is_async: bool,
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to be dragged
-    fn handle_window_drag(
-        &mut self,
-        _orb: &mut Orbital,
-        id: usize, /*TODO: resize sides */
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to set mouse cursor visibility
-    fn handle_window_mouse_cursor(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        visible: bool,
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to set mouse grabbing
-    fn handle_window_mouse_grab(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        grab: bool,
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to set mouse relative mode
-    fn handle_window_mouse_relative(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        relative: bool,
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to be repositioned
-    fn handle_window_position(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        x: Option<i32>,
-        y: Option<i32>,
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to be resized
-    fn handle_window_resize(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        w: Option<i32>,
-        h: Option<i32>,
-    ) -> syscall::Result<()>;
-    /// Called when the window wants to set a flag
-    fn handle_window_set_flag(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        flag: char,
-        value: bool,
-    ) -> syscall::Result<()>;
-    /// Called when the window asks to change title
-    fn handle_window_title(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        title: String,
-    ) -> syscall::Result<()>;
-    /// Called by fevent to clear notified status, assuming you're sending edge-triggered notifications
-    /// TODO: Abstract event system away completely.
-    fn handle_window_clear_notified(&mut self, orb: &mut Orbital, id: usize)
-        -> syscall::Result<()>;
-    /// Return a reference the window's image that will be mapped in the scheme's fmap function
-    fn handle_window_map(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        create_new: bool,
-    ) -> syscall::Result<&mut [Color]>;
-    /// Free a reference to the window's image, for use by funmap
-    fn handle_window_unmap(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<()>;
-    /// Called to get window properties
-    fn handle_window_properties(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-    ) -> syscall::Result<Properties>;
-    /// Called to flush a window. It's usually a good idea to redraw here.
-    fn handle_window_sync(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
-    /// Called when a window should be closed
-    fn handle_window_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
-
-    // Create a clipboard from a window
-    fn handle_clipboard_new(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
-    // Read window clipboard
-    fn handle_clipboard_read(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        buf: &mut [u8],
-    ) -> syscall::Result<usize>;
-    // Write window clipboard
-    fn handle_clipboard_write(
-        &mut self,
-        orb: &mut Orbital,
-        id: usize,
-        buf: &[u8],
-    ) -> syscall::Result<usize>;
-    // Close the window's clipboard access
-    fn handle_clipboard_close(&mut self, orb: &mut Orbital, id: usize) -> syscall::Result<usize>;
-}
-
-pub struct PendingRequest {
-    pub packet: Packet,
-    pub canceling: bool,
-}
-
 pub struct Orbital {
-    pub scheme: File,
-    pub todo: Vec<PendingRequest>,
-    pub displays: Vec<Display>,
-    pub maps: BTreeMap<usize, (usize, usize)>,
+    pub scheme: Socket,
+    pub delayed: VecDeque<(CallerCtx, OpRead)>,
 
     /// Handle to "/scheme/input/consumer" to recieve input events.
     pub input: File,
-    pub hw_cursor: bool,
-    pub hw_cursor_initialized: bool,
 }
 
 impl Orbital {
@@ -256,7 +107,7 @@ impl Orbital {
     }
 
     /// Open an orbital display and connect to the scheme
-    pub fn open_display(vt: &str) -> io::Result<Self> {
+    pub fn open_display(vt: &str) -> io::Result<(Self, Vec<Display>)> {
         let mut buffer = [0; 1024];
 
         let input_handle = File::open(format!("/scheme/input/consumer/{vt}"))?;
@@ -272,7 +123,7 @@ impl Orbital {
 
         fix_env(&display_path)?;
 
-        let mut display = libredox::call::open(
+        let display = libredox::call::open(
             display_path,
             flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR,
             0,
@@ -283,27 +134,9 @@ impl Orbital {
             io::Error::from_raw_os_error(err.errno())
         })?;
 
-        //Reading display file is only used to check if GPU cursor is supported
-        let mut buf_array = [0; 1];
-        let buf: &mut [u8] = &mut buf_array;
-        let _ret = display.read(buf);
-
-        let mut hw_cursor: bool = false;
-
-        if buf[0] == 1 {
-            info!("Hardware cursor detected");
-            hw_cursor = true;
-        }
-
-        let scheme = libredox::call::open(
-            ":orbital",
-            flag::O_CREAT | flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR,
-            0,
-        )
-        .map(|socket| unsafe { File::from_raw_fd(socket as RawFd) })
-        .map_err(|err| {
-            error!("failed to open ':orbital': {}", err);
-            io::Error::from_raw_os_error(err.errno())
+        let scheme = Socket::nonblock("orbital").map_err(|err| {
+            error!("failed to open '/scheme/orbital': {}", err);
+            err
         })?;
 
         let mut buf: [u8; 4096] = [0; 4096];
@@ -367,44 +200,25 @@ impl Orbital {
             }
         }
 
-        Ok(Orbital {
-            scheme,
-            todo: Vec::new(),
+        Ok((
+            Orbital {
+                scheme,
+                delayed: VecDeque::new(),
+                input: input_handle,
+            },
             displays,
-            maps: BTreeMap::new(),
-            input: input_handle,
-            hw_cursor,
-            hw_cursor_initialized: false,
-        })
-    }
-
-    //TODO: replace these adapter functions
-    pub fn image(&self) -> &ImageRef<'static> {
-        &self.displays[0].image
-    }
-    pub fn image_mut(&mut self) -> &mut ImageRef<'static> {
-        &mut self.displays[0].image
-    }
-    /// Return the screen rectangle
-    pub fn screen_rect(&self) -> Rect {
-        self.displays[0].screen_rect()
+        ))
     }
 
     /// Write a Packet to scheme I/O
-    pub fn scheme_write(&mut self, packet: &Packet) -> io::Result<()> {
-        self.scheme.write(packet).map(|_| ())
+    pub fn scheme_write(&mut self, response: Response) -> io::Result<()> {
+        self.scheme
+            .write_response(response, SignalBehavior::Restart)?;
+        Ok(())
     }
-    /// Resize the inner image buffer. You're responsible for redrawing.
-    pub fn resize(&mut self, width: i32, height: i32) {
-        //TODO: should other screens be moved after a resize?
-        //TODO: support resizing other screens?
-        self.displays[0].resize(width, height);
-    }
+
     /// Start the main loop
-    pub fn run<H>(mut self, mut handler: H) -> Result<(), Error>
-    where
-        H: Handler + 'static,
-    {
+    pub fn run(self, handler: OrbitalScheme) -> Result<(), Error> {
         user_data! {
             enum Source {
                 Scheme,
@@ -416,66 +230,96 @@ impl Orbital {
 
         //TODO: Figure out why rand: gets opened after this: libredox::call::setrens(0, 0)?;
 
-        let scheme_fd = self.scheme.as_raw_fd();
+        let scheme_fd = self.scheme.inner().raw();
         let input_fd = self.input.as_raw_fd();
 
-        handler.handle_startup(&mut self)?;
-
         let mut me = OrbitalHandler { orb: self, handler };
-        event_queue.subscribe(scheme_fd as usize, Source::Scheme, event::EventFlags::READ)?;
+        event_queue.subscribe(scheme_fd, Source::Scheme, event::EventFlags::READ)?;
         event_queue.subscribe(input_fd as usize, Source::Input, event::EventFlags::READ)?;
 
         let mut event_iter = event_queue.map(|e| e.map(|e| e.user_data));
         let mut fake_input_event = None; // TODO: a hack
+        let mut request_buf = Vec::with_capacity(16);
 
         'events: while let Some(event_res) = fake_input_event.take().or_else(|| event_iter.next()) {
             match event_res? {
                 Source::Scheme => {
-                    let mut packets = [Packet::default(); 16];
                     loop {
-                        match read_to_slice(&mut me.orb.scheme, &mut packets) {
-                            Ok(0) => break 'events,
-                            Ok(count) => {
-                                let packets = &mut packets[..count];
-                                for packet in packets.iter_mut() {
-                                    let delay = me.handler.should_delay(packet);
-
-                                    if packet.id == 0 && packet.a == syscall::KSMSG_CANCEL {
-                                        if let Some(idx) = me
-                                            .orb
-                                            .todo
-                                            .iter()
-                                            .position(|req| req.packet.id == packet.b as u64)
-                                        {
-                                            me.orb.todo[idx].canceling = true;
-                                        }
-                                        fake_input_event = Some(Ok(Source::Input));
-                                        continue;
-                                    }
-
-                                    me.handle(packet);
-
-                                    if delay && packet.a == 0 {
-                                        me.orb.todo.push(PendingRequest {
-                                            packet: *packet,
-                                            canceling: false,
-                                        });
-                                    } else {
-                                        me.orb.scheme_write(packet)?;
-                                    }
-                                }
-
-                                me.handler.handle_scheme_after(&mut me.orb)?;
-                                me.handler.handle_after(&mut me.orb)?;
-                            }
+                        match me
+                            .orb
+                            .scheme
+                            .read_requests(&mut request_buf, SignalBehavior::Restart)
+                        {
+                            Ok(()) => (),
                             Err(err) => {
-                                if err.kind() == ErrorKind::WouldBlock {
+                                if err.errno == EWOULDBLOCK || err.errno == EAGAIN {
                                     continue 'events;
                                 } else {
                                     return Err(err.into());
                                 }
                             }
                         }
+                        if request_buf.is_empty() {
+                            break 'events;
+                        }
+                        for request in request_buf.drain(..) {
+                            let req = match request.kind() {
+                                RequestKind::Call(req) => req,
+                                RequestKind::OnClose { id } => {
+                                    me.on_close(id);
+                                    continue;
+                                }
+                                // TODO: faster than search?
+                                RequestKind::Cancellation(req) => {
+                                    if let Some(idx) = me
+                                        .orb
+                                        .delayed
+                                        .iter()
+                                        .position(|(_, op)| op.req_id() == req.id)
+                                    {
+                                        let (_, op) = me
+                                            .orb
+                                            .delayed
+                                            .remove(idx)
+                                            .expect("already found at index");
+                                        me.orb.scheme_write(Response::err(ECANCELED, op))?;
+                                    }
+                                    fake_input_event = Some(Ok(Source::Input));
+                                    continue;
+                                }
+                                _ => continue, // TODO?
+                            };
+                            let caller_ctx = req.caller();
+                            let op = match req.op() {
+                                Ok(op) => op,
+                                Err(req) => {
+                                    me.orb.scheme_write(Response::err(EOPNOTSUPP, req))?;
+                                    continue;
+                                }
+                            };
+                            if let Op::Read(mut read_op) = op {
+                                let should_delay = me.handler.should_delay(read_op.fd);
+                                let res = me.read(
+                                    read_op.fd,
+                                    read_op.buf(),
+                                    // dont-care
+                                    0,
+                                    // dont-care
+                                    0,
+                                    &caller_ctx,
+                                );
+                                if should_delay && res == Ok(0) {
+                                    me.orb.delayed.push_back((caller_ctx, read_op));
+                                } else {
+                                    me.orb.scheme_write(Response::new(res, read_op))?;
+                                }
+                            } else {
+                                let resp = op.handle_sync(caller_ctx, &mut me);
+                                me.orb.scheme_write(resp)?;
+                            }
+                        }
+                        me.handler.handle_scheme_after(&mut me.orb)?;
+                        me.handler.handle_after()?;
                     }
                 }
                 Source::Input => {
@@ -486,28 +330,29 @@ impl Orbital {
                             count => {
                                 let events = &mut events[..count];
 
-                                let mut i = 0;
-                                while i < me.orb.todo.len() {
-                                    let PendingRequest {
-                                        mut packet,
-                                        canceling,
-                                    } = me.orb.todo[i];
+                                let mut delayed_left = me.orb.delayed.len();
 
-                                    let delay = me.handler.should_delay(&packet);
+                                while delayed_left > 0
+                                    && let Some((ctx, mut read_op)) = me.orb.delayed.pop_front()
+                                {
+                                    delayed_left -= 1;
 
-                                    me.handle(&mut packet);
+                                    let should_delay = me.handler.should_delay(read_op.fd);
 
-                                    if delay && packet.a == 0 && !canceling {
-                                        i += 1;
-                                    } else if canceling {
-                                        me.orb.todo.remove(i);
-                                        packet.a = syscall::Error::mux(Err(syscall::Error::new(
-                                            syscall::ECANCELED,
-                                        )));
-                                        me.orb.scheme_write(&packet)?;
+                                    // TODO: deduplicate with the same code above
+                                    let res = me.read(
+                                        read_op.fd,
+                                        read_op.buf(),
+                                        // dont-care
+                                        0,
+                                        // dont-care
+                                        0,
+                                        &ctx,
+                                    );
+                                    if should_delay && res == Ok(0) {
+                                        me.orb.delayed.push_back((ctx, read_op));
                                     } else {
-                                        me.orb.todo.remove(i);
-                                        me.orb.scheme_write(&packet)?;
+                                        me.orb.scheme_write(Response::new(res, read_op))?;
                                     }
                                 }
 
@@ -515,7 +360,8 @@ impl Orbital {
                             }
                         }
                     }
-                    me.handler.handle_after(&mut me.orb)?;
+                    me.handler.handle_scheme_after(&mut me.orb)?;
+                    me.handler.handle_after()?;
                 }
             }
         }
@@ -524,12 +370,12 @@ impl Orbital {
         Ok(())
     }
 }
-pub struct OrbitalHandler<H: Handler> {
+pub struct OrbitalHandler {
     orb: Orbital,
-    handler: H,
+    handler: OrbitalScheme,
 }
-impl<H: Handler> SchemeMut for OrbitalHandler<H> {
-    fn open(&mut self, path: &str, _: usize, _: u32, _: u32) -> syscall::Result<usize> {
+impl SchemeSync for OrbitalHandler {
+    fn open(&mut self, path: &str, _flags: usize, _ctx: &CallerCtx) -> syscall::Result<OpenResult> {
         let mut parts = path.split('/');
 
         let flags = parts.next().unwrap_or("");
@@ -545,25 +391,42 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             title.push_str(part);
         }
 
-        self.handler
-            .handle_window_new(&mut self.orb, x, y, width, height, flags, title)
+        let id = self
+            .handler
+            .handle_window_new(x, y, width, height, flags, title)?;
+        Ok(OpenResult::ThisScheme {
+            number: id,
+            flags: NewFdFlags::empty(),
+        })
     }
-    fn dup(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
+    fn dup(&mut self, id: usize, buf: &[u8], _ctx: &CallerCtx) -> syscall::Result<OpenResult> {
         if buf == b"clipboard" {
             //TODO: implement better clipboard mechanism
-            self.handler
-                .handle_clipboard_new(&mut self.orb, id)
-                .map(|id| id | CLIPBOARD_FLAG)
+            let id = self
+                .handler
+                .handle_clipboard_new(id)
+                .map(|id| id | CLIPBOARD_FLAG)?;
+            Ok(OpenResult::ThisScheme {
+                number: id,
+                flags: NewFdFlags::empty(),
+            })
         } else {
             Err(syscall::Error::new(EINVAL))
         }
     }
-    fn read(&mut self, id: usize, buf: &mut [u8]) -> syscall::Result<usize> {
+    fn read(
+        &mut self,
+        id: usize,
+        buf: &mut [u8],
+        _offset: u64,
+        _flags: u32,
+        _ctx: &CallerCtx,
+    ) -> syscall::Result<usize> {
         //TODO: implement better clipboard mechanism
         if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
             return self
                 .handler
-                .handle_clipboard_read(&mut self.orb, id & !CLIPBOARD_FLAG, buf);
+                .handle_clipboard_read(id & !CLIPBOARD_FLAG, buf);
         }
 
         let slice: &mut [Event] = unsafe {
@@ -572,15 +435,22 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
                 buf.len() / mem::size_of::<Event>(),
             )
         };
-        let n = self.handler.handle_window_read(&mut self.orb, id, slice)?;
+        let n = self.handler.handle_window_read(id, slice)?;
         Ok(n * mem::size_of::<Event>())
     }
-    fn write(&mut self, id: usize, buf: &[u8]) -> syscall::Result<usize> {
+    fn write(
+        &mut self,
+        id: usize,
+        buf: &[u8],
+        _offset: u64,
+        _flags: u32,
+        _ctx: &CallerCtx,
+    ) -> syscall::Result<usize> {
         //TODO: implement better clipboard mechanism
         if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
             return self
                 .handler
-                .handle_clipboard_write(&mut self.orb, id & !CLIPBOARD_FLAG, buf);
+                .handle_clipboard_write(id & !CLIPBOARD_FLAG, buf);
         }
 
         if let Ok(msg) = str::from_utf8(buf) {
@@ -593,18 +463,18 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             match kind {
                 "A" => match data {
                     "0" => {
-                        self.handler.handle_window_async(&mut self.orb, id, false)?;
+                        self.handler.handle_window_async(id, false)?;
                         Ok(buf.len())
                     }
                     "1" => {
-                        self.handler.handle_window_async(&mut self.orb, id, true)?;
+                        self.handler.handle_window_async(id, true)?;
                         Ok(buf.len())
                     }
                     _ => Err(syscall::Error::new(EINVAL)),
                 },
                 "D" => match data {
                     "" => {
-                        self.handler.handle_window_drag(&mut self.orb, id)?;
+                        self.handler.handle_window_drag(id)?;
                         Ok(buf.len())
                     }
                     //TODO: resize by dragging edge
@@ -624,40 +494,33 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
                         _ => return Err(syscall::Error::new(EINVAL)),
                     };
                     for flag in flags.chars() {
-                        self.handler
-                            .handle_window_set_flag(&mut self.orb, id, flag, value)?;
+                        self.handler.handle_window_set_flag(id, flag, value)?;
                     }
                     Ok(buf.len())
                 }
                 "M" => match data {
                     "C,0" => {
-                        self.handler
-                            .handle_window_mouse_cursor(&mut self.orb, id, false)?;
+                        self.handler.handle_window_mouse_cursor(id, false)?;
                         Ok(buf.len())
                     }
                     "C,1" => {
-                        self.handler
-                            .handle_window_mouse_cursor(&mut self.orb, id, true)?;
+                        self.handler.handle_window_mouse_cursor(id, true)?;
                         Ok(buf.len())
                     }
                     "G,0" => {
-                        self.handler
-                            .handle_window_mouse_grab(&mut self.orb, id, false)?;
+                        self.handler.handle_window_mouse_grab(id, false)?;
                         Ok(buf.len())
                     }
                     "G,1" => {
-                        self.handler
-                            .handle_window_mouse_grab(&mut self.orb, id, true)?;
+                        self.handler.handle_window_mouse_grab(id, true)?;
                         Ok(buf.len())
                     }
                     "R,0" => {
-                        self.handler
-                            .handle_window_mouse_relative(&mut self.orb, id, false)?;
+                        self.handler.handle_window_mouse_relative(id, false)?;
                         Ok(buf.len())
                     }
                     "R,1" => {
-                        self.handler
-                            .handle_window_mouse_relative(&mut self.orb, id, true)?;
+                        self.handler.handle_window_mouse_relative(id, true)?;
                         Ok(buf.len())
                     }
                     _ => Err(syscall::Error::new(EINVAL)),
@@ -667,8 +530,7 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
                     let x = parts.next().unwrap_or("").parse::<i32>().ok();
                     let y = parts.next().unwrap_or("").parse::<i32>().ok();
 
-                    self.handler
-                        .handle_window_position(&mut self.orb, id, x, y)?;
+                    self.handler.handle_window_position(id, x, y)?;
 
                     Ok(buf.len())
                 }
@@ -677,13 +539,12 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
                     let w = parts.next().unwrap_or("").parse::<i32>().ok();
                     let h = parts.next().unwrap_or("").parse::<i32>().ok();
 
-                    self.handler.handle_window_resize(&mut self.orb, id, w, h)?;
+                    self.handler.handle_window_resize(id, w, h)?;
 
                     Ok(buf.len())
                 }
                 "T" => {
-                    self.handler
-                        .handle_window_title(&mut self.orb, id, data.to_string())?;
+                    self.handler.handle_window_title(id, data.to_string())?;
 
                     Ok(buf.len())
                 }
@@ -693,9 +554,14 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
             Err(syscall::Error::new(EINVAL))
         }
     }
-    fn fevent(&mut self, id: usize, _flags: EventFlags) -> syscall::Result<EventFlags> {
+    fn fevent(
+        &mut self,
+        id: usize,
+        _flags: EventFlags,
+        _ctx: &CallerCtx,
+    ) -> syscall::Result<EventFlags> {
         self.handler
-            .handle_window_clear_notified(&mut self.orb, id)
+            .handle_window_clear_notified(id)
             .and(Ok(EventFlags::empty()))
     }
     /*
@@ -730,29 +596,19 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         Ok(0)
     }
     */
-    fn fpath(&mut self, id: usize, mut buf: &mut [u8]) -> syscall::Result<usize> {
-        let props = self.handler.handle_window_properties(&mut self.orb, id)?;
+    fn fpath(&mut self, id: usize, mut buf: &mut [u8], _ctx: &CallerCtx) -> syscall::Result<usize> {
+        let props = self.handler.handle_window_properties(id)?;
         let original_len = buf.len();
         #[allow(clippy::write_literal)] // TODO: Z order
         let _ = write!(
             buf,
-            "orbital:{}/{}/{}/{}/{}/{}",
+            "{}/{}/{}/{}/{}/{}",
             props.flags, props.x, props.y, props.width, props.height, props.title
         );
         Ok(original_len - buf.len())
     }
-    fn fsync(&mut self, id: usize) -> syscall::Result<usize> {
-        self.handler.handle_window_sync(&mut self.orb, id)
-    }
-    fn close(&mut self, id: usize) -> syscall::Result<usize> {
-        //TODO: implement better clipboard mechanism
-        if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
-            return self
-                .handler
-                .handle_clipboard_close(&mut self.orb, id & !CLIPBOARD_FLAG);
-        }
-
-        self.handler.handle_window_close(&mut self.orb, id)
+    fn fsync(&mut self, id: usize, _ctx: &CallerCtx) -> syscall::Result<()> {
+        self.handler.handle_window_sync(id)
     }
     fn mmap_prep(
         &mut self,
@@ -760,9 +616,10 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         _offset: u64,
         size: usize,
         _flags: syscall::MapFlags,
+        _ctx: &CallerCtx,
     ) -> syscall::Result<usize> {
         //TODO: handle offset, flags?
-        let data = self.handler.handle_window_map(&mut self.orb, id, true)?;
+        let data = self.handler.handle_window_map(id, true)?;
 
         if size > data.len() * core::mem::size_of::<Color>() {
             return Err(syscall::Error::new(EINVAL));
@@ -776,11 +633,22 @@ impl<H: Handler> SchemeMut for OrbitalHandler<H> {
         _offset: u64,
         _size: usize,
         _flags: syscall::MunmapFlags,
-    ) -> syscall::Result<usize> {
+        _ctx: &CallerCtx,
+    ) -> syscall::Result<()> {
         //TODO: handle offset, size, flags?
-        self.handler.handle_window_unmap(&mut self.orb, id)?;
+        self.handler.handle_window_unmap(id)?;
 
-        Ok(0)
+        Ok(())
+    }
+}
+impl OrbitalHandler {
+    fn on_close(&mut self, id: usize) {
+        //TODO: implement better clipboard mechanism
+        if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
+            return self.handler.handle_clipboard_close(id & !CLIPBOARD_FLAG);
+        }
+
+        self.handler.handle_window_close(id)
     }
 }
 
