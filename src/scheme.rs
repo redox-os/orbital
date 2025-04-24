@@ -6,6 +6,9 @@ use std::{
     fs, io, str,
 };
 
+use std::io::Write;
+use std::mem;
+
 use log::{error, info, warn};
 use orbclient::{
     self, ButtonEvent, ClipboardEvent, Color, Event, EventOption, FocusEvent, HoverEvent, KeyEvent,
@@ -16,11 +19,12 @@ use redox_scheme::Response;
 use syscall::error::{Error, Result, EBADF};
 use syscall::EVENT_READ;
 
-use crate::compositor::Compositor;
+use crate::compositor::{self, Compositor};
 use crate::config::Config;
 use crate::core::{display::Display, image::Image, rect::Rect, Orbital, Properties};
 use crate::scheme::TilePosition::{BottomHalf, FullScreen, LeftHalf, RightHalf, TopHalf};
 use crate::window::{Window, WindowZOrder};
+
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 enum CursorKind {
@@ -526,6 +530,9 @@ impl OrbitalScheme {
     }
 
     fn redraw(&mut self) {
+        self.compositor.schedule(self.compositor.displays[0].screen_rect());
+        self.compositor.switch_images();
+
         self.rezbuffer();
 
         let popup = if self.shortcuts_osd {
@@ -586,6 +593,7 @@ impl OrbitalScheme {
                         .roi_mut(popup_rect.as_ref().unwrap())
                         .blend(&popup.roi(&Rect::new(0, 0, popup.width(), popup.height())));
                 }
+
             });
 
         self.compositor.redraw_cursor(total_redraw_opt);
@@ -594,6 +602,7 @@ impl OrbitalScheme {
         if let Some(total_redraw) = total_redraw_opt {
             self.compositor.sync_rect(total_redraw);
         }
+
     }
 
     fn volume(&mut self, volume: Volume) {
