@@ -200,7 +200,6 @@ impl Orbital {
             }
         }
 
-        //Testing the creation of an additional framebuffer
         #[allow(dead_code)]
         #[repr(packed)]
         struct SyncRect {
@@ -217,6 +216,7 @@ impl Orbital {
                 id: 1,
             };
 
+            //As GPU to create an additional framebuffer for each display
             let cmd_type: u32 = 2;
             let mut buf = Vec::with_capacity(4 + mem::size_of::<SyncRect>());
             buf.extend_from_slice(&cmd_type.to_le_bytes());
@@ -232,9 +232,9 @@ impl Orbital {
                 Err(err) => error!("failed to sync display {}: {}", i, err),
             }
 
+            //Map the new framebuffer
             display.map_back(display.image.width(), display.image.height())?;
         }
-        //Test ends
 
         Ok((
             Orbital {

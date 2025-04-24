@@ -530,7 +530,10 @@ impl OrbitalScheme {
     }
 
     fn redraw(&mut self) {
+        //Calling schedule on a screen with a rect of the image curently on display
         self.compositor.schedule(self.compositor.displays[0].screen_rect());
+
+        //Switch to the back images so it can be drawn to
         self.compositor.switch_images();
 
         self.rezbuffer();

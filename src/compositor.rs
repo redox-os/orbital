@@ -278,7 +278,7 @@ impl Compositor {
                     h: i32,
                 }
 
-                // //issue a write syscall to switch buffers
+                //issue a write syscall to switch buffers
                 let cmd_type: u32 = 3;
                 let mut buf = Vec::with_capacity(4 + mem::size_of::<usize>());
                 buf.extend_from_slice(&cmd_type.to_le_bytes());
