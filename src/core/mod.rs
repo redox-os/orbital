@@ -217,12 +217,6 @@ impl Orbital {
                 id: 1,
             };
 
-            println!(
-                "ORBITAL WANTS TO ADD FB: {}x{}",
-                display.image.width(),
-                display.image.height()
-            );
-
             let cmd_type: u32 = 2;
             let mut buf = Vec::with_capacity(4 + mem::size_of::<SyncRect>());
             buf.extend_from_slice(&cmd_type.to_le_bytes());
@@ -234,9 +228,7 @@ impl Orbital {
             });
 
             match display.file.write(&buf) {
-                Ok(count) => {
-                    println!(" ORBITAL WROTE FB SyncRect: {} bytes", count);
-                },
+                Ok(_) => (),
                 Err(err) => error!("failed to sync display {}: {}", i, err),
             }
 

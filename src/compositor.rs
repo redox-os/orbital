@@ -279,7 +279,6 @@ impl Compositor {
                 }
 
                 // //issue a write syscall to switch buffers
-                println!("Switching Buffers");
                 let cmd_type: u32 = 3;
                 let mut buf = Vec::with_capacity(4 + mem::size_of::<usize>());
                 buf.extend_from_slice(&cmd_type.to_le_bytes());
@@ -315,7 +314,6 @@ impl Compositor {
     }
 
     pub fn switch_images(&mut self) {
-        // println!("Switching images color is: {:?}", data);
         for display in self.displays.iter_mut() {
             if let Some(mut back_image) = display.back_image.take() {
                 std::mem::swap(&mut display.image, &mut back_image);

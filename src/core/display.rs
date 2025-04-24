@@ -23,7 +23,6 @@ fn display_fd_map(
             flags: flag::MAP_SHARED,
             addr: core::ptr::null_mut(),
         })?;
-        println!("ORBITAL display_ptr: {:?}", display_ptr);
         let display_slice =
             slice::from_raw_parts_mut(display_ptr as *mut Color, (width * height) as usize);
         Ok(ImageRef::from_data(width, height, display_slice))
