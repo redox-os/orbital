@@ -645,7 +645,6 @@ impl SchemeSync for OrbitalHandler {
         Ok(original_len - buf.len())
     }
     fn fsync(&mut self, id: usize, _ctx: &CallerCtx) -> syscall::Result<()> {
-        println!("FSYNC IN ORBITAL");
         self.handler.handle_window_sync(id)
     }
     fn mmap_prep(
