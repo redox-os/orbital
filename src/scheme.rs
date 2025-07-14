@@ -1070,47 +1070,47 @@ impl OrbitalScheme {
 
     fn simulate_mouse_event(&mut self, event: &KeyEvent) -> bool {
         // FIX: Implement pressing long down keys
-        match event.scancode {
-            orbclient::K_NUM_4 => self.mouse_event(MouseEvent {
+        match (event.scancode, event.pressed) {
+            (orbclient::K_NUM_4, true) => self.mouse_event(MouseEvent {
                 x: self.cursor_x - self.cursor_simulate_speed,
                 y: self.cursor_y,
             }),
-            orbclient::K_NUM_5 => self.mouse_event(MouseEvent {
+            (orbclient::K_NUM_5, true) => self.mouse_event(MouseEvent {
                 x: self.cursor_x,
                 y: self.cursor_y + self.cursor_simulate_speed,
             }),
-            orbclient::K_NUM_8 => self.mouse_event(MouseEvent {
+            (orbclient::K_NUM_8, true) => self.mouse_event(MouseEvent {
                 x: self.cursor_x,
                 y: self.cursor_y - self.cursor_simulate_speed,
             }),
-            orbclient::K_NUM_6 => self.mouse_event(MouseEvent {
+            (orbclient::K_NUM_6, true) => self.mouse_event(MouseEvent {
                 x: self.cursor_x + self.cursor_simulate_speed,
                 y: self.cursor_y,
             }),
-            orbclient::K_NUM_1 => {
+            (orbclient::K_NUM_1, true) => {
                 if self.cursor_simulate_speed > 2 {
                     self.cursor_simulate_speed /= 2;
                 }
             }
-            orbclient::K_NUM_3 => {
+            (orbclient::K_NUM_3, true) => {
                 if self.cursor_simulate_speed < 128 {
                     self.cursor_simulate_speed *= 2;
                 }
             }
-            orbclient::K_NUM_7 => self.button_event(ButtonEvent {
-                left: self.modifier_state > 0,
+            (orbclient::K_NUM_7, _) => self.button_event(ButtonEvent {
+                left: event.pressed,
                 middle: false,
                 right: false,
             }),
-            orbclient::K_NUM_2 => self.button_event(ButtonEvent {
+            (orbclient::K_NUM_2, _) => self.button_event(ButtonEvent {
                 left: false,
-                middle: self.modifier_state > 0,
+                middle: event.pressed,
                 right: false,
             }),
-            orbclient::K_NUM_9 => self.button_event(ButtonEvent {
+            (orbclient::K_NUM_9, _) => self.button_event(ButtonEvent {
                 left: false,
                 middle: false,
-                right: self.modifier_state > 0,
+                right: event.pressed,
             }),
             _ => return false,
         }
