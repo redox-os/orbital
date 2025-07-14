@@ -1017,7 +1017,7 @@ impl OrbitalScheme {
             match event.scancode {
                 orbclient::K_Q => self.quit_front_window(),
                 orbclient::K_TAB => self.super_tab(),
-                orbclient::K_NUM_0 => self.cursor_simulate_speed = 16,
+                orbclient::K_NUM_0 => self.cursor_simulate_speed = 32,
                 orbclient::K_BRACE_OPEN => self.volume(Volume::Down),
                 orbclient::K_BRACE_CLOSE => self.volume(Volume::Up),
                 orbclient::K_BACKSLASH => self.volume(Volume::Toggle),
@@ -1069,13 +1069,13 @@ impl OrbitalScheme {
     }
 
     fn simulate_mouse_event(&mut self, event: &KeyEvent) -> bool {
-        // FIX: Implement pressing long down keys
+        // FIXME: Implement pressing long down keys
         match (event.scancode, event.pressed) {
             (orbclient::K_NUM_4, true) => self.mouse_event(MouseEvent {
                 x: self.cursor_x - self.cursor_simulate_speed,
                 y: self.cursor_y,
             }),
-            (orbclient::K_NUM_5, true) => self.mouse_event(MouseEvent {
+            (orbclient::K_NUM_2, true) => self.mouse_event(MouseEvent {
                 x: self.cursor_x,
                 y: self.cursor_y + self.cursor_simulate_speed,
             }),
@@ -1087,27 +1087,27 @@ impl OrbitalScheme {
                 x: self.cursor_x + self.cursor_simulate_speed,
                 y: self.cursor_y,
             }),
-            (orbclient::K_NUM_1, true) => {
+            (orbclient::K_NUM_3, true) => {
                 if self.cursor_simulate_speed > 2 {
                     self.cursor_simulate_speed /= 2;
                 }
             }
-            (orbclient::K_NUM_3, true) => {
+            (orbclient::K_NUM_9, true) => {
                 if self.cursor_simulate_speed < 128 {
                     self.cursor_simulate_speed *= 2;
                 }
             }
-            (orbclient::K_NUM_7, _) => self.button_event(ButtonEvent {
+            (orbclient::K_NUM_5, _) => self.button_event(ButtonEvent {
                 left: event.pressed,
                 middle: false,
                 right: false,
             }),
-            (orbclient::K_NUM_2, _) => self.button_event(ButtonEvent {
+            (orbclient::K_NUM_7, _) => self.button_event(ButtonEvent {
                 left: false,
                 middle: event.pressed,
                 right: false,
             }),
-            (orbclient::K_NUM_9, _) => self.button_event(ButtonEvent {
+            (orbclient::K_NUM_1, _) => self.button_event(ButtonEvent {
                 left: false,
                 middle: false,
                 right: event.pressed,
