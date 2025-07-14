@@ -1069,7 +1069,6 @@ impl OrbitalScheme {
     }
 
     fn simulate_mouse_event(&mut self, event: &KeyEvent) -> bool {
-        // FIXME: Implement pressing long down keys
         match (event.scancode, event.pressed) {
             (orbclient::K_NUM_4, true) => self.mouse_event(MouseEvent {
                 x: self.cursor_x - self.cursor_simulate_speed,
