@@ -79,6 +79,7 @@ pub struct OrbitalScheme {
     cursors: BTreeMap<CursorKind, Arc<Image>>,
     cursor_x: i32,
     cursor_y: i32,
+    cursor_simulate_speed: i32,
     cursor_left: bool,
     cursor_middle: bool,
     cursor_right: bool,
@@ -162,6 +163,7 @@ impl OrbitalScheme {
             cursors,
             cursor_x: 0,
             cursor_y: 0,
+            cursor_simulate_speed: 0, // disabled
             cursor_left: false,
             cursor_middle: false,
             cursor_right: false,
@@ -798,6 +800,7 @@ impl OrbitalScheme {
         "Super-V: Paste from the copy buffer",
         "Super-M: Toggle window max (maximize or restore)",
         "Super-ENTER: Toggle window max (maximize or restore)",
+        "Super-Numpad-0: Enable mouse accessibility keys using numpad",
     ];
 
     // Draw an on screen display (overlay) of available SUPER keyboard shortcuts
@@ -1014,6 +1017,7 @@ impl OrbitalScheme {
             match event.scancode {
                 orbclient::K_Q => self.quit_front_window(),
                 orbclient::K_TAB => self.super_tab(),
+                orbclient::K_NUM_0 => self.cursor_simulate_speed = 16,
                 orbclient::K_BRACE_OPEN => self.volume(Volume::Down),
                 orbclient::K_BRACE_CLOSE => self.volume(Volume::Up),
                 orbclient::K_BACKSLASH => self.volume(Volume::Toggle),
@@ -1043,6 +1047,10 @@ impl OrbitalScheme {
             }
         }
 
+        if self.cursor_simulate_speed > 0 && self.simulate_mouse_event(&event) {
+            return;
+        }
+
         // send non-Super key events to the front window
         if self.modifier_state & SUPER_MODIFIER == 0 {
             if let Some(id) = self.order.front() {
@@ -1058,6 +1066,55 @@ impl OrbitalScheme {
                 }
             }
         }
+    }
+
+    fn simulate_mouse_event(&mut self, event: &KeyEvent) -> bool {
+        // FIX: Implement pressing long down keys
+        match event.scancode {
+            orbclient::K_NUM_4 => self.mouse_event(MouseEvent {
+                x: self.cursor_x - self.cursor_simulate_speed,
+                y: self.cursor_y,
+            }),
+            orbclient::K_NUM_5 => self.mouse_event(MouseEvent {
+                x: self.cursor_x,
+                y: self.cursor_y + self.cursor_simulate_speed,
+            }),
+            orbclient::K_NUM_8 => self.mouse_event(MouseEvent {
+                x: self.cursor_x,
+                y: self.cursor_y - self.cursor_simulate_speed,
+            }),
+            orbclient::K_NUM_6 => self.mouse_event(MouseEvent {
+                x: self.cursor_x + self.cursor_simulate_speed,
+                y: self.cursor_y,
+            }),
+            orbclient::K_NUM_1 => {
+                if self.cursor_simulate_speed > 2 {
+                    self.cursor_simulate_speed /= 2;
+                }
+            }
+            orbclient::K_NUM_3 => {
+                if self.cursor_simulate_speed < 128 {
+                    self.cursor_simulate_speed *= 2;
+                }
+            }
+            orbclient::K_NUM_7 => self.button_event(ButtonEvent {
+                left: self.modifier_state > 0,
+                middle: false,
+                right: false,
+            }),
+            orbclient::K_NUM_2 => self.button_event(ButtonEvent {
+                left: false,
+                middle: self.modifier_state > 0,
+                right: false,
+            }),
+            orbclient::K_NUM_9 => self.button_event(ButtonEvent {
+                left: false,
+                middle: false,
+                right: self.modifier_state > 0,
+            }),
+            _ => return false,
+        }
+        true
     }
 
     fn mouse_event(&mut self, event: MouseEvent) {
