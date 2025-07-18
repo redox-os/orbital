@@ -79,10 +79,11 @@ pub struct OrbitalScheme {
     cursors: BTreeMap<CursorKind, Arc<Image>>,
     cursor_x: i32,
     cursor_y: i32,
-    cursor_simulate_speed: i32,
     cursor_left: bool,
     cursor_middle: bool,
     cursor_right: bool,
+    cursor_simulate_enabled: bool,
+    cursor_simulate_speed: i32,
     dragging: DragMode,
     modifier_state: u8,
     volume_value: i32,
@@ -163,10 +164,11 @@ impl OrbitalScheme {
             cursors,
             cursor_x: 0,
             cursor_y: 0,
-            cursor_simulate_speed: 0, // disabled
             cursor_left: false,
             cursor_middle: false,
             cursor_right: false,
+            cursor_simulate_speed: 32,
+            cursor_simulate_enabled: false,
             dragging: DragMode::None,
             modifier_state: 0,
             volume_value: 0,
@@ -1017,7 +1019,7 @@ impl OrbitalScheme {
             match event.scancode {
                 orbclient::K_Q => self.quit_front_window(),
                 orbclient::K_TAB => self.super_tab(),
-                orbclient::K_NUM_0 => self.cursor_simulate_speed = 32,
+                orbclient::K_NUM_0 => self.cursor_simulate_enabled = !self.cursor_simulate_enabled,
                 orbclient::K_BRACE_OPEN => self.volume(Volume::Down),
                 orbclient::K_BRACE_CLOSE => self.volume(Volume::Up),
                 orbclient::K_BACKSLASH => self.volume(Volume::Toggle),
@@ -1047,7 +1049,7 @@ impl OrbitalScheme {
             }
         }
 
-        if self.cursor_simulate_speed > 0 && self.simulate_mouse_event(&event) {
+        if self.cursor_simulate_enabled && self.simulate_mouse_event(&event) {
             return;
         }
 
@@ -1092,7 +1094,7 @@ impl OrbitalScheme {
                 }
             }
             (orbclient::K_NUM_9, true) => {
-                if self.cursor_simulate_speed < 128 {
+                if self.cursor_simulate_speed <= 128 {
                     self.cursor_simulate_speed *= 2;
                 }
             }
