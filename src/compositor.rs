@@ -95,6 +95,20 @@ impl Compositor {
         screen_rect
     }
 
+    /// Reduce the rect height based on orblauncher bar height
+    pub fn get_window_rect_from_screen_rect(&self, screen_rect: &Rect) -> Rect {
+        let mut height = screen_rect.height();
+        // TODO: This is a hack, orblauncher should
+        // talk with orbital to register this value
+        height -= 48 * ((height / 1600) + 1);
+        Rect::new(
+            screen_rect.left(),
+            screen_rect.top(),
+            screen_rect.width(),
+            height,
+        )
+    }
+
     /// Resize the inner image buffer.
     pub fn resize(&mut self, width: i32, height: i32) {
         //TODO: should other screens be moved after a resize?

@@ -942,10 +942,11 @@ impl OrbitalScheme {
                             window.restore = Some(window.rect());
 
                             let screen_rect = compositor.get_screen_rect_for_window(&window.rect());
-                            let top = screen_rect.top() + window.title_rect().height();
-                            let left = screen_rect.left();
-                            let max_height = screen_rect.height() - window.title_rect().height();
-                            let max_width = screen_rect.width();
+                            let window_rect = compositor.get_window_rect_from_screen_rect(&screen_rect);
+                            let top = window_rect.top() + window.title_rect().height();
+                            let left = window_rect.left();
+                            let max_height = window_rect.height() - window.title_rect().height();
+                            let max_width = window_rect.width();
                             let half_width = (max_width / 2) as u32;
                             let half_height = (max_height / 2) as u32;
 
