@@ -366,31 +366,30 @@ impl Window {
 
     pub fn properties(&self) -> Properties {
         //TODO: avoid allocation
-        let mut flags = String::with_capacity(8);
+        let mut flags = String::with_capacity(9);
         if self.asynchronous {
-            flags.push(ORBITAL_FLAG_ASYNC)
+            flags.push(ORBITAL_FLAG_ASYNC);
         }
         if self.borderless {
-            flags.push(ORBITAL_FLAG_BORDERLESS)
+            flags.push(ORBITAL_FLAG_BORDERLESS);
         }
         if self.hidden {
-            flags.push(ORBITAL_FLAG_HIDDEN)
+            flags.push(ORBITAL_FLAG_HIDDEN);
         }
         if let Some((_, position)) = &self.restore {
+            flags.push(ORBITAL_FLAG_MAXIMIZED);
             if matches!(position, TilePosition::FullScreen) {
-                flags.push(ORBITAL_FLAG_FULLSCREEN)
-            } else {
-                flags.push(ORBITAL_FLAG_MAXIMIZED)
+                flags.push(ORBITAL_FLAG_FULLSCREEN);
             }
         }
         if self.resizable {
-            flags.push(ORBITAL_FLAG_RESIZABLE)
+            flags.push(ORBITAL_FLAG_RESIZABLE);
         }
         if self.transparent {
-            flags.push(ORBITAL_FLAG_TRANSPARENT)
+            flags.push(ORBITAL_FLAG_TRANSPARENT);
         }
         if self.unclosable {
-            flags.push(ORBITAL_FLAG_UNCLOSABLE)
+            flags.push(ORBITAL_FLAG_UNCLOSABLE);
         }
         match self.zorder {
             WindowZOrder::Back => flags.push(ORBITAL_FLAG_BACK),
