@@ -19,7 +19,6 @@ use syscall::EVENT_READ;
 use crate::compositor::Compositor;
 use crate::config::Config;
 use crate::core::{display::Display, image::Image, rect::Rect, Orbital, Properties};
-use crate::scheme::TilePosition::{BottomHalf, FullScreen, LeftHalf, RightHalf, TopHalf};
 use crate::window::{Window, WindowZOrder};
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
@@ -49,12 +48,13 @@ enum Volume {
     Toggle,
 }
 
-#[derive(Debug)]
-enum TilePosition {
+#[derive(Clone, Copy, Debug)]
+pub enum TilePosition {
     LeftHalf,
     TopHalf,
     RightHalf,
     BottomHalf,
+    Maximized,
     FullScreen,
 }
 
@@ -391,7 +391,9 @@ impl OrbitalScheme {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
 
         // Handle maximized flag custom
-        if flag == crate::window::ORBITAL_FLAG_MAXIMIZED {
+        if flag == crate::window::ORBITAL_FLAG_MAXIMIZED
+            || flag == crate::window::ORBITAL_FLAG_FULLSCREEN
+        {
             let toggle_tile = if value {
                 window.restore = None;
                 true
@@ -399,7 +401,14 @@ impl OrbitalScheme {
                 window.restore.is_some()
             };
             if toggle_tile {
-                self.tile_window(Some(&id), TilePosition::FullScreen);
+                self.tile_window(
+                    Some(&id),
+                    if flag == crate::window::ORBITAL_FLAG_FULLSCREEN {
+                        TilePosition::FullScreen
+                    } else {
+                        TilePosition::Maximized
+                    },
+                );
             }
         } else {
             // Setting flag may change visibility, make sure to queue redraws both before and after
@@ -939,10 +948,14 @@ impl OrbitalScheme {
                     let (x, y, width, height) = match window.restore.take() {
                         None => {
                             // we are about to maximize window, so store current size for restore later
-                            window.restore = Some(window.rect());
+                            window.restore = Some((window.rect(), position));
 
                             let screen_rect = compositor.get_screen_rect_for_window(&window.rect());
-                            let window_rect = compositor.get_window_rect_from_screen_rect(&screen_rect);
+                            let window_rect = if matches!(position, TilePosition::FullScreen) {
+                                screen_rect
+                            } else {
+                                compositor.get_window_rect_from_screen_rect(&screen_rect)
+                            };
                             let top = window_rect.top() + window.title_rect().height();
                             let left = window_rect.left();
                             let max_height = window_rect.height() - window.title_rect().height();
@@ -951,21 +964,25 @@ impl OrbitalScheme {
                             let half_height = (max_height / 2) as u32;
 
                             match position {
-                                LeftHalf => (left, top, half_width, max_height as u32),
-                                RightHalf => {
+                                TilePosition::LeftHalf => {
+                                    (left, top, half_width, max_height as u32)
+                                }
+                                TilePosition::RightHalf => {
                                     (left + half_width as i32, top, half_width, max_height as u32)
                                 }
-                                TopHalf => (left, top, max_width as u32, half_height),
-                                BottomHalf => (
+                                TilePosition::TopHalf => (left, top, max_width as u32, half_height),
+                                TilePosition::BottomHalf => (
                                     left,
                                     top + half_height as i32,
                                     max_width as u32,
                                     half_height,
                                 ),
-                                FullScreen => (left, top, max_width as u32, max_height as u32),
+                                TilePosition::Maximized | TilePosition::FullScreen => {
+                                    (left, top, max_width as u32, max_height as u32)
+                                }
                             }
                         }
-                        Some(restore) => (
+                        Some((restore, _)) => (
                             restore.left(),
                             restore.top(),
                             restore.width() as u32,
@@ -1024,12 +1041,12 @@ impl OrbitalScheme {
                 orbclient::K_BRACE_OPEN => self.volume(Volume::Down),
                 orbclient::K_BRACE_CLOSE => self.volume(Volume::Up),
                 orbclient::K_BACKSLASH => self.volume(Volume::Toggle),
-                orbclient::K_M => self.tile_window(None, FullScreen),
-                orbclient::K_ENTER => self.tile_window(None, FullScreen),
-                orbclient::K_UP if shift => self.tile_window(None, TopHalf),
-                orbclient::K_DOWN if shift => self.tile_window(None, BottomHalf),
-                orbclient::K_LEFT if shift => self.tile_window(None, LeftHalf),
-                orbclient::K_RIGHT if shift => self.tile_window(None, RightHalf),
+                orbclient::K_M => self.tile_window(None, TilePosition::Maximized),
+                orbclient::K_ENTER => self.tile_window(None, TilePosition::Maximized),
+                orbclient::K_UP if shift => self.tile_window(None, TilePosition::TopHalf),
+                orbclient::K_DOWN if shift => self.tile_window(None, TilePosition::BottomHalf),
+                orbclient::K_LEFT if shift => self.tile_window(None, TilePosition::LeftHalf),
+                orbclient::K_RIGHT if shift => self.tile_window(None, TilePosition::RightHalf),
                 orbclient::K_UP => self.move_front_window(0, -GRID_SIZE),
                 orbclient::K_DOWN => self.move_front_window(0, GRID_SIZE),
                 orbclient::K_LEFT => self.move_front_window(-GRID_SIZE, 0),
@@ -1401,7 +1418,7 @@ impl OrbitalScheme {
                                 if (window.max_contains(self.cursor_x, self.cursor_y))
                                     && (window.resizable)
                                 {
-                                    self.tile_window(Some(&id), FullScreen);
+                                    self.tile_window(Some(&id), TilePosition::Maximized);
                                 } else if (window.close_contains(self.cursor_x, self.cursor_y))
                                     && (!window.unclosable)
                                 {

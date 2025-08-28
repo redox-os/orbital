@@ -1,8 +1,11 @@
-use crate::core::{
-    display::Display,
-    image::{Image, ImageAligned},
-    rect::Rect,
-    Properties,
+use crate::{
+    core::{
+        display::Display,
+        image::{Image, ImageAligned},
+        rect::Rect,
+        Properties,
+    },
+    scheme::TilePosition,
 };
 use orbclient::{Color, Event, Renderer};
 use orbfont::Font;
@@ -22,6 +25,7 @@ pub const ORBITAL_FLAG_FRONT: char = 'f';
 pub const ORBITAL_FLAG_HIDDEN: char = 'h';
 pub const ORBITAL_FLAG_BORDERLESS: char = 'l';
 pub const ORBITAL_FLAG_MAXIMIZED: char = 'm';
+pub const ORBITAL_FLAG_FULLSCREEN: char = 'M';
 pub const ORBITAL_FLAG_RESIZABLE: char = 'r';
 pub const ORBITAL_FLAG_TRANSPARENT: char = 't';
 pub const ORBITAL_FLAG_UNCLOSABLE: char = 'u';
@@ -45,7 +49,7 @@ pub struct Window {
     pub transparent: bool,
     pub unclosable: bool,
     pub zorder: WindowZOrder,
-    pub restore: Option<Rect>,
+    pub restore: Option<(Rect, TilePosition)>,
     image: ImageAligned,
     title_image: Image,
     title_image_unfocused: Image,
@@ -372,8 +376,12 @@ impl Window {
         if self.hidden {
             flags.push(ORBITAL_FLAG_HIDDEN)
         }
-        if self.restore.is_some() {
-            flags.push(ORBITAL_FLAG_MAXIMIZED)
+        if let Some((_, position)) = &self.restore {
+            if matches!(position, TilePosition::FullScreen) {
+                flags.push(ORBITAL_FLAG_FULLSCREEN)
+            } else {
+                flags.push(ORBITAL_FLAG_MAXIMIZED)
+            }
         }
         if self.resizable {
             flags.push(ORBITAL_FLAG_RESIZABLE)
