@@ -19,7 +19,7 @@ use syscall::EVENT_READ;
 use crate::compositor::Compositor;
 use crate::config::Config;
 use crate::core::{display::Display, image::Image, rect::Rect, Orbital, Properties};
-use crate::window::{Window, WindowZOrder};
+use crate::window::{self, Window, WindowZOrder};
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 enum CursorKind {
@@ -391,9 +391,7 @@ impl OrbitalScheme {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
 
         // Handle maximized flag custom
-        if flag == crate::window::ORBITAL_FLAG_MAXIMIZED
-            || flag == crate::window::ORBITAL_FLAG_FULLSCREEN
-        {
+        if flag == window::ORBITAL_FLAG_MAXIMIZED || flag == window::ORBITAL_FLAG_FULLSCREEN {
             let toggle_tile = if value {
                 window.restore = None;
                 true
@@ -403,7 +401,7 @@ impl OrbitalScheme {
             if toggle_tile {
                 self.tile_window(
                     Some(&id),
-                    if flag == crate::window::ORBITAL_FLAG_FULLSCREEN {
+                    if flag == window::ORBITAL_FLAG_FULLSCREEN {
                         TilePosition::FullScreen
                     } else {
                         TilePosition::Maximized
@@ -1600,8 +1598,8 @@ impl OrbitalScheme {
         &mut self,
         x: i32,
         y: i32,
-        width: i32,
-        height: i32,
+        mut width: i32,
+        mut height: i32,
         flags: &str,
         title: String,
     ) -> Result<usize> {
@@ -1617,6 +1615,16 @@ impl OrbitalScheme {
             self.focus(*id, false);
         }
 
+        // Resize to fit allowed screen area
+        let screen_rect = self.compositor.screen_rect();
+        let allow_rect = self
+            .compositor
+            .get_window_rect_from_screen_rect(&screen_rect);
+        if flags.contains(window::ORBITAL_FLAG_RESIZABLE) {
+            width = width.min(allow_rect.width());
+            height = height.min(allow_rect.height());
+        }
+
         let mut window = Window::new(x, y, width, height, self.scale, Rc::clone(&self.config));
 
         for flag in flags.chars() {
@@ -1626,13 +1634,61 @@ impl OrbitalScheme {
         window.title = title;
         window.render_title(&self.font);
 
+        // Automatic placement
         if x < 0 && y < 0 {
-            // Automatic placement
-            window.x = cmp::max(0, (self.compositor.screen_rect().width() - width) / 2);
-            window.y = cmp::max(
+            // Center by default in allowed area
+            let center_x = cmp::max(0, (allow_rect.width() - width) / 2);
+            let center_y = cmp::max(
                 window.title_rect().height(),
-                (self.compositor.screen_rect().height() - height) / 2,
+                (allow_rect.height() - height) / 2,
             );
+            window.x = center_x;
+            window.y = center_y;
+
+            // Process overlaps
+            let mut overlap = true;
+            let mut attempts = 0;
+            while overlap {
+                overlap = false;
+                let cascade_rect = window.cascade_rect();
+                for other_id in self.order.iter() {
+                    let Some(other) = self.windows.get(other_id) else {
+                        continue;
+                    };
+
+                    // Ignore windows not shown on the same level
+                    if other.hidden || other.zorder != window.zorder {
+                        continue;
+                    }
+
+                    // Ignore windows not colliding in cascade region
+                    if cascade_rect.intersection(&other.cascade_rect()).is_empty() {
+                        continue;
+                    }
+
+                    // Adjust position by cascading region size
+                    overlap = true;
+                    window.x += cascade_rect.width();
+                    window.y += cascade_rect.height();
+
+                    // Reset X or Y if beyond the screen size
+                    if window.x + window.width() > screen_rect.width() {
+                        window.x = 0;
+                    }
+                    if window.y + window.height() > screen_rect.height() {
+                        window.y = window.title_rect().height();
+                    }
+
+                    // Give up if we ran out of places to try
+                    attempts += 1;
+                    if attempts > 1000 {
+                        window.x = center_x;
+                        window.y = center_y;
+                        overlap = false;
+                    }
+                    break;
+                }
+            }
         }
 
         // Redraw new window

@@ -130,6 +130,11 @@ impl Window {
         }
     }
 
+    pub fn cascade_rect(&self) -> Rect {
+        let title_rect = self.title_rect();
+        Rect::new(title_rect.left(), title_rect.top(), 32, 32)
+    }
+
     pub fn bottom_border_rect(&self) -> Rect {
         if self.resizable {
             Rect::new(self.x, self.y + self.height(), self.width(), 8 * self.scale)
