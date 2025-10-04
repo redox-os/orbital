@@ -51,7 +51,9 @@ impl From<syscall::Error> for Error {
 
 /// Convenience function for setting DISPLAY environment variable
 pub fn fix_env(display_path: &str) -> io::Result<()> {
-    env::set_var("DISPLAY", display_path);
+    unsafe {
+        env::set_var("DISPLAY", display_path);
+    }
     Ok(())
 }
 
