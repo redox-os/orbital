@@ -202,6 +202,42 @@ impl Orbital {
             }
         }
 
+        #[allow(dead_code)]
+        #[repr(packed)]
+        struct SyncRect {
+            w: i32,
+            h: i32,
+            id: usize,
+        }
+
+        for (i, display) in displays.iter_mut().enumerate() {
+
+            let sync_rect = SyncRect {
+                w: display.image.width(),
+                h: display.image.height(),
+                id: 1,
+            };
+
+            //As GPU to create an additional framebuffer for each display
+            let cmd_type: u32 = 2;
+            let mut buf = Vec::with_capacity(4 + mem::size_of::<SyncRect>());
+            buf.extend_from_slice(&cmd_type.to_le_bytes());
+            buf.extend_from_slice(unsafe {
+                slice::from_raw_parts(
+                    &sync_rect as *const SyncRect as *const u8,
+                    mem::size_of::<SyncRect>(),
+                )
+            });
+
+            match display.file.write(&buf) {
+                Ok(_) => (),
+                Err(err) => error!("failed to sync display {}: {}", i, err),
+            }
+
+            //Map the new framebuffer
+            display.map_back(display.image.width(), display.image.height())?;
+        }
+
         Ok((
             Orbital {
                 scheme,
@@ -320,6 +356,7 @@ impl Orbital {
                                 me.orb.scheme_write(resp)?;
                             }
                         }
+
                         me.handler.handle_scheme_after(&mut me.orb)?;
                         me.handler.handle_after()?;
                     }

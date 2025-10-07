@@ -9,6 +9,8 @@ use crate::core::display::Display;
 use crate::core::image::Image;
 use crate::core::rect::Rect;
 
+use orbclient::{Color, Renderer};
+
 #[repr(C, packed)]
 struct CursorCommand {
     //header flag that indicates update_cursor or move_cursor
@@ -23,7 +25,7 @@ struct CursorCommand {
 }
 
 pub struct Compositor {
-    displays: Vec<Display>,
+    pub displays: Vec<Display>,
 
     redraws: Vec<Rect>,
 
@@ -190,13 +192,18 @@ impl Compositor {
     }
 
     fn send_cursor_command(&mut self, cmd: &CursorCommand) {
+        let cmd_type: u32 = 1;
+        let mut buf = Vec::with_capacity(4 + mem::size_of::<CursorCommand>());
+        buf.extend_from_slice(&cmd_type.to_le_bytes());
+        buf.extend_from_slice(unsafe {
+            slice::from_raw_parts(
+                cmd as *const CursorCommand as *const u8,
+                mem::size_of::<CursorCommand>(),
+            )
+        });
+
         for (i, display) in self.displays.iter_mut().enumerate() {
-            match display.file.write(unsafe {
-                slice::from_raw_parts(
-                    cmd as *const CursorCommand as *const u8,
-                    mem::size_of::<CursorCommand>(),
-                )
-            }) {
+            match display.file.write(&buf) {
                 Ok(_) => (),
                 Err(err) => error!("failed to sync display {}: {}", i, err),
             }
@@ -285,6 +292,16 @@ impl Compositor {
                     h: i32,
                 }
 
+                //issue a write syscall to switch buffers
+                let cmd_type: u32 = 3;
+                let mut buf = Vec::with_capacity(4 + mem::size_of::<usize>());
+                buf.extend_from_slice(&cmd_type.to_le_bytes());
+                buf.extend_from_slice(&display.front.to_le_bytes());
+                match display.file.write(&buf) {
+                    Ok(_) => (),
+                    Err(err) => error!("failed to sync display {}: {}", i, err),
+                }
+
                 let sync_rect = SyncRect {
                     x: display_redraw.left() - display.x,
                     y: display_redraw.top() - display.y,
@@ -292,15 +309,30 @@ impl Compositor {
                     h: display_redraw.height(),
                 };
 
-                match display.file.write(unsafe {
+                let cmd_type: u32 = 0;
+                let mut buf = Vec::with_capacity(4 + mem::size_of::<SyncRect>());
+                buf.extend_from_slice(&cmd_type.to_le_bytes());
+                buf.extend_from_slice(unsafe {
                     slice::from_raw_parts(
                         &sync_rect as *const SyncRect as *const u8,
                         mem::size_of::<SyncRect>(),
                     )
-                }) {
+                });
+
+                match display.file.write(&buf) {
                     Ok(_) => (),
                     Err(err) => error!("failed to sync display {}: {}", i, err),
                 }
+            }
+        }
+    }
+
+    pub fn switch_images(&mut self) {
+        for display in self.displays.iter_mut() {
+            if let Some(mut back_image) = display.back_image.take() {
+                std::mem::swap(&mut display.image, &mut back_image);
+                display.back_image = Some(back_image);
+                display.front = 1 - display.front;
             }
         }
     }
