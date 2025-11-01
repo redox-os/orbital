@@ -548,7 +548,7 @@ impl OrbitalScheme {
         } else {
             None
         };
-        if let Some(last_popup_rect) = self.last_popup_rect {
+        if let Some(last_popup_rect) = self.last_popup_rect.take() {
             self.compositor.schedule(last_popup_rect);
         }
         let popup_rect = if let Some(popup) = &popup {
