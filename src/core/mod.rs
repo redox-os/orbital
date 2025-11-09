@@ -380,7 +380,13 @@ impl SchemeSync for OrbitalHandler {
     fn open(&mut self, path: &str, _flags: usize, _ctx: &CallerCtx) -> syscall::Result<OpenResult> {
         let mut parts = path.split('/');
 
-        let flags = parts.next().unwrap_or("");
+        let path_first_char = path.chars().nth(0).unwrap_or('\0');
+        let flags = if path_first_char.is_ascii_digit() || path_first_char == '-' {
+            // to handle case like `/scheme/orbital//` being assumed as one slash
+            ""
+        } else {
+            parts.next().unwrap_or("")
+        };
 
         let x = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
         let y = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
