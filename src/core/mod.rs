@@ -381,8 +381,8 @@ impl SchemeSync for OrbitalHandler {
         let mut parts = path.split('/');
 
         let path_first_char = path.chars().nth(0).unwrap_or('\0');
-        let flags = if path_first_char.is_ascii_digit() {
-            // empty flag on new scheme `/scheme/orbital//` is assumed as one slash
+        let flags = if path_first_char.is_ascii_digit() || path_first_char == '-' {
+            // to handle case like `/scheme/orbital//` being assumed as one slash
             ""
         } else {
             parts.next().unwrap_or("")
