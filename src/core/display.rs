@@ -12,11 +12,12 @@ fn display_fd_map(
     width: i32,
     height: i32,
     display_fd: usize,
+    offset: u64,
 ) -> libredox::error::Result<ImageRef<'static>> {
     unsafe {
         let display_ptr = libredox::call::mmap(MmapArgs {
             fd: display_fd,
-            offset: 0,
+            offset: offset*4096,
             length: (width * height * 4) as usize,
             prot: flag::PROT_READ | flag::PROT_WRITE,
             flags: flag::MAP_SHARED,
@@ -43,12 +44,15 @@ pub struct Display {
     pub scale: i32,
     pub file: File,
     pub image: ImageRef<'static>,
+    pub back_image: Option<ImageRef<'static>>,
+    pub front: usize,
+
 }
 
 impl Display {
     pub fn new(x: i32, y: i32, width: i32, height: i32, file: File) -> io::Result<Self> {
         let scale = (height / 1600) + 1;
-        let image = display_fd_map(width, height, file.as_raw_fd() as usize).map_err(|err| {
+        let image = display_fd_map(width, height, file.as_raw_fd() as usize, 0).map_err(|err| {
             error!("failed to map display: {}", err);
             io::Error::from_raw_os_error(err.errno())
         })?;
@@ -58,7 +62,21 @@ impl Display {
             scale,
             file,
             image,
+            back_image: None,
+            front: 0,
         })
+    }
+
+    pub fn map_back(&mut self, width: i32, height: i32) -> io::Result<()> {
+        if let Some(back_image) = &mut self.back_image {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "failed to map back image",
+            ))
+        }{
+            self.back_image = Some(display_fd_map(width, height, self.file.as_raw_fd() as usize, 1)?);
+            return Ok(())
+        }
     }
 
     pub fn rect(&mut self, rect: &Rect, color: Color) {
@@ -72,7 +90,7 @@ impl Display {
     }
 
     pub fn resize(&mut self, width: i32, height: i32) {
-        match display_fd_map(width, height, self.file.as_raw_fd() as usize) {
+        match display_fd_map(width, height, self.file.as_raw_fd() as usize, 0) {
             Ok(ok) => {
                 display_fd_unmap(&mut self.image);
                 self.image = ok;
