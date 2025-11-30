@@ -1,11 +1,12 @@
 use crate::{
     core::{
+        Properties,
         display::Display,
         image::{Image, ImageAligned},
         rect::Rect,
-        Properties,
     },
     scheme::TilePosition,
+    window_order::WindowZOrder,
 };
 use orbclient::{Color, Event, Renderer};
 use orbfont::Font;
@@ -29,13 +30,6 @@ pub const ORBITAL_FLAG_FULLSCREEN: char = 'M';
 pub const ORBITAL_FLAG_RESIZABLE: char = 'r';
 pub const ORBITAL_FLAG_TRANSPARENT: char = 't';
 pub const ORBITAL_FLAG_UNCLOSABLE: char = 'u';
-
-#[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum WindowZOrder {
-    Back,
-    Normal,
-    Front,
-}
 
 pub struct Window {
     pub x: i32,
@@ -369,7 +363,7 @@ impl Window {
         buf.len()
     }
 
-    pub fn properties(&self) -> Properties {
+    pub fn properties(&self) -> Properties<'_> {
         //TODO: avoid allocation
         let mut flags = String::with_capacity(9);
         if self.asynchronous {
