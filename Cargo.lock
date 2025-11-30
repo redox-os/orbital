@@ -496,7 +496,6 @@ dependencies = [
  "orbclient",
  "orbfont",
  "orbimage",
- "redox-daemon",
  "redox-log",
  "redox-scheme",
  "redox_event",
@@ -588,16 +587,6 @@ checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
-]
-
-[[package]]
-name = "redox-daemon"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fbdeffdb03cf2961b211a2023e683d71f2c225ea93404da5dc34b0dc94f0341"
-dependencies = [
- "libc",
- "libredox",
 ]
 
 [[package]]

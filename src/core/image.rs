@@ -168,7 +168,7 @@ impl<'a> ImageRef<'a> {
     }
 
     #[expect(dead_code)]
-    pub fn roi(&self, rect: &Rect) -> ImageRoi {
+    pub fn roi(&self, rect: &Rect) -> ImageRoi<'_> {
         ImageRoi {
             rect: *rect,
             w: self.w,
@@ -176,7 +176,7 @@ impl<'a> ImageRef<'a> {
         }
     }
 
-    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut {
+    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut<'_> {
         ImageRoiMut {
             rect: *rect,
             w: self.w,
@@ -308,7 +308,7 @@ impl Image {
         img_data
     }
 
-    pub fn roi(&self, rect: &Rect) -> ImageRoi {
+    pub fn roi(&self, rect: &Rect) -> ImageRoi<'_> {
         ImageRoi {
             rect: *rect,
             w: self.w,
@@ -317,7 +317,7 @@ impl Image {
     }
 
     #[expect(dead_code)]
-    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut {
+    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut<'_> {
         ImageRoiMut {
             rect: *rect,
             w: self.w,
@@ -396,7 +396,7 @@ impl ImageAligned {
         self.h
     }
 
-    pub fn roi(&self, rect: &Rect) -> ImageRoi {
+    pub fn roi(&self, rect: &Rect) -> ImageRoi<'_> {
         ImageRoi {
             rect: *rect,
             w: self.w,
@@ -404,7 +404,7 @@ impl ImageAligned {
         }
     }
 
-    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut {
+    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut<'_> {
         ImageRoiMut {
             rect: *rect,
             w: self.w,

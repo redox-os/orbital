@@ -83,7 +83,7 @@ impl Display {
         }
     }
 
-    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut {
+    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut<'_> {
         self.image.roi_mut(&Rect::new(
             rect.left() - self.x,
             rect.top() - self.y,
