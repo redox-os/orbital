@@ -232,7 +232,7 @@ impl Compositor {
 
     pub fn redraw_cursor(&mut self, total_redraw: Option<Rect>) {
         if self.hw_cursor {
-            if self.hw_cursor && self.update_cursor_timer.elapsed().as_millis() > 1000 {
+            if self.update_cursor_timer.elapsed().as_millis() > 1000 {
                 self.send_cursor_command(&CursorCommand {
                     header: 1,
                     x: self.cursor_x,
