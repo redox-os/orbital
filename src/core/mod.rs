@@ -8,17 +8,17 @@ use std::{
     slice, str,
 };
 
-use event::{user_data, EventQueue};
+use event::{EventQueue, user_data};
 use libredox::flag;
 use log::{debug, error};
 use orbclient::{Color, Event};
 use redox_scheme::{
-    scheme::{IntoTag, Op, OpRead, SchemeSync},
     CallerCtx, OpenResult, RequestKind, Response, SignalBehavior, Socket,
+    scheme::{IntoTag, Op, OpRead, SchemeSync},
 };
 use syscall::{
-    error::EINVAL, flag::EventFlags, schemev2::NewFdFlags, EAGAIN, ECANCELED, EOPNOTSUPP,
-    EWOULDBLOCK,
+    EAGAIN, ECANCELED, EOPNOTSUPP, EWOULDBLOCK, error::EINVAL, flag::EventFlags,
+    schemev2::NewFdFlags,
 };
 
 use crate::scheme::OrbitalScheme;
@@ -81,7 +81,7 @@ pub struct Orbital {
     pub scheme: Socket,
     pub delayed: VecDeque<(CallerCtx, OpRead)>,
 
-    /// Handle to "/scheme/input/consumer" to recieve input events.
+    /// Handle to "/scheme/input/consumer" to receive input events.
     pub input: File,
 }
 
@@ -320,8 +320,7 @@ impl Orbital {
                                 me.orb.scheme_write(resp)?;
                             }
                         }
-                        me.handler.handle_scheme_after(&mut me.orb)?;
-                        me.handler.handle_after()?;
+                        me.handler.handle_after(&mut me.orb)?;
                     }
                 }
                 Source::Input => {
@@ -358,12 +357,11 @@ impl Orbital {
                                     }
                                 }
 
-                                me.handler.handle_input(&mut me.orb, events)?;
+                                me.handler.handle_input(events);
                             }
                         }
                     }
-                    me.handler.handle_scheme_after(&mut me.orb)?;
-                    me.handler.handle_after()?;
+                    me.handler.handle_after(&mut me.orb)?;
                 }
             }
         }

@@ -276,8 +276,7 @@ impl Compositor {
             let display_redraw = total_redraw.intersection(&display.screen_rect());
             if !display_redraw.is_empty() {
                 // Keep synced with vesad
-                #[allow(dead_code)]
-                #[repr(packed)]
+                #[repr(C, packed)]
                 struct SyncRect {
                     x: i32,
                     y: i32,
