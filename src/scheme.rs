@@ -247,8 +247,15 @@ impl OrbitalScheme {
             .unwrap_or(true)
     }
 
-    /// Called after a batch of scheme events have been handled
-    pub fn handle_scheme_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
+    /// Callback to handle events over the input handle
+    pub fn handle_input(&mut self, events: &mut [Event]) {
+        for &mut event in events {
+            self.event(event);
+        }
+    }
+
+    /// Called after a batch of any events have been handled
+    pub fn handle_after(&mut self, orb: &mut Orbital) -> io::Result<()> {
         for (id, window) in self.windows.iter_mut() {
             if !window.events.is_empty() {
                 if !window.notified_read || window.asynchronous {
@@ -260,20 +267,6 @@ impl OrbitalScheme {
             }
         }
 
-        // redrawn by handle_after
-
-        Ok(())
-    }
-
-    /// Callback to handle events over the input handle
-    pub fn handle_input(&mut self, orb: &mut Orbital, events: &mut [Event]) -> io::Result<()> {
-        self.input_event(events)?;
-
-        self.handle_scheme_after(orb)
-    }
-
-    /// Called after a batch of any events have been handled
-    pub fn handle_after(&mut self) -> io::Result<()> {
         self.redraw();
         Ok(())
     }
@@ -382,8 +375,10 @@ impl OrbitalScheme {
                 window.restore.is_some()
             };
             if toggle_tile {
-                self.tile_window(
-                    Some(id),
+                Self::tile_window(
+                    &mut self.compositor,
+                    &mut self.windows,
+                    id,
                     if flag == window::ORBITAL_FLAG_FULLSCREEN {
                         TilePosition::FullScreen
                     } else {
@@ -919,14 +914,14 @@ impl OrbitalScheme {
         }
     }
 
-    // tile a window to a defined position. If no window id is provided it will use the front window
-    fn tile_window(&mut self, window_id: Option<usize>, position: TilePosition) {
-        if let Some(id) = window_id.or(self.order.focused()) {
-            Self::tile_window_inner(&mut self.compositor, &mut self.windows, id, position);
+    /// Tile the focused window to a defined position.
+    fn tile_focused_window(&mut self, position: TilePosition) {
+        if let Some(id) = self.order.focused() {
+            Self::tile_window(&mut self.compositor, &mut self.windows, id, position);
         }
     }
 
-    fn tile_window_inner(
+    fn tile_window(
         compositor: &mut Compositor,
         windows: &mut BTreeMap<usize, Window>,
         window_id: usize,
@@ -1027,12 +1022,12 @@ impl OrbitalScheme {
                 orbclient::K_BRACE_OPEN => self.volume(Volume::Down),
                 orbclient::K_BRACE_CLOSE => self.volume(Volume::Up),
                 orbclient::K_BACKSLASH => self.volume(Volume::Toggle),
-                orbclient::K_M => self.tile_window(None, TilePosition::Maximized),
-                orbclient::K_ENTER => self.tile_window(None, TilePosition::Maximized),
-                orbclient::K_UP if shift => self.tile_window(None, TilePosition::TopHalf),
-                orbclient::K_DOWN if shift => self.tile_window(None, TilePosition::BottomHalf),
-                orbclient::K_LEFT if shift => self.tile_window(None, TilePosition::LeftHalf),
-                orbclient::K_RIGHT if shift => self.tile_window(None, TilePosition::RightHalf),
+                orbclient::K_M => self.tile_focused_window(TilePosition::Maximized),
+                orbclient::K_ENTER => self.tile_focused_window(TilePosition::Maximized),
+                orbclient::K_UP if shift => self.tile_focused_window(TilePosition::TopHalf),
+                orbclient::K_DOWN if shift => self.tile_focused_window(TilePosition::BottomHalf),
+                orbclient::K_LEFT if shift => self.tile_focused_window(TilePosition::LeftHalf),
+                orbclient::K_RIGHT if shift => self.tile_focused_window(TilePosition::RightHalf),
                 orbclient::K_UP => self.move_front_window(0, -GRID_SIZE),
                 orbclient::K_DOWN => self.move_front_window(0, GRID_SIZE),
                 orbclient::K_LEFT => self.move_front_window(-GRID_SIZE, 0),
@@ -1401,7 +1396,7 @@ impl OrbitalScheme {
                                 if (window.max_contains(self.cursor_x, self.cursor_y))
                                     && (window.resizable)
                                 {
-                                    Self::tile_window_inner(
+                                    Self::tile_window(
                                         &mut self.compositor,
                                         &mut self.windows,
                                         id,
@@ -1562,16 +1557,6 @@ impl OrbitalScheme {
             EventOption::Resize(event) => self.resize_event(event),
             event => error!("unexpected event: {:?}", event),
         }
-    }
-
-    fn input_event(&mut self, events: &[Event]) -> io::Result<()> {
-        for &event in events {
-            self.event(event);
-        }
-
-        // redrawn by handle_after
-
-        Ok(())
     }
 
     fn window_new(
