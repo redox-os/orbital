@@ -9,18 +9,20 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-redox-log = "0.1"
+graphics-ipc = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
+inputd = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
+libc = "0.2.48"
 log = "0.4.14"
 orbclient = "0.3.47"
 orbfont = "0.1"
-redox_syscall = { version = "0.5", features = ["std"] }
+orbimage = "0.1"
+redox-log = "0.1"
 redox-scheme = "0.6"
+redox_syscall = { version = "0.5", features = ["std"] }
 serde = "1"
 serde_derive = "1"
 thiserror = "2.0.12"
 toml = "0.7"
-libc = "0.2.48"
-orbimage = "0.1"
 # Downgrade due to improper x86 CPU feature detection
 ab_glyph_rasterizer = "=0.1.5"
 libredox = "0.1.3"
