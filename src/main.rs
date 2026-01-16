@@ -39,7 +39,7 @@ fn orbital() -> Result<(), String> {
     let (orbital, displays) = Orbital::open_display(&vt)
         .map_err(|e| format!("could not open display, caused by: {}", e))?;
 
-    //TODO: integrate this into orbital
+
     match Command::new("inputd").arg("-A").arg(&vt).status() {
         Ok(status) => {
             if !status.success() {
