@@ -12,9 +12,9 @@ use scheme::OrbitalScheme;
 mod compositor;
 mod config;
 mod core;
-mod window_order;
 mod scheme;
 mod window;
+mod window_order;
 
 /// Run orbital main event loop, starting a login command before entering the event loop.
 fn orbital() -> Result<(), String> {
@@ -59,13 +59,8 @@ fn orbital() -> Result<(), String> {
     let config = Rc::new(Config::from_path("/ui/orbital.toml"));
     let scheme = OrbitalScheme::new(displays, config)?;
 
-    Command::new(login_cmd)
-        .args(args)
-        .spawn()
-        .map_err(|_| "failed to spawn login_cmd")?;
-
     orbital
-        .run(scheme)
+        .run(scheme, Command::new(login_cmd).args(args))
         .map_err(|e| format!("error in main loop, caused by {}", e))
 }
 
@@ -73,6 +68,7 @@ fn orbital() -> Result<(), String> {
 ///
 /// Startup messages and errors are logged to RedoxLogger with filter set to DEBUG
 fn main() {
+    redox_log::RedoxLogger::connect_timezone();
     match orbital() {
         Ok(()) => {
             info!("ran to completion successfully, exiting with status=0");
