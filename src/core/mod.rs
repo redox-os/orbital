@@ -28,12 +28,6 @@ pub(crate) mod display;
 pub(crate) mod image;
 pub(crate) mod rect;
 
-#[cfg(target_pointer_width = "32")]
-const CLIPBOARD_FLAG: usize = 1 << 31;
-
-#[cfg(target_pointer_width = "64")]
-const CLIPBOARD_FLAG: usize = 1 << 63;
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("io error")]
