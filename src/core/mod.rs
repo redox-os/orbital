@@ -491,7 +491,7 @@ impl SchemeSync for OrbitalHandler {
                 buf.len() / mem::size_of::<Event>(),
             )
         };
-        let n = self.handler.handle_window_read(*id, slice)?;
+        let n = self.handler.handle_window_read(id, slice)?;
         Ok(n * mem::size_of::<Event>())
     }
     fn write(
@@ -522,18 +522,18 @@ impl SchemeSync for OrbitalHandler {
             match kind {
                 "A" => match data {
                     "0" => {
-                        self.handler.handle_window_async(*id, false)?;
+                        self.handler.handle_window_async(id, false)?;
                         Ok(buf.len())
                     }
                     "1" => {
-                        self.handler.handle_window_async(*id, true)?;
+                        self.handler.handle_window_async(id, true)?;
                         Ok(buf.len())
                     }
                     _ => Err(syscall::Error::new(EINVAL)),
                 },
                 "D" => match data {
                     "" => {
-                        self.handler.handle_window_drag(*id)?;
+                        self.handler.handle_window_drag(id)?;
                         Ok(buf.len())
                     }
                     //TODO: resize by dragging edge
@@ -553,33 +553,33 @@ impl SchemeSync for OrbitalHandler {
                         _ => return Err(syscall::Error::new(EINVAL)),
                     };
                     for flag in flags.chars() {
-                        self.handler.handle_window_set_flag(*id, flag, value)?;
+                        self.handler.handle_window_set_flag(id, flag, value)?;
                     }
                     Ok(buf.len())
                 }
                 "M" => match data {
                     "C,0" => {
-                        self.handler.handle_window_mouse_cursor(*id, false)?;
+                        self.handler.handle_window_mouse_cursor(id, false)?;
                         Ok(buf.len())
                     }
                     "C,1" => {
-                        self.handler.handle_window_mouse_cursor(*id, true)?;
+                        self.handler.handle_window_mouse_cursor(id, true)?;
                         Ok(buf.len())
                     }
                     "G,0" => {
-                        self.handler.handle_window_mouse_grab(*id, false)?;
+                        self.handler.handle_window_mouse_grab(id, false)?;
                         Ok(buf.len())
                     }
                     "G,1" => {
-                        self.handler.handle_window_mouse_grab(*id, true)?;
+                        self.handler.handle_window_mouse_grab(id, true)?;
                         Ok(buf.len())
                     }
                     "R,0" => {
-                        self.handler.handle_window_mouse_relative(*id, false)?;
+                        self.handler.handle_window_mouse_relative(id, false)?;
                         Ok(buf.len())
                     }
                     "R,1" => {
-                        self.handler.handle_window_mouse_relative(*id, true)?;
+                        self.handler.handle_window_mouse_relative(id, true)?;
                         Ok(buf.len())
                     }
                     _ => Err(syscall::Error::new(EINVAL)),
@@ -589,7 +589,7 @@ impl SchemeSync for OrbitalHandler {
                     let x = parts.next().unwrap_or("").parse::<i32>().ok();
                     let y = parts.next().unwrap_or("").parse::<i32>().ok();
 
-                    self.handler.handle_window_position(*id, x, y)?;
+                    self.handler.handle_window_position(id, x, y)?;
 
                     Ok(buf.len())
                 }
@@ -598,12 +598,12 @@ impl SchemeSync for OrbitalHandler {
                     let w = parts.next().unwrap_or("").parse::<i32>().ok();
                     let h = parts.next().unwrap_or("").parse::<i32>().ok();
 
-                    self.handler.handle_window_resize(*id, w, h)?;
+                    self.handler.handle_window_resize(id, w, h)?;
 
                     Ok(buf.len())
                 }
                 "T" => {
-                    self.handler.handle_window_title(*id, data.to_string())?;
+                    self.handler.handle_window_title(id, data.to_string())?;
 
                     Ok(buf.len())
                 }
