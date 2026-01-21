@@ -39,7 +39,6 @@ fn orbital() -> Result<(), String> {
     let (orbital, displays) = Orbital::open_display(&vt)
         .map_err(|e| format!("could not open display, caused by: {}", e))?;
 
-
     match Command::new("inputd").arg("-A").arg(&vt).status() {
         Ok(status) => {
             if !status.success() {
@@ -68,7 +67,7 @@ fn orbital() -> Result<(), String> {
 ///
 /// Startup messages and errors are logged to RedoxLogger with filter set to DEBUG
 fn main() {
-    redox_log::RedoxLogger::connect_timezone();
+    redox_log::RedoxLogger::init_timezone();
     match orbital() {
         Ok(()) => {
             info!("ran to completion successfully, exiting with status=0");
