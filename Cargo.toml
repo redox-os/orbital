@@ -9,16 +9,16 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-graphics-ipc = { git = "https://gitlab.redox-os.org/Ibuki.O/base.git", branch = "namespace-improvement" }
-inputd = { git = "https://gitlab.redox-os.org/Ibuki.O/base.git", branch = "namespace-improvement" }
+graphics-ipc = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
+inputd = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
 libc = "0.2.48"
 log = "0.4.14"
 orbclient = "0.3.47"
 orbfont = "0.1"
 orbimage = "0.1"
-redox-log = { git = "https://gitlab.redox-os.org/Ibuki.O/redox-log.git", branch = "timezone_cache" }
+redox-log = { git = "https://gitlab.redox-os.org/redox-os/redox-log.git" }
 redox_syscall = { version = "0.7.0", features = ["std"] }
-redox-scheme = { git = "https://gitlab.redox-os.org/Ibuki.O/redox-scheme.git", branch = "scheme-creation" }
+redox-scheme = "0.9.0"
 libredox = "0.1.12"
 serde = "1"
 serde_derive = "1"
@@ -32,4 +32,4 @@ redox_event = "0.4.3"
 rustix = { git = "https://github.com/jackpot51/rustix.git", branch = "redox-ioctl" }
 drm = { git = "https://github.com/Smithay/drm-rs.git" }
 drm-sys = { git = "https://github.com/Smithay/drm-rs.git" }
-redox-log = { git = "https://gitlab.redox-os.org/Ibuki.O/redox-log.git", branch = "timezone_cache" }
+redox-log = { git = "https://gitlab.redox-os.org/redox-os/redox-log.git" }
