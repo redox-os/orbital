@@ -1,5 +1,5 @@
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     env,
     fs::File,
     io::{self, ErrorKind, Read, Write},
@@ -14,10 +14,10 @@ use log::{debug, error};
 use orbclient::{Color, Event};
 use redox_scheme::{
     CallerCtx, OpenResult, RequestKind, Response, SignalBehavior, Socket,
-    scheme::{IntoTag, Op, OpRead, SchemeSync},
+    scheme::{IntoTag, Op, OpRead, SchemeSync, register_scheme_inner},
 };
 use syscall::{
-    EAGAIN, ECANCELED, EOPNOTSUPP, EWOULDBLOCK, error::EINVAL, flag::EventFlags,
+    EACCES, EAGAIN, EBADF, ECANCELED, EINVAL, EOPNOTSUPP, EWOULDBLOCK, flag::EventFlags,
     schemev2::NewFdFlags,
 };
 
@@ -27,12 +27,6 @@ use display::Display;
 pub(crate) mod display;
 pub(crate) mod image;
 pub(crate) mod rect;
-
-#[cfg(target_pointer_width = "32")]
-const CLIPBOARD_FLAG: usize = 1 << 31;
-
-#[cfg(target_pointer_width = "64")]
-const CLIPBOARD_FLAG: usize = 1 << 63;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -136,7 +130,7 @@ impl Orbital {
             io::Error::from_raw_os_error(err.errno())
         })?;
 
-        let scheme = Socket::nonblock("orbital").map_err(|err| {
+        let scheme = Socket::nonblock().map_err(|err| {
             error!("failed to open '/scheme/orbital': {}", err);
             err
         })?;
@@ -213,14 +207,18 @@ impl Orbital {
     }
 
     /// Write a Packet to scheme I/O
-    pub fn scheme_write(&mut self, response: Response) -> io::Result<()> {
+    pub fn scheme_write(&self, response: Response) -> io::Result<()> {
         self.scheme
             .write_response(response, SignalBehavior::Restart)?;
         Ok(())
     }
 
     /// Start the main loop
-    pub fn run(self, handler: OrbitalScheme) -> Result<(), Error> {
+    pub fn run(
+        self,
+        handler: OrbitalScheme,
+        login_cmd: &mut std::process::Command,
+    ) -> Result<(), Error> {
         user_data! {
             enum Source {
                 Scheme,
@@ -235,9 +233,18 @@ impl Orbital {
         let scheme_fd = self.scheme.inner().raw();
         let input_fd = self.input.as_raw_fd();
 
-        let mut me = OrbitalHandler { orb: self, handler };
+        let mut me = OrbitalHandler {
+            orb: self,
+            handler,
+            handles: HashMap::new(),
+            next_id: 0,
+        };
+        let cap_id = me.scheme_root()?;
+        register_scheme_inner(&mut me.orb.scheme, "orbital", cap_id)?;
         event_queue.subscribe(scheme_fd, Source::Scheme, event::EventFlags::READ)?;
         event_queue.subscribe(input_fd as usize, Source::Input, event::EventFlags::READ)?;
+
+        login_cmd.spawn()?;
 
         let mut event_iter = event_queue.map(|e| e.map(|e| e.user_data));
         let mut fake_input_event = None; // TODO: a hack
@@ -370,12 +377,40 @@ impl Orbital {
         Ok(())
     }
 }
+enum Handle {
+    SchemeRoot,
+    Window(usize),
+    Clipboard(usize),
+}
 pub struct OrbitalHandler {
     orb: Orbital,
     handler: OrbitalScheme,
+    handles: HashMap<usize, Handle>,
+    next_id: usize,
 }
 impl SchemeSync for OrbitalHandler {
-    fn open(&mut self, path: &str, _flags: usize, _ctx: &CallerCtx) -> syscall::Result<OpenResult> {
+    fn scheme_root(&mut self) -> syscall::Result<usize> {
+        let new_id = self.next_id;
+        self.handles.insert(new_id, Handle::SchemeRoot);
+        self.next_id += 1;
+        Ok(new_id)
+    }
+    fn openat(
+        &mut self,
+        dirfd: usize,
+        path: &str,
+        mut flags: usize,
+        fcntl_flags: u32,
+        ctx: &CallerCtx,
+    ) -> syscall::Result<OpenResult> {
+        {
+            let Some(handle) = self.handles.get(&dirfd) else {
+                return Err(syscall::Error::new(EBADF));
+            };
+            if !matches!(handle, Handle::SchemeRoot) {
+                return Err(syscall::Error::new(EACCES));
+            }
+        }
         let mut parts = path.split('/');
 
         let path_first_char = path.chars().nth(0).unwrap_or('\0');
@@ -400,20 +435,26 @@ impl SchemeSync for OrbitalHandler {
         let id = self
             .handler
             .handle_window_new(x, y, width, height, flags, title)?;
+        let new_id = self.next_id;
+        self.handles.insert(new_id, Handle::Window(id));
+        self.next_id += 1;
         Ok(OpenResult::ThisScheme {
-            number: id,
+            number: new_id,
             flags: NewFdFlags::empty(),
         })
     }
     fn dup(&mut self, id: usize, buf: &[u8], _ctx: &CallerCtx) -> syscall::Result<OpenResult> {
+        let Some(&Handle::Window(id) | &Handle::Clipboard(id)) = self.handles.get(&id) else {
+            return Err(syscall::Error::new(EBADF));
+        };
         if buf == b"clipboard" {
             //TODO: implement better clipboard mechanism
-            let id = self
-                .handler
-                .handle_clipboard_new(id)
-                .map(|id| id | CLIPBOARD_FLAG)?;
+            let id = self.handler.handle_clipboard_new(id)?;
+            let new_id = self.next_id;
+            self.handles.insert(new_id, Handle::Clipboard(id));
+            self.next_id += 1;
             Ok(OpenResult::ThisScheme {
-                number: id,
+                number: new_id,
                 flags: NewFdFlags::empty(),
             })
         } else {
@@ -428,12 +469,15 @@ impl SchemeSync for OrbitalHandler {
         _flags: u32,
         _ctx: &CallerCtx,
     ) -> syscall::Result<usize> {
+        let Some(handle) = self.handles.get(&id) else {
+            return Err(syscall::Error::new(EBADF));
+        };
         //TODO: implement better clipboard mechanism
-        if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
-            return self
-                .handler
-                .handle_clipboard_read(id & !CLIPBOARD_FLAG, buf);
-        }
+        let id = match *handle {
+            Handle::Clipboard(id) => return self.handler.handle_clipboard_read(id, buf),
+            Handle::Window(id) => id,
+            Handle::SchemeRoot => return Err(syscall::Error::new(EBADF)),
+        };
 
         let slice: &mut [Event] = unsafe {
             slice::from_raw_parts_mut(
@@ -452,12 +496,15 @@ impl SchemeSync for OrbitalHandler {
         _flags: u32,
         _ctx: &CallerCtx,
     ) -> syscall::Result<usize> {
+        let Some(handle) = self.handles.get(&id) else {
+            return Err(syscall::Error::new(EBADF));
+        };
         //TODO: implement better clipboard mechanism
-        if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
-            return self
-                .handler
-                .handle_clipboard_write(id & !CLIPBOARD_FLAG, buf);
-        }
+        let id = match *handle {
+            Handle::Clipboard(id) => return self.handler.handle_clipboard_write(id, buf),
+            Handle::Window(id) => id,
+            Handle::SchemeRoot => return Err(syscall::Error::new(EBADF)),
+        };
 
         if let Ok(msg) = str::from_utf8(buf) {
             let (kind, data) = {
@@ -566,6 +613,9 @@ impl SchemeSync for OrbitalHandler {
         _flags: EventFlags,
         _ctx: &CallerCtx,
     ) -> syscall::Result<EventFlags> {
+        let Some(&Handle::Window(id) | &Handle::Clipboard(id)) = self.handles.get(&id) else {
+            return Err(syscall::Error::new(EBADF));
+        };
         self.handler
             .handle_window_clear_notified(id)
             .and(Ok(EventFlags::empty()))
@@ -603,6 +653,9 @@ impl SchemeSync for OrbitalHandler {
     }
     */
     fn fpath(&mut self, id: usize, mut buf: &mut [u8], _ctx: &CallerCtx) -> syscall::Result<usize> {
+        let Some(&Handle::Window(id) | &Handle::Clipboard(id)) = self.handles.get(&id) else {
+            return Err(syscall::Error::new(EBADF));
+        };
         let props = self.handler.handle_window_properties(id)?;
         let original_len = buf.len();
         #[allow(clippy::write_literal)] // TODO: Z order
@@ -614,6 +667,9 @@ impl SchemeSync for OrbitalHandler {
         Ok(original_len - buf.len())
     }
     fn fsync(&mut self, id: usize, _ctx: &CallerCtx) -> syscall::Result<()> {
+        let Some(&Handle::Window(id) | &Handle::Clipboard(id)) = self.handles.get(&id) else {
+            return Err(syscall::Error::new(EBADF));
+        };
         self.handler.handle_window_sync(id)
     }
     fn mmap_prep(
@@ -624,6 +680,9 @@ impl SchemeSync for OrbitalHandler {
         _flags: syscall::MapFlags,
         _ctx: &CallerCtx,
     ) -> syscall::Result<usize> {
+        let Some(&Handle::Window(id) | &Handle::Clipboard(id)) = self.handles.get(&id) else {
+            return Err(syscall::Error::new(EBADF));
+        };
         //TODO: handle offset, flags?
         let data = self.handler.handle_window_map(id, true)?;
 
@@ -641,6 +700,9 @@ impl SchemeSync for OrbitalHandler {
         _flags: syscall::MunmapFlags,
         _ctx: &CallerCtx,
     ) -> syscall::Result<()> {
+        let Some(&Handle::Window(id) | &Handle::Clipboard(id)) = self.handles.get(&id) else {
+            return Err(syscall::Error::new(EBADF));
+        };
         //TODO: handle offset, size, flags?
         self.handler.handle_window_unmap(id)?;
 
@@ -649,10 +711,15 @@ impl SchemeSync for OrbitalHandler {
 }
 impl OrbitalHandler {
     fn on_close(&mut self, id: usize) {
+        let Some(handle) = self.handles.get(&id) else {
+            return;
+        };
         //TODO: implement better clipboard mechanism
-        if id & CLIPBOARD_FLAG == CLIPBOARD_FLAG {
-            return self.handler.handle_clipboard_close(id & !CLIPBOARD_FLAG);
-        }
+        let id = match *handle {
+            Handle::Clipboard(id) => return self.handler.handle_clipboard_close(id),
+            Handle::Window(id) => id,
+            Handle::SchemeRoot => return,
+        };
 
         self.handler.handle_window_close(id)
     }

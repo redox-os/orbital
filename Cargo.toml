@@ -16,14 +16,20 @@ log = "0.4.14"
 orbclient = "0.3.47"
 orbfont = "0.1"
 orbimage = "0.1"
-redox-log = "0.1"
-redox-scheme = "0.6"
-redox_syscall = { version = "0.5", features = ["std"] }
+redox-log = { git = "https://gitlab.redox-os.org/redox-os/redox-log.git" }
+redox_syscall = { version = "0.7.0", features = ["std"] }
+redox-scheme = "0.9.0"
+libredox = "0.1.12"
 serde = "1"
 serde_derive = "1"
 thiserror = "2.0.12"
 toml = "0.7"
 # Downgrade due to improper x86 CPU feature detection
 ab_glyph_rasterizer = "=0.1.5"
-libredox = "0.1.3"
-redox_event = { version = "0.4" }
+redox_event = "0.4.3"
+
+[patch.crates-io]
+rustix = { git = "https://github.com/jackpot51/rustix.git", branch = "redox-ioctl" }
+drm = { git = "https://github.com/Smithay/drm-rs.git" }
+drm-sys = { git = "https://github.com/Smithay/drm-rs.git" }
+redox-log = { git = "https://gitlab.redox-os.org/redox-os/redox-log.git" }
