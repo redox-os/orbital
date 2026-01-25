@@ -131,7 +131,7 @@ impl Orbital {
         })?;
 
         let scheme = Socket::nonblock().map_err(|err| {
-            error!("failed to open '/scheme/orbital': {}", err);
+            error!("failed to create scheme: {}", err);
             err
         })?;
 
@@ -241,6 +241,7 @@ impl Orbital {
         };
         let cap_id = me.scheme_root()?;
         register_scheme_inner(&mut me.orb.scheme, "orbital", cap_id)?;
+        unsafe { std::env::set_var("ORBITAL_DISPLAY", "/scheme/orbital") };
         event_queue.subscribe(scheme_fd, Source::Scheme, event::EventFlags::READ)?;
         event_queue.subscribe(input_fd as usize, Source::Input, event::EventFlags::READ)?;
 
