@@ -94,10 +94,14 @@ pub struct OrbitalScheme {
     scale: i32,
     config: Rc<Config>,
     /// count in frames
+    #[cfg(feature = "draw_fps")]
     fps_counted: u64,
     /// count in micros
+    #[cfg(feature = "draw_fps")]
     fps_cputime: u64,
+    #[cfg(feature = "draw_fps")]
     fps_measured: String,
+    #[cfg(feature = "draw_fps")]
     fps_instant: std::time::Instant,
     // Is the user currently switching windows with win-tab
     // Set true when win-tab is pressed, set false when win is released.
@@ -106,7 +110,9 @@ pub struct OrbitalScheme {
     volume_osd: bool,
     shortcuts_osd: bool,
     last_popup_rect: Option<Rect>,
+    #[cfg(feature = "draw_fps")]
     fps_popup_image: Option<Image>,
+    #[cfg(feature = "draw_fps")]
     fps_popup_rect: Option<Rect>,
 }
 
@@ -185,15 +191,21 @@ impl OrbitalScheme {
             clipboard: Vec::new(),
             scale,
             config: Rc::clone(&config),
+            #[cfg(feature = "draw_fps")]
             fps_measured: "-".to_string(),
+            #[cfg(feature = "draw_fps")]
             fps_counted: 0,
+            #[cfg(feature = "draw_fps")]
             fps_cputime: 0,
+            #[cfg(feature = "draw_fps")]
             fps_instant: std::time::Instant::now(),
             win_tabbing: false,
             volume_osd: false,
             shortcuts_osd: false,
             last_popup_rect: None,
+            #[cfg(feature = "draw_fps")]
             fps_popup_image: None,
+            #[cfg(feature = "draw_fps")]
             fps_popup_rect: None,
         };
 
@@ -609,6 +621,7 @@ impl OrbitalScheme {
                         .blend(&popup.roi(&Rect::new(0, 0, popup.width(), popup.height())));
                 }
 
+                #[cfg(feature = "draw_fps")]
                 if let Some(popup) = &self.fps_popup_image {
                     display
                         .roi_mut(self.fps_popup_rect.as_ref().unwrap())
@@ -871,6 +884,7 @@ impl OrbitalScheme {
         image
     }
 
+    #[cfg(feature = "draw_fps")]
     fn draw_fps_osd(&mut self) -> Option<Image> {
         let fps_totaltime = self.fps_instant.elapsed().as_micros() as u64;
         self.fps_counted += 1;
