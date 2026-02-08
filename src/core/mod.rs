@@ -400,9 +400,9 @@ impl SchemeSync for OrbitalHandler {
         &mut self,
         dirfd: usize,
         path: &str,
-        mut flags: usize,
-        fcntl_flags: u32,
-        ctx: &CallerCtx,
+        _flags: usize,
+        _fcntl_flags: u32,
+        _ctx: &CallerCtx,
     ) -> syscall::Result<OpenResult> {
         {
             let Some(handle) = self.handles.get(&dirfd) else {

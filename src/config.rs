@@ -120,7 +120,7 @@ impl Config {
 
 #[cfg(test)]
 mod test {
-    use crate::config::{background_color_default, text_highlight_color_default, Config};
+    use crate::config::{Config, background_color_default, text_highlight_color_default};
 
     #[test]
     fn non_existent_config_file() {
