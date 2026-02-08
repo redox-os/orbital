@@ -28,10 +28,6 @@ toml = "0.7"
 ab_glyph_rasterizer = "=0.1.5"
 redox_event = "0.4.3"
 
-[features]
-default = []
-draw_fps = []
-
 [patch.crates-io]
 rustix = { git = "https://github.com/jackpot51/rustix.git", branch = "redox-ioctl" }
 drm = { git = "https://github.com/Smithay/drm-rs.git" }

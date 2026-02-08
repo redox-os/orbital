@@ -15,6 +15,7 @@ use syscall::error::{EBADF, Error, Result};
 use crate::compositor::Compositor;
 use crate::config::Config;
 use crate::core::{Orbital, Properties, display::Display, image::Image, rect::Rect};
+use crate::widget::fps::FpsWidget;
 use crate::window::{self, Window};
 use crate::window_order::{WindowOrder, WindowZOrder};
 
@@ -93,16 +94,6 @@ pub struct OrbitalScheme {
     clipboard: Vec<u8>,
     scale: i32,
     config: Rc<Config>,
-    /// count in frames
-    #[cfg(feature = "draw_fps")]
-    fps_counted: u64,
-    /// count in micros
-    #[cfg(feature = "draw_fps")]
-    fps_cputime: u64,
-    #[cfg(feature = "draw_fps")]
-    fps_measured: String,
-    #[cfg(feature = "draw_fps")]
-    fps_instant: std::time::Instant,
     // Is the user currently switching windows with win-tab
     // Set true when win-tab is pressed, set false when win is released.
     // While it is true, redraw() calls draw_window_list()
@@ -110,10 +101,7 @@ pub struct OrbitalScheme {
     volume_osd: bool,
     shortcuts_osd: bool,
     last_popup_rect: Option<Rect>,
-    #[cfg(feature = "draw_fps")]
-    fps_popup_image: Option<Image>,
-    #[cfg(feature = "draw_fps")]
-    fps_popup_rect: Option<Rect>,
+    fps_widget: FpsWidget,
 }
 
 impl OrbitalScheme {
@@ -191,22 +179,11 @@ impl OrbitalScheme {
             clipboard: Vec::new(),
             scale,
             config: Rc::clone(&config),
-            #[cfg(feature = "draw_fps")]
-            fps_measured: "-".to_string(),
-            #[cfg(feature = "draw_fps")]
-            fps_counted: 0,
-            #[cfg(feature = "draw_fps")]
-            fps_cputime: 0,
-            #[cfg(feature = "draw_fps")]
-            fps_instant: std::time::Instant::now(),
             win_tabbing: false,
             volume_osd: false,
             shortcuts_osd: false,
             last_popup_rect: None,
-            #[cfg(feature = "draw_fps")]
-            fps_popup_image: None,
-            #[cfg(feature = "draw_fps")]
-            fps_popup_rect: None,
+            fps_widget: FpsWidget::new(),
         };
 
         orbital_scheme.update_cursor(0, 0, CursorKind::LeftPtr);
@@ -541,8 +518,7 @@ impl OrbitalScheme {
     }
 
     fn redraw(&mut self) {
-        #[cfg(feature = "draw_fps")]
-        let render_time = std::time::Instant::now();
+        self.fps_widget.start_measure();
         self.order
             .rezbuffer(&|id| self.windows.get(&id).unwrap().zorder);
 
@@ -572,19 +548,19 @@ impl OrbitalScheme {
             None
         };
 
-        #[cfg(feature = "draw_fps")]
-        {
-            let popup = self.draw_fps_osd();
+        if self.fps_widget.enabled {
+            let popup = self
+                .fps_widget
+                .draw_fps_osd(self.scale, &self.config, &self.font);
             if let Some(popup) = popup {
                 let rect = Rect::new(
-                    self.compositor.screen_rect().width() / 10,
-                    self.compositor.screen_rect().height() / 10,
+                    (self.compositor.screen_rect().width() - popup.width()) / 2,
+                    self.compositor.screen_rect().height() * 9 / 10 - popup.height(),
                     popup.width(),
                     popup.height(),
                 );
-                self.fps_popup_rect = Some(rect);
+                self.fps_widget.set_osd_position(rect);
                 self.compositor.schedule(rect);
-                self.fps_popup_image = Some(popup);
             }
         }
 
@@ -621,11 +597,13 @@ impl OrbitalScheme {
                         .blend(&popup.roi(&Rect::new(0, 0, popup.width(), popup.height())));
                 }
 
-                #[cfg(feature = "draw_fps")]
-                if let Some(popup) = &self.fps_popup_image {
-                    display
-                        .roi_mut(self.fps_popup_rect.as_ref().unwrap())
-                        .blend(&popup.roi(&Rect::new(0, 0, popup.width(), popup.height())));
+                if let Some((image, rect)) = self.fps_widget.get_rendered_osd() {
+                    display.roi_mut(rect).blend(&image.roi(&Rect::new(
+                        0,
+                        0,
+                        image.width(),
+                        image.height(),
+                    )));
                 }
             });
 
@@ -636,10 +614,7 @@ impl OrbitalScheme {
             self.compositor.sync_rect(total_redraw);
         }
 
-        #[cfg(feature = "draw_fps")]
-        {
-            self.fps_cputime += render_time.elapsed().as_micros() as u64;
-        }
+        self.fps_widget.end_measure();
     }
 
     fn volume(&mut self, volume: Volume) {
@@ -842,6 +817,7 @@ impl OrbitalScheme {
         "Super-M: Toggle window max (maximize or restore)",
         "Super-ENTER: Toggle window max (maximize or restore)",
         "Super-Numpad-0: Enable mouse accessibility keys using numpad",
+        "Super-F12: Enable FPS counter on screen",
     ];
 
     // Draw an on screen display (overlay) of available SUPER keyboard shortcuts
@@ -882,58 +858,6 @@ impl OrbitalScheme {
         }
 
         image
-    }
-
-    #[cfg(feature = "draw_fps")]
-    fn draw_fps_osd(&mut self) -> Option<Image> {
-        let fps_totaltime = self.fps_instant.elapsed().as_micros() as u64;
-        self.fps_counted += 1;
-        // update atleast every 330ms
-        if self.fps_cputime > 0 && fps_totaltime > 330_000 {
-            self.fps_measured = format!(
-                "{} F for {}ms of {}ms = {} FPS {}% CPU",
-                self.fps_counted,
-                self.fps_cputime / 1000,
-                fps_totaltime / 1000,
-                self.fps_counted * 1_000_000 / fps_totaltime,
-                self.fps_cputime * 100 / fps_totaltime,
-            );
-            self.fps_counted = 0;
-            self.fps_cputime = 0;
-            self.fps_instant = std::time::Instant::now();
-        } else {
-            return None;
-        }
-
-        let Config {
-            bar_color,
-            bar_highlight_color,
-            text_highlight_color,
-            ..
-        } = *self.config;
-
-        let row_width: i32 = 400 * self.scale;
-        let popup_border: u32 = 4 * self.scale as u32;
-        let font_height: f32 = (24 * self.scale) as f32;
-        let row_height: i32 = 24 * self.scale + 8;
-
-        let mut image = Image::from_color(row_width, row_height, bar_color.into());
-        let text = self.font.render(&self.fps_measured, font_height);
-        image.rect(
-            0,
-            popup_border as i32,
-            row_width as u32,
-            row_height as u32,
-            bar_highlight_color.into(),
-        );
-        text.draw(
-            &mut image,
-            popup_border as i32,
-            popup_border as i32,
-            text_highlight_color.into(),
-        );
-
-        Some(image)
     }
 
     // Keep track of the modifier keys state based on past keydown/keyup events
@@ -1127,6 +1051,7 @@ impl OrbitalScheme {
                 orbclient::K_Q => self.quit_front_window(),
                 orbclient::K_TAB => self.super_tab(),
                 orbclient::K_NUM_0 => self.cursor_simulate_enabled = !self.cursor_simulate_enabled,
+                orbclient::K_F12 => self.fps_widget.enabled = !self.fps_widget.enabled,
                 orbclient::K_BRACE_OPEN => self.volume(Volume::Down),
                 orbclient::K_BRACE_CLOSE => self.volume(Volume::Up),
                 orbclient::K_BACKSLASH => self.volume(Volume::Toggle),
