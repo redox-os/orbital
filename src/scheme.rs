@@ -15,6 +15,7 @@ use syscall::error::{EBADF, Error, Result};
 use crate::compositor::Compositor;
 use crate::config::Config;
 use crate::core::{Orbital, Properties, display::Display, image::Image, rect::Rect};
+use crate::widget::fps::FpsWidget;
 use crate::window::{self, Window};
 use crate::window_order::{WindowOrder, WindowZOrder};
 
@@ -100,6 +101,7 @@ pub struct OrbitalScheme {
     volume_osd: bool,
     shortcuts_osd: bool,
     last_popup_rect: Option<Rect>,
+    fps_widget: FpsWidget,
 }
 
 impl OrbitalScheme {
@@ -181,6 +183,7 @@ impl OrbitalScheme {
             volume_osd: false,
             shortcuts_osd: false,
             last_popup_rect: None,
+            fps_widget: FpsWidget::new(),
         };
 
         orbital_scheme.update_cursor(0, 0, CursorKind::LeftPtr);
@@ -515,6 +518,7 @@ impl OrbitalScheme {
     }
 
     fn redraw(&mut self) {
+        self.fps_widget.start_measure();
         self.order
             .rezbuffer(&|id| self.windows.get(&id).unwrap().zorder);
 
@@ -543,6 +547,22 @@ impl OrbitalScheme {
         } else {
             None
         };
+
+        {
+            let popup = self
+                .fps_widget
+                .draw_fps_osd(self.scale, &self.config, &self.font);
+            if let Some(popup) = popup {
+                let rect = Rect::new(
+                    (self.compositor.screen_rect().width() - popup.width()) / 2,
+                    self.compositor.screen_rect().height() * 9 / 10 - popup.height(),
+                    popup.width(),
+                    popup.height(),
+                );
+                self.fps_widget.set_osd_position(rect);
+                self.compositor.schedule(rect);
+            }
+        }
 
         let mut total_redraw_opt: Option<Rect> = None;
 
@@ -576,6 +596,15 @@ impl OrbitalScheme {
                         .roi_mut(popup_rect.as_ref().unwrap())
                         .blend(&popup.roi(&Rect::new(0, 0, popup.width(), popup.height())));
                 }
+
+                if let Some((image, rect)) = self.fps_widget.get_rendered_osd() {
+                    display.roi_mut(rect).blend(&image.roi(&Rect::new(
+                        0,
+                        0,
+                        image.width(),
+                        image.height(),
+                    )));
+                }
             });
 
         self.compositor.redraw_cursor(total_redraw_opt);
@@ -584,6 +613,8 @@ impl OrbitalScheme {
         if let Some(total_redraw) = total_redraw_opt {
             self.compositor.sync_rect(total_redraw);
         }
+
+        self.fps_widget.end_measure();
     }
 
     fn volume(&mut self, volume: Volume) {
@@ -786,6 +817,7 @@ impl OrbitalScheme {
         "Super-M: Toggle window max (maximize or restore)",
         "Super-ENTER: Toggle window max (maximize or restore)",
         "Super-Numpad-0: Enable mouse accessibility keys using numpad",
+        "Super-F12: Enable FPS counter on screen",
     ];
 
     // Draw an on screen display (overlay) of available SUPER keyboard shortcuts
@@ -1035,6 +1067,11 @@ impl OrbitalScheme {
                 orbclient::K_C => self.clipboard_event(orbclient::CLIPBOARD_COPY),
                 orbclient::K_X => self.clipboard_event(orbclient::CLIPBOARD_CUT),
                 orbclient::K_V => self.clipboard_event(orbclient::CLIPBOARD_PASTE),
+                orbclient::K_F12 => {
+                    if let Some(damage) = self.fps_widget.toggle_enabled() {
+                        self.compositor.schedule(damage);
+                    }
+                }
                 _ => {
                     //TODO: remove hack for sending super events to lowest numbered window
                     // ADM is this related to Launcher or Background or something?

@@ -13,6 +13,7 @@ mod compositor;
 mod config;
 mod core;
 mod scheme;
+mod widget;
 mod window;
 mod window_order;
 
