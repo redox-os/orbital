@@ -548,7 +548,7 @@ impl OrbitalScheme {
             None
         };
 
-        if self.fps_widget.enabled {
+        {
             let popup = self
                 .fps_widget
                 .draw_fps_osd(self.scale, &self.config, &self.font);
@@ -1051,7 +1051,6 @@ impl OrbitalScheme {
                 orbclient::K_Q => self.quit_front_window(),
                 orbclient::K_TAB => self.super_tab(),
                 orbclient::K_NUM_0 => self.cursor_simulate_enabled = !self.cursor_simulate_enabled,
-                orbclient::K_F12 => self.fps_widget.enabled = !self.fps_widget.enabled,
                 orbclient::K_BRACE_OPEN => self.volume(Volume::Down),
                 orbclient::K_BRACE_CLOSE => self.volume(Volume::Up),
                 orbclient::K_BACKSLASH => self.volume(Volume::Toggle),
@@ -1068,6 +1067,11 @@ impl OrbitalScheme {
                 orbclient::K_C => self.clipboard_event(orbclient::CLIPBOARD_COPY),
                 orbclient::K_X => self.clipboard_event(orbclient::CLIPBOARD_CUT),
                 orbclient::K_V => self.clipboard_event(orbclient::CLIPBOARD_PASTE),
+                orbclient::K_F12 => {
+                    if let Some(damage) = self.fps_widget.toggle_enabled() {
+                        self.compositor.schedule(damage);
+                    }
+                }
                 _ => {
                     //TODO: remove hack for sending super events to lowest numbered window
                     // ADM is this related to Launcher or Background or something?

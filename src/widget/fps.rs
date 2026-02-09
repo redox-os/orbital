@@ -48,15 +48,21 @@ impl FpsWidget {
     }
 
     pub fn draw_fps_osd(&mut self, scale: i32, config: &Config, font: &Font) -> Option<&Image> {
+        if !self.enabled {
+            return None;
+        }
+
         let fps_totaltime = self.fps_instant.elapsed().as_micros() as u64;
         self.fps_counted += 1;
         // update atleast every 330ms
         if self.fps_cputime > 0 && fps_totaltime > 330_000 {
             self.fps_measured = format!(
-                "{} F for {}ms of {}ms = {} FPS {}% CPU",
-                self.fps_counted,
-                self.fps_cputime / 1000,
-                fps_totaltime / 1000,
+                // uncomment to debug (adjust row_width as well)
+                // "{} F for {}ms of {}ms = {} FPS {}% CPU",
+                // self.fps_counted,
+                // self.fps_cputime / 1000,
+                // fps_totaltime / 1000,
+                "{} FPS {}% CPU",
                 self.fps_counted * 1_000_000 / fps_totaltime,
                 self.fps_cputime * 100 / fps_totaltime,
             );
@@ -74,10 +80,10 @@ impl FpsWidget {
             ..
         } = &config;
 
-        let row_width: i32 = 400 * scale;
-        let popup_border: u32 = 4 * scale as u32;
-        let font_height: f32 = (24 * scale) as f32;
-        let row_height: i32 = 24 * scale + 8;
+        let row_width: i32 = 120 * scale;
+        let popup_border: u32 = 5 * scale as u32;
+        let font_height: f32 = (18 * scale) as f32;
+        let row_height: i32 = 18 * scale + 8;
 
         let mut image = Image::from_color(row_width, row_height, (*bar_color).into());
         let text = font.render(&self.fps_measured, font_height);
@@ -104,9 +110,23 @@ impl FpsWidget {
     }
 
     pub fn get_rendered_osd(&self) -> Option<(&Image, &Rect)> {
+        if !self.enabled {
+            return None;
+        }
+
         match (&self.fps_popup_image, &self.fps_popup_rect) {
             (Some(img), Some(rect)) => Some((img, rect)),
             _ => None,
         }
+    }
+
+    pub fn toggle_enabled(&mut self) -> Option<Rect> {
+        self.enabled = !self.enabled;
+
+        self.fps_counted = 0;
+        self.fps_cputime = 0;
+        self.fps_instant = std::time::Instant::now();
+        self.fps_popup_image = None;
+        self.fps_popup_rect.take()
     }
 }
