@@ -3,6 +3,7 @@ use orbclient::Color;
 use serde_derive::Deserialize;
 use std::fs::File;
 use std::io::Read;
+use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
 pub struct ConfigColor {
@@ -33,8 +34,8 @@ pub struct Config {
     pub window_close: String,
     pub window_close_unfocused: String,
 
-    #[serde(default = "background_color_default")]
-    pub background_color: ConfigColor,
+    #[serde(default = "background_path_default")]
+    pub background_path: PathBuf,
     #[serde(default = "bar_color_default")]
     pub bar_color: ConfigColor,
     #[serde(default = "bar_highlight_color_default")]
@@ -45,8 +46,8 @@ pub struct Config {
     pub text_highlight_color: ConfigColor,
 }
 
-fn background_color_default() -> ConfigColor {
-    Color::rgb(0, 0, 0).into()
+fn background_path_default() -> PathBuf {
+    PathBuf::from("/usr/share/ui/background.jpg")
 }
 fn bar_color_default() -> ConfigColor {
     Color::rgba(0x1B, 0x1B, 0x1B, 224).into()
@@ -80,7 +81,7 @@ impl Default for Config {
             window_close_unfocused: String::default(),
 
             // These are the default colors for Orbital that have been defined
-            background_color: background_color_default(),
+            background_path: background_path_default(),
             bar_color: bar_color_default(),
             bar_highlight_color: bar_highlight_color_default(),
             text_color: text_color_default(),
@@ -120,7 +121,7 @@ impl Config {
 
 #[cfg(test)]
 mod test {
-    use crate::config::{Config, background_color_default, text_highlight_color_default};
+    use crate::config::{Config, bar_highlight_color_default, text_highlight_color_default};
 
     #[test]
     fn non_existent_config_file() {
@@ -132,10 +133,10 @@ mod test {
     #[test]
     fn partial_config() {
         let config_str = r##"
-            background_color = "#FFFFFFFF"
+            bar_highlight_color = "#363636E0"
         "##;
         let config = Config::config_from_string(config_str);
-        assert_eq!(config.background_color, background_color_default());
+        assert_eq!(config.bar_highlight_color, bar_highlight_color_default());
     }
 
     #[test]
@@ -151,7 +152,7 @@ window_max_unfocused = "/ui/window_max_unfocused.png"
 window_close = "/ui/window_close.png"
 window_close_unfocused = "/ui/window_close_unfocused.png""##;
         let config = Config::config_from_string(config_str);
-        assert_eq!(config.background_color, background_color_default());
+        assert_eq!(config.bar_highlight_color, bar_highlight_color_default());
         assert_eq!(config.bottom_left_corner, "/ui/bottom_left_corner.png");
     }
 }

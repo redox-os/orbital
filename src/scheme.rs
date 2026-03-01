@@ -568,7 +568,15 @@ impl OrbitalScheme {
 
         self.compositor
             .redraw_windows(&mut total_redraw_opt, |display, rect| {
-                display.rect(&rect, self.config.background_color.into());
+                display
+                    .background
+                    .roi(
+                        rect.left() as u32,
+                        rect.top() as u32,
+                        rect.width() as u32,
+                        rect.height() as u32,
+                    )
+                    .draw(&mut display.image, rect.left(), rect.top());
 
                 for (id, focused) in self.order.iter_back_to_front() {
                     if let Some(window) = self.windows.get(&id) {

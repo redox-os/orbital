@@ -10,6 +10,7 @@ edition = "2024"
 
 [dependencies]
 graphics-ipc = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
+image = "0.21"
 inputd = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
 libc = "0.2.48"
 log = "0.4.14"
@@ -27,6 +28,7 @@ toml = "0.7"
 # Downgrade due to improper x86 CPU feature detection
 ab_glyph_rasterizer = "=0.1.5"
 redox_event = "0.4.3"
+xxhash-rust = { version = "0.8.15", features = ["xxh3", "const_xxh3"] }
 
 [patch.crates-io]
 rustix = { git = "https://github.com/jackpot51/rustix.git", branch = "redox-ioctl" }
