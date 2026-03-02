@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::{
     collections::{HashMap, VecDeque},
     env,
@@ -103,7 +104,7 @@ impl Orbital {
     }
 
     /// Open an orbital display and connect to the scheme
-    pub fn open_display(vt: &str) -> io::Result<(Self, Vec<Display>)> {
+    pub fn open_display(vt: &str, background_path: PathBuf) -> io::Result<(Self, Vec<Display>)> {
         let mut buffer = [0; 1024];
 
         let input_handle = File::open(format!("/scheme/input/consumer/{vt}"))?;
@@ -147,7 +148,7 @@ impl Orbital {
             .map_err(|_| io::Error::new(ErrorKind::Other, "Could not create Utf8 Url String"))?;
         let (scheme_name, path) = Self::url_parts(&url)?;
         let (vt_screen, width, height) = Self::parse_display_path(path);
-        let mut displays = vec![Display::new(0, 0, width, height, display)?];
+        let mut displays = vec![Display::new(0, 0, width, height, display, background_path.clone())?];
 
         // If display server supports multiple displays in a VT
         if vt_screen.contains('.') {
@@ -192,7 +193,7 @@ impl Orbital {
                     screen_i, x, y, width, height
                 );
 
-                displays.push(Display::new(x, y, width, height, extra_file)?);
+                displays.push(Display::new(x, y, width, height, extra_file,background_path.clone())?);
             }
         }
 
