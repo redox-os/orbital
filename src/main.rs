@@ -9,7 +9,6 @@ use std::{env, process::Command, rc::Rc};
 use config::Config;
 use scheme::OrbitalScheme;
 
-mod background;
 mod compositor;
 mod config;
 mod core;
@@ -38,13 +37,8 @@ fn orbital() -> Result<(), String> {
     }
     let login_cmd = args.next().ok_or("no login manager argument")?;
 
-    let config = Rc::new(Config::from_path("/ui/orbital.toml"));
-    let (orbital, displays) = Orbital::open_display(&vt, config.background_path.clone())
+    let (orbital, displays) = Orbital::open_display(&vt)
         .map_err(|e| format!("could not open display, caused by: {}", e))?;
-
-    if let Err(err) = crate::background::remove_unused_cache() {
-        warn!("Unable to clear background cache {:?}", err);
-    }
 
     match Command::new("inputd").arg("-A").arg(&vt).status() {
         Ok(status) => {
@@ -62,6 +56,7 @@ fn orbital() -> Result<(), String> {
         displays[0].image.width(),
         displays[0].image.height()
     );
+    let config = Rc::new(Config::from_path("/ui/orbital.toml"));
     let scheme = OrbitalScheme::new(displays, config)?;
 
     orbital
