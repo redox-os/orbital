@@ -34,7 +34,14 @@ fn orbital() -> Result<(), String> {
     unsafe {
         env::remove_var("VT");
     }
-    let login_cmd = args.next().ok_or("no login manager argument")?;
+    let (scheme_name, login_cmd) = match args.next().ok_or("no login manager argument")? {
+        arg if arg == "--scheme" => {
+            let scheme_name = args.next().ok_or("no scheme name argument")?;
+            let login_cmd = args.next().ok_or("no login manager argument")?;
+            (scheme_name, login_cmd)
+        }
+        login_cmd => ("orbital".to_owned(), login_cmd),
+    };
 
     let config = Rc::new(Config::from_path("/ui/orbital.toml"));
 
@@ -53,7 +60,7 @@ fn orbital() -> Result<(), String> {
     }
 
     orbital
-        .run(Command::new(login_cmd).args(args))
+        .run(&scheme_name, Command::new(login_cmd).args(args))
         .map_err(|e| format!("error in main loop, caused by {}", e))
 }
 

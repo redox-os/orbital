@@ -110,7 +110,11 @@ impl Orbital {
     }
 
     /// Start the main loop
-    pub fn run(mut self, login_cmd: &mut std::process::Command) -> Result<(), Error> {
+    pub fn run(
+        mut self,
+        scheme_name: &str,
+        login_cmd: &mut std::process::Command,
+    ) -> Result<(), Error> {
         user_data! {
             enum Source {
                 Scheme,
@@ -127,13 +131,13 @@ impl Orbital {
 
         let mut state = SchemeState::new();
         let cap_id = self.scheme_root()?;
-        register_scheme_inner(&mut self.scheme, "orbital", cap_id)?;
+        register_scheme_inner(&mut self.scheme, scheme_name, cap_id)?;
 
         unsafe {
             // FIXME remove DISPLAY env var once orbclient no longer depends on it
             std::env::set_var("DISPLAY", "orbital:99.0");
 
-            std::env::set_var("ORBITAL_DISPLAY", "/scheme/orbital")
+            std::env::set_var("ORBITAL_DISPLAY", format!("/scheme/{scheme_name}"))
         };
 
         event_queue.subscribe(scheme_fd, Source::Scheme, event::EventFlags::READ)?;
