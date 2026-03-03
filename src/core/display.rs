@@ -1,6 +1,7 @@
 use libredox::{call::MmapArgs, flag};
 use log::error;
 use orbclient::{Color, Renderer};
+use std::path::PathBuf;
 use std::{convert::TryInto, fs::File, io, os::unix::io::AsRawFd, slice};
 
 use crate::core::{
@@ -43,21 +44,34 @@ pub struct Display {
     pub scale: i32,
     pub file: File,
     pub image: ImageRef<'static>,
+    pub background_path: PathBuf,
+    pub background: orbimage::Image,
 }
 
 impl Display {
-    pub fn new(x: i32, y: i32, width: i32, height: i32, file: File) -> io::Result<Self> {
+    pub fn new(
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        file: File,
+        background_path: PathBuf,
+    ) -> io::Result<Self> {
         let scale = (height / 1600) + 1;
         let image = display_fd_map(width, height, file.as_raw_fd() as usize).map_err(|err| {
             error!("failed to map display: {}", err);
             io::Error::from_raw_os_error(err.errno())
         })?;
+        let background =
+            crate::background::scale_and_cache(&background_path, width as u32, height as u32);
         Ok(Self {
             x,
             y,
             scale,
             file,
             image,
+            background_path,
+            background,
         })
     }
 
@@ -76,6 +90,11 @@ impl Display {
             Ok(ok) => {
                 display_fd_unmap(&mut self.image);
                 self.image = ok;
+                self.background = crate::background::scale_and_cache(
+                    &self.background_path,
+                    width as u32,
+                    height as u32,
+                );
             }
             Err(err) => {
                 error!("failed to resize display to {}x{}: {}", width, height, err);

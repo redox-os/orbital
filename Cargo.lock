@@ -633,6 +633,7 @@ version = "0.1.0"
 dependencies = [
  "ab_glyph_rasterizer",
  "graphics-ipc",
+ "image",
  "inputd",
  "libc",
  "libredox",
@@ -648,6 +649,7 @@ dependencies = [
  "serde_derive",
  "thiserror",
  "toml",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -1182,3 +1184,9 @@ checksum = "f593a95398737aeed53e489c785df13f3618e41dbcd6718c6addbf1395aa6876"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"

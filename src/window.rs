@@ -486,6 +486,7 @@ mod test {
     use crate::config::Config;
     use crate::window::Window;
     use orbclient::{Color, Event};
+    use std::path::PathBuf;
     use std::rc::Rc;
 
     // create a default config that can be used to create Windows for testing
@@ -503,7 +504,7 @@ mod test {
             window_close: String::default(),
             window_close_unfocused: String::default(),
 
-            background_color: Color::rgba(1, 2, 3, 200).into(),
+            background_path: PathBuf::new(),
             bar_color: Color::rgba(1, 2, 3, 200).into(),
             bar_highlight_color: Color::rgba(1, 2, 3, 200).into(),
             text_color: Color::rgba(1, 2, 3, 200).into(),
