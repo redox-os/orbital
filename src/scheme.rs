@@ -108,7 +108,7 @@ impl OrbitalScheme {
     pub(crate) fn new(displays: Vec<Display>, config: Rc<Config>) -> Result<OrbitalScheme, String> {
         let mut scale = 1;
         for display in displays.iter() {
-            scale = cmp::max(scale, display.scale);
+            scale = cmp::max(scale, display.scale());
         }
 
         let mut cursors = BTreeMap::new();

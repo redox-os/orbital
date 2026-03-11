@@ -53,8 +53,8 @@ fn orbital() -> Result<(), String> {
 
     debug!(
         "found display {}x{}",
-        displays[0].image.width(),
-        displays[0].image.height()
+        displays[0].screen_rect().width(),
+        displays[0].screen_rect().height()
     );
     let config = Rc::new(Config::from_path("/ui/orbital.toml"));
     let scheme = OrbitalScheme::new(displays, config)?;

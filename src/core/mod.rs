@@ -181,7 +181,7 @@ impl Orbital {
                 let (_vt_screen, width, height) = Self::parse_display_path(path);
 
                 let x = if let Some(last) = displays.last() {
-                    last.x + last.image.width()
+                    last.screen_rect().left() + last.screen_rect().width()
                 } else {
                     0
                 };
