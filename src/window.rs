@@ -79,8 +79,7 @@ impl Window {
             unclosable: false,
             zorder: WindowZOrder::Normal,
             restore: None,
-            // TODO: get a system constant for the page size
-            image: ImageAligned::new(w, h, 4096), // Ensure that image data is page aligned at beginning and end
+            image: ImageAligned::new(w, h, syscall::PAGE_SIZE),
             title_image: Image::new(0, 0),
             title_image_unfocused: Image::new(0, 0),
             events: VecDeque::new(),
@@ -466,7 +465,7 @@ impl Window {
         }
 
         //TODO: Invalidate old mappings
-        let mut new_image = ImageAligned::new(w, h, 4096);
+        let mut new_image = ImageAligned::new(w, h, syscall::PAGE_SIZE);
         let new_rect = Rect::new(0, 0, w, h);
 
         let rect = Rect::new(0, 0, self.image.width(), self.image.height());
