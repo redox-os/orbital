@@ -1,9 +1,10 @@
 use drm::buffer::{Buffer as _, DrmFourcc};
+use drm::control::connector::State;
 use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
 use drm::control::{Device as _, framebuffer};
 use drm::{ClientCapability, Device as _};
 use graphics_ipc::v2::{V2GraphicsHandle, ipc};
-use log::error;
+use log::{debug, error};
 use orbclient::{Color, Renderer};
 use std::mem;
 use std::os::fd::{AsFd, AsRawFd};
@@ -37,38 +38,86 @@ impl V2DisplayMap {
     }
 }
 
+pub struct Displays {
+    pub display_handle: V2GraphicsHandle,
+    supports_hw_cursor: bool,
+    pub displays: Vec<Display>,
+}
+
+impl Displays {
+    pub fn new(display_handle: V2GraphicsHandle) -> io::Result<Self> {
+        let supports_hw_cursor = display_handle
+            .set_client_capability(ClientCapability::CursorPlaneHotspot, true)
+            .is_ok();
+
+        let mut displays: Vec<Display> = vec![];
+        for (i, &connector) in display_handle
+            .resource_handles()
+            .unwrap()
+            .connectors()
+            .iter()
+            .enumerate()
+        {
+            if display_handle.get_connector(connector, true)?.state() == State::Connected {
+                let x = if let Some(last) = displays.last() {
+                    last.screen_rect().left() + last.screen_rect().width()
+                } else {
+                    0
+                };
+                let y = 0;
+
+                displays.push(Display::new(x, y, &display_handle, i)?);
+            }
+        }
+
+        Ok(Displays {
+            display_handle,
+            supports_hw_cursor,
+            displays,
+        })
+    }
+
+    pub fn supports_hw_cursor(&self) -> bool {
+        self.supports_hw_cursor
+    }
+}
+
 pub struct Display {
+    connector: usize,
     x: i32,
     y: i32,
     scale: i32,
-    handle: V2GraphicsHandle,
     map: V2DisplayMap,
 }
 
 impl Display {
-    pub fn new(x: i32, y: i32, display_handle: V2GraphicsHandle) -> io::Result<Self> {
+    pub fn new(
+        x: i32,
+        y: i32,
+        display_handle: &V2GraphicsHandle,
+        connector: usize,
+    ) -> io::Result<Self> {
         let (width, height) = display_handle
-            .get_connector(display_handle.first_display().unwrap(), true)
+            .get_connector(
+                display_handle.resource_handles().unwrap().connectors()[connector],
+                true,
+            )
             .unwrap()
             .modes()[0]
             .size();
+
+        debug!("Display at {}, {}, {}, {}", x, y, width, height);
 
         let scale = (height as i32 / 1600) + 1;
 
         let map = V2DisplayMap::new(&display_handle, width as u32, height as u32)?;
         Ok(Self {
+            connector,
             x,
             y,
             scale,
-            handle: display_handle,
             map,
         })
-    }
-
-    pub fn supports_hw_cursor(&mut self) -> bool {
-        self.handle
-            .set_client_capability(ClientCapability::CursorPlaneHotspot, true)
-            .is_ok()
     }
 
     pub fn scale(&self) -> i32 {
@@ -99,8 +148,8 @@ impl Display {
         );
     }
 
-    pub fn resize(&mut self, width: i32, height: i32) {
-        match V2DisplayMap::new(&self.handle, width as u32, height as u32) {
+    pub fn resize(&mut self, display_handle: &V2GraphicsHandle, width: i32, height: i32) {
+        match V2DisplayMap::new(display_handle, width as u32, height as u32) {
             Ok(map) => {
                 self.map = map;
             }
@@ -130,9 +179,13 @@ impl Display {
         )
     }
 
-    pub fn cursor_command(&mut self, cmd: &graphics_ipc::v2::ipc::UpdateCursor) -> io::Result<()> {
+    pub fn cursor_command(
+        &mut self,
+        display_handle: &V2GraphicsHandle,
+        cmd: &graphics_ipc::v2::ipc::UpdateCursor,
+    ) -> io::Result<()> {
         libredox::call::call_wo(
-            self.handle.as_fd().as_raw_fd() as usize,
+            display_handle.as_fd().as_raw_fd() as usize,
             unsafe { plain::as_bytes(cmd) },
             syscall::CallFlags::empty(),
             &[ipc::UPDATE_CURSOR, 0, 0],
@@ -140,7 +193,7 @@ impl Display {
         Ok(())
     }
 
-    pub fn sync_rect(&mut self, rect: Rect) -> io::Result<()> {
+    pub fn sync_rect(&mut self, display_handle: &V2GraphicsHandle, rect: Rect) -> io::Result<()> {
         let sync_rect = graphics_ipc::v1::Damage {
             x: (rect.left() - self.x) as u32,
             y: (rect.top() - self.y) as u32,
@@ -148,8 +201,8 @@ impl Display {
             height: (rect.height()) as u32,
         };
 
-        self.handle
-            .update_plane(0, self.map.fb.into(), sync_rect)
+        display_handle
+            .update_plane(self.connector, self.map.fb.into(), sync_rect)
             .map(|_| ())
     }
 }

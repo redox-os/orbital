@@ -3,12 +3,12 @@ use std::time::Instant;
 
 use log::{error, info};
 
-use crate::core::display::Display;
+use crate::core::display::{Display, Displays};
 use crate::core::image::Image;
 use crate::core::rect::Rect;
 
 pub struct Compositor {
-    displays: Vec<Display>,
+    displays: Displays,
 
     redraws: Vec<Rect>,
 
@@ -24,13 +24,13 @@ pub struct Compositor {
 }
 
 impl Compositor {
-    pub fn new(mut displays: Vec<Display>) -> Self {
+    pub fn new(displays: Displays) -> Self {
         let mut redraws = Vec::new();
-        for display in displays.iter() {
+        for display in displays.displays.iter() {
             redraws.push(display.screen_rect());
         }
 
-        let hw_cursor: bool = displays[0].supports_hw_cursor();
+        let hw_cursor: bool = displays.supports_hw_cursor();
         if hw_cursor {
             info!("Hardware cursor detected");
         }
@@ -51,19 +51,19 @@ impl Compositor {
     }
 
     pub fn displays(&self) -> &[Display] {
-        &self.displays
+        &self.displays.displays
     }
 
     /// Return the screen rectangle
     pub fn screen_rect(&self) -> Rect {
-        self.displays[0].screen_rect()
+        self.displays()[0].screen_rect()
     }
 
     /// Find the display that a window (`rect`) most overlaps and return it's screen_rect
     pub fn get_screen_rect_for_window(&self, rect: &Rect) -> Rect {
-        let mut screen_rect = self.displays[0].screen_rect();
+        let mut screen_rect = self.displays()[0].screen_rect();
         let mut max_intersection_area = 0;
-        for display in &self.displays {
+        for display in self.displays() {
             let intersect = display.screen_rect().intersection(rect);
             if intersect.area() > max_intersection_area {
                 screen_rect = display.screen_rect();
@@ -91,7 +91,7 @@ impl Compositor {
     pub fn resize(&mut self, width: i32, height: i32) {
         //TODO: should other screens be moved after a resize?
         //TODO: support resizing other screens?
-        self.displays[0].resize(width, height);
+        self.displays.displays[0].resize(&self.displays.display_handle, width, height);
 
         self.schedule(self.screen_rect());
     }
@@ -168,11 +168,9 @@ impl Compositor {
     }
 
     fn send_cursor_command(&mut self, cmd: &graphics_ipc::v1::CursorDamage) {
-        for (i, display) in self.displays.iter_mut().enumerate() {
-            match display.cursor_command(cmd) {
-                Ok(_) => (),
-                Err(err) => error!("failed to sync display {}: {}", i, err),
-            }
+        match self.displays.displays[0].cursor_command(&self.displays.display_handle, cmd) {
+            Ok(_) => (),
+            Err(err) => error!("failed to update cursor: {}", err),
         }
     }
 
@@ -192,7 +190,7 @@ impl Compositor {
                 );
             }
 
-            for display in self.displays.iter_mut() {
+            for display in self.displays.displays.iter_mut() {
                 let rect = original_rect.intersection(&display.screen_rect());
                 if rect.is_empty() {
                     continue;
@@ -228,7 +226,7 @@ impl Compositor {
 
         let cursor_rect = self.cursor_rect();
 
-        for display in self.displays.iter_mut() {
+        for display in self.displays.displays.iter_mut() {
             let rect = total_redraw.intersection(&display.screen_rect());
             if !rect.is_empty() {
                 let cursor_intersect = rect.intersection(&cursor_rect);
@@ -245,10 +243,10 @@ impl Compositor {
 
     pub fn sync_rect(&mut self, total_redraw: Rect) {
         // Sync any parts of displays that changed
-        for (i, display) in self.displays.iter_mut().enumerate() {
+        for (i, display) in self.displays.displays.iter_mut().enumerate() {
             let display_redraw = total_redraw.intersection(&display.screen_rect());
             if !display_redraw.is_empty() {
-                match display.sync_rect(display_redraw) {
+                match display.sync_rect(&self.displays.display_handle, display_redraw) {
                     Ok(()) => (),
                     Err(err) => error!("failed to sync display {}: {}", i, err),
                 }

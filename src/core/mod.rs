@@ -1,18 +1,16 @@
 use std::{
     collections::{HashMap, VecDeque},
     env,
-    fs::File,
-    io::{self, ErrorKind, Write},
+    io::{self, Write},
     mem,
-    os::unix::io::{AsRawFd, FromRawFd, RawFd},
+    os::unix::io::AsRawFd,
     slice, str,
 };
 
 use event::{EventQueue, user_data};
 use graphics_ipc::v2::V2GraphicsHandle;
 use inputd::{ConsumerHandle, ConsumerHandleEvent};
-use libredox::flag;
-use log::{debug, error};
+use log::error;
 use orbclient::{Color, Event};
 use redox_scheme::{
     CallerCtx, OpenResult, RequestKind, Response, SignalBehavior, Socket,
@@ -23,8 +21,8 @@ use syscall::{
     schemev2::NewFdFlags,
 };
 
+use crate::core::display::Displays;
 use crate::scheme::OrbitalScheme;
-use display::Display;
 
 pub(crate) mod display;
 pub(crate) mod image;
@@ -72,30 +70,8 @@ pub struct Orbital {
 }
 
 impl Orbital {
-    fn url_parts(url: &str) -> io::Result<(&str, &str)> {
-        let mut url_parts = url.split(':');
-        let scheme_name = url_parts.next().ok_or(io::Error::new(
-            ErrorKind::Other,
-            "Could not get scheme name from url",
-        ))?;
-        let path = url_parts.next().ok_or(io::Error::new(
-            ErrorKind::Other,
-            "Could not get path from url",
-        ))?;
-        Ok((scheme_name, path))
-    }
-
-    fn parse_display_path(path: &str) -> (&str, i32, i32) {
-        let mut path_parts = path.split('/');
-        let vt_screen = path_parts.next().unwrap_or("");
-        let width = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-        let height = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-
-        (vt_screen, width, height)
-    }
-
     /// Open an orbital display and connect to the scheme
-    pub fn open_display() -> io::Result<(Self, Vec<Display>)> {
+    pub fn open_display() -> io::Result<(Self, Displays)> {
         let mut buffer = [0; 1024];
 
         let input_handle = ConsumerHandle::new_vt()?;
@@ -121,71 +97,7 @@ impl Orbital {
             err
         })?;
 
-        /*
-        let mut buf: [u8; 4096] = [0; 4096];
-        let count = libredox::call::fpath(display.as_raw_fd() as usize, &mut buf).map_err(|e| {
-            io::Error::new(
-                ErrorKind::Other,
-                format!("Could not read display path with fpath(): {e}"),
-            )
-        })?;
-
-        let url = String::from_utf8(Vec::from(&buf[..count]))
-            .map_err(|_| io::Error::new(ErrorKind::Other, "Could not create Utf8 Url String"))?;
-        let (scheme_name, path) = Self::url_parts(&url)?;
-        let (vt_screen, width, height) = Self::parse_display_path(path);
-        */
-        let display = V2GraphicsHandle::from_file(display)?;
-        let mut displays = vec![Display::new(0, 0, display)?];
-
-        /*
-        // If display server supports multiple displays in a VT
-        if vt_screen.contains('.') {
-            // Look for other screens in the same VT
-            let mut parts = vt_screen.split('.');
-            let vt_i = parts.next().unwrap_or("").parse::<usize>().unwrap_or(0);
-            let start_screen_i = parts.next().unwrap_or("").parse::<usize>().unwrap_or(0);
-            //TODO: determine maximum number of screens
-            for screen_i in start_screen_i + 1..1024 {
-                let extra_path = format!("/scheme/{}/{}.{}", scheme_name, vt_i, screen_i);
-                let extra_file = match libredox::call::open(
-                    &extra_path,
-                    flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR,
-                    0,
-                ) {
-                    Ok(socket) => unsafe { File::from_raw_fd(socket as RawFd) },
-                    Err(_err) => break,
-                };
-
-                let mut buf: [u8; 4096] = [0; 4096];
-                let count = libredox::call::fpath(extra_file.as_raw_fd() as usize, &mut buf)
-                    .map_err(|_| {
-                        io::Error::new(ErrorKind::Other, "Could not open extra_file as_raw_fd()")
-                    })?;
-
-                let url = String::from_utf8(Vec::from(&buf[..count])).map_err(|_| {
-                    io::Error::new(ErrorKind::Other, "Could not create Utf8 Url String")
-                })?;
-
-                let (_scheme_name, path) = Self::url_parts(&url)?;
-                let (_vt_screen, width, height) = Self::parse_display_path(path);
-
-                let x = if let Some(last) = displays.last() {
-                    last.screen_rect().left() + last.screen_rect().width()
-                } else {
-                    0
-                };
-                let y = 0;
-
-                debug!(
-                    "Extra display {} at {}, {}, {}, {}",
-                    screen_i, x, y, width, height
-                );
-
-                displays.push(Display::new(x, y, width, height, extra_file)?);
-            }
-        }
-        */
+        let displays = Displays::new(V2GraphicsHandle::from_file(display)?)?;
 
         Ok((
             Orbital {
@@ -713,50 +625,5 @@ impl OrbitalHandler {
         };
 
         self.handler.handle_window_close(id)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::core::Orbital;
-
-    #[test]
-    fn invalid_url_no_colon() {
-        assert!(Orbital::url_parts("foo-no-colon").is_err());
-    }
-
-    #[test]
-    fn valid_url_empty_scheme() {
-        // until we throw an error for an empty scheme_name...
-        match Orbital::url_parts(":path") {
-            Ok((scheme_name, path)) => {
-                assert!(scheme_name.is_empty());
-                assert_eq!(path, "path");
-            }
-            _ => panic!("Could not parse url"),
-        }
-    }
-
-    #[test]
-    fn valid_url_empty_path() {
-        // until we throw an error for an empty scheme_name...
-        match Orbital::url_parts("scheme:") {
-            Ok((scheme_name, path)) => {
-                assert_eq!(scheme_name, "scheme");
-                assert!(path.is_empty());
-            }
-            _ => panic!("Could not parse url"),
-        }
-    }
-
-    #[test]
-    fn valid_url() {
-        match Orbital::url_parts("scheme:path") {
-            Ok((scheme_name, path)) => {
-                assert_eq!(scheme_name, "scheme");
-                assert_eq!(path, "path");
-            }
-            _ => panic!("Could not parse url"),
-        }
     }
 }
