@@ -96,10 +96,9 @@ impl Orbital {
     fn parse_display_path(path: &str) -> (&str, i32, i32) {
         let mut path_parts = path.split('/');
         let vt_screen = path_parts.next().unwrap_or("");
-        let width = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-        let height = path_parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+        let wh = vt_screen.parse::<i32>().unwrap_or(0);
 
-        (vt_screen, width, height)
+        (vt_screen, wh, wh)
     }
 
     /// Open an orbital display and connect to the scheme
