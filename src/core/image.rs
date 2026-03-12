@@ -84,9 +84,9 @@ impl<'a> ImageRoi<'a> {
 // `rect` defined the area within the larger image, we need to know the width of the image (`w`)
 // to move through the data by rows, and `data` is a reference to the data in the actual image
 pub struct ImageRoiMut<'a> {
-    rect: Rect,
-    w: i32,
-    data: &'a mut [Color],
+    pub rect: Rect,
+    pub w: i32,
+    pub data: &'a mut [Color],
 }
 
 impl<'a> ImageRoiMut<'a> {
@@ -159,14 +159,6 @@ impl<'a> ImageRef<'a> {
         }
     }
 
-    pub fn width(&self) -> i32 {
-        self.w
-    }
-
-    pub fn height(&self) -> i32 {
-        self.h
-    }
-
     #[expect(dead_code)]
     pub fn roi(&self, rect: &Rect) -> ImageRoi<'_> {
         ImageRoi {
@@ -176,7 +168,7 @@ impl<'a> ImageRef<'a> {
         }
     }
 
-    pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut<'_> {
+    pub fn roi_mut(self, rect: &Rect) -> ImageRoiMut<'a> {
         ImageRoiMut {
             rect: *rect,
             w: self.w,
