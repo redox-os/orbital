@@ -2,7 +2,7 @@ use drm::buffer::{Buffer as _, DrmFourcc};
 use drm::control::connector::State;
 use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
 use drm::control::{Device as _, framebuffer};
-use drm::{ClientCapability, Device as _};
+use drm::{ClientCapability, Device as _, DriverCapability};
 use graphics_ipc::v2::{V2GraphicsHandle, ipc};
 use log::{debug, error};
 use orbclient::{Color, Renderer};
@@ -46,9 +46,12 @@ pub struct Displays {
 
 impl Displays {
     pub fn new(display_handle: V2GraphicsHandle) -> io::Result<Self> {
-        let supports_hw_cursor = display_handle
-            .set_client_capability(ClientCapability::CursorPlaneHotspot, true)
-            .is_ok();
+        display_handle.set_client_capability(ClientCapability::CursorPlaneHotspot, true)?;
+
+        let cursor_width = display_handle.get_driver_capability(DriverCapability::CursorHeight);
+        let cursor_height = display_handle.get_driver_capability(DriverCapability::CursorWidth);
+        // We only support 32x32 cursors currently
+        let supports_hw_cursor = cursor_width.ok() == Some(32) && cursor_height.ok() == Some(32);
 
         let mut displays: Vec<Display> = vec![];
         for (i, &connector) in display_handle
@@ -194,7 +197,7 @@ impl Display {
     }
 
     pub fn sync_rect(&mut self, display_handle: &V2GraphicsHandle, rect: Rect) -> io::Result<()> {
-        let sync_rect = graphics_ipc::v1::Damage {
+        let sync_rect = graphics_ipc::v2::Damage {
             x: (rect.left() - self.x) as u32,
             y: (rect.top() - self.y) as u32,
             width: (rect.width()) as u32,

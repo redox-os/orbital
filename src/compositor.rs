@@ -132,7 +132,7 @@ impl Compositor {
                 && self.cursor_hot_x == hot_x
                 && self.cursor_hot_y == hot_y
             {
-                self.send_cursor_command(&graphics_ipc::v1::CursorDamage {
+                self.send_cursor_command(&graphics_ipc::v2::ipc::UpdateCursor {
                     header: 0,
                     x,
                     y,
@@ -143,7 +143,7 @@ impl Compositor {
                     cursor_img_bytes: [0; 4096],
                 });
             } else {
-                self.send_cursor_command(&graphics_ipc::v1::CursorDamage {
+                self.send_cursor_command(&graphics_ipc::v2::ipc::UpdateCursor {
                     header: 1,
                     x,
                     y,
@@ -167,7 +167,7 @@ impl Compositor {
         }
     }
 
-    fn send_cursor_command(&mut self, cmd: &graphics_ipc::v1::CursorDamage) {
+    fn send_cursor_command(&mut self, cmd: &graphics_ipc::v2::ipc::UpdateCursor) {
         match self.displays.displays[0].cursor_command(&self.displays.display_handle, cmd) {
             Ok(_) => (),
             Err(err) => error!("failed to update cursor: {}", err),
@@ -204,7 +204,7 @@ impl Compositor {
     pub fn redraw_cursor(&mut self, total_redraw: Option<Rect>) {
         if self.hw_cursor {
             if self.update_cursor_timer.elapsed().as_millis() > 1000 {
-                self.send_cursor_command(&graphics_ipc::v1::CursorDamage {
+                self.send_cursor_command(&graphics_ipc::v2::ipc::UpdateCursor {
                     header: 1,
                     x: self.cursor_x,
                     y: self.cursor_y,
