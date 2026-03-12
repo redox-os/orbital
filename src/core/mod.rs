@@ -9,6 +9,7 @@ use std::{
 };
 
 use event::{EventQueue, user_data};
+use graphics_ipc::v2::V2GraphicsHandle;
 use inputd::{ConsumerHandle, ConsumerHandleEvent};
 use libredox::flag;
 use log::{debug, error};
@@ -110,8 +111,8 @@ impl Orbital {
             std::str::from_utf8(&buffer[..written]).expect("init: display path UTF-8 check failed");
         fix_env(&display_path)?;
 
-        let display = input_handle.open_display().map_err(|err| {
-            error!("failed to open display {}: {}", display_path, err);
+        let display = input_handle.open_display_v2().map_err(|err| {
+            error!("failed to open display: {}", err);
             err
         })?;
 
@@ -120,6 +121,7 @@ impl Orbital {
             err
         })?;
 
+        /*
         let mut buf: [u8; 4096] = [0; 4096];
         let count = libredox::call::fpath(display.as_raw_fd() as usize, &mut buf).map_err(|e| {
             io::Error::new(
@@ -132,8 +134,11 @@ impl Orbital {
             .map_err(|_| io::Error::new(ErrorKind::Other, "Could not create Utf8 Url String"))?;
         let (scheme_name, path) = Self::url_parts(&url)?;
         let (vt_screen, width, height) = Self::parse_display_path(path);
-        let mut displays = vec![Display::new(0, 0, width, height, display)?];
+        */
+        let display = V2GraphicsHandle::from_file(display)?;
+        let mut displays = vec![Display::new(0, 0, display)?];
 
+        /*
         // If display server supports multiple displays in a VT
         if vt_screen.contains('.') {
             // Look for other screens in the same VT
@@ -180,6 +185,7 @@ impl Orbital {
                 displays.push(Display::new(x, y, width, height, extra_file)?);
             }
         }
+        */
 
         Ok((
             Orbital {
