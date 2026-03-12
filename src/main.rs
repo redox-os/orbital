@@ -37,8 +37,8 @@ fn orbital() -> Result<(), String> {
     }
     let login_cmd = args.next().ok_or("no login manager argument")?;
 
-    let (orbital, displays) = Orbital::open_display(&vt)
-        .map_err(|e| format!("could not open display, caused by: {}", e))?;
+    let (orbital, displays) =
+        Orbital::open_display().map_err(|e| format!("could not open display, caused by: {}", e))?;
 
     match Command::new("inputd").arg("-A").arg(&vt).status() {
         Ok(status) => {

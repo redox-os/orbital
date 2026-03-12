@@ -2,13 +2,14 @@ use std::{
     collections::{HashMap, VecDeque},
     env,
     fs::File,
-    io::{self, ErrorKind, Read, Write},
+    io::{self, ErrorKind, Write},
     mem,
     os::unix::io::{AsRawFd, FromRawFd, RawFd},
     slice, str,
 };
 
 use event::{EventQueue, user_data};
+use inputd::{ConsumerHandle, ConsumerHandleEvent};
 use libredox::flag;
 use log::{debug, error};
 use orbclient::{Color, Event};
@@ -51,16 +52,6 @@ pub fn fix_env(display_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn read_to_slice<R: Read, T: Copy>(mut r: R, buf: &mut [T]) -> io::Result<usize> {
-    unsafe {
-        r.read(slice::from_raw_parts_mut(
-            buf.as_mut_ptr() as *mut u8,
-            buf.len() * mem::size_of::<T>(),
-        ))
-        .map(|count| count / mem::size_of::<T>())
-    }
-}
-
 pub struct Properties<'a> {
     //TODO: avoid allocation
     pub flags: String,
@@ -76,7 +67,7 @@ pub struct Orbital {
     pub delayed: VecDeque<(CallerCtx, OpRead)>,
 
     /// Handle to "/scheme/input/consumer" to receive input events.
-    pub input: File,
+    pub input: ConsumerHandle,
 }
 
 impl Orbital {
@@ -103,31 +94,25 @@ impl Orbital {
     }
 
     /// Open an orbital display and connect to the scheme
-    pub fn open_display(vt: &str) -> io::Result<(Self, Vec<Display>)> {
+    pub fn open_display() -> io::Result<(Self, Vec<Display>)> {
         let mut buffer = [0; 1024];
 
-        let input_handle = File::open(format!("/scheme/input/consumer/{vt}"))?;
-        let fd = input_handle.as_raw_fd();
+        let input_handle = ConsumerHandle::new_vt()?;
 
-        let written = libredox::call::fpath(fd as usize, &mut buffer)
-            .expect("init: failed to get the path to the display device");
-
+        // FIXME remove this code once orbclient no longer depends on the DISPLAY env var
+        let written = libredox::call::fpath(
+            input_handle.event_handle().as_raw_fd() as usize,
+            &mut buffer,
+        )
+        .expect("init: failed to get the path to the display device");
         assert!(written <= buffer.len());
-
         let display_path =
             std::str::from_utf8(&buffer[..written]).expect("init: display path UTF-8 check failed");
-
         fix_env(&display_path)?;
 
-        let display = libredox::call::open(
-            display_path,
-            flag::O_CLOEXEC | flag::O_NONBLOCK | flag::O_RDWR,
-            0,
-        )
-        .map(|socket| unsafe { File::from_raw_fd(socket as RawFd) })
-        .map_err(|err| {
+        let display = input_handle.open_display().map_err(|err| {
             error!("failed to open display {}: {}", display_path, err);
-            io::Error::from_raw_os_error(err.errno())
+            err
         })?;
 
         let scheme = Socket::nonblock().map_err(|err| {
@@ -231,7 +216,7 @@ impl Orbital {
         //TODO: Figure out why rand: gets opened after this: libredox::call::setrens(0, 0)?;
 
         let scheme_fd = self.scheme.inner().raw();
-        let input_fd = self.input.as_raw_fd();
+        let input_fd = self.input.event_handle().as_raw_fd();
 
         let mut me = OrbitalHandler {
             orb: self,
@@ -334,11 +319,9 @@ impl Orbital {
                 Source::Input => {
                     let mut events = [Event::new(); 16];
                     loop {
-                        match read_to_slice(&mut me.orb.input, &mut events)? {
-                            0 => break,
-                            count => {
-                                let events = &mut events[..count];
-
+                        match me.orb.input.read_events(&mut events)? {
+                            ConsumerHandleEvent::Events(&[]) => break,
+                            ConsumerHandleEvent::Events(events) => {
                                 let mut delayed_left = me.orb.delayed.len();
 
                                 while delayed_left > 0
@@ -367,6 +350,7 @@ impl Orbital {
 
                                 me.handler.handle_input(events);
                             }
+                            ConsumerHandleEvent::Handoff => {}
                         }
                     }
                     me.handler.handle_after(&mut me.orb)?;

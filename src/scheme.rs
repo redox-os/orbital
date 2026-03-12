@@ -251,8 +251,8 @@ impl OrbitalScheme {
     }
 
     /// Callback to handle events over the input handle
-    pub fn handle_input(&mut self, events: &mut [Event]) {
-        for &mut event in events {
+    pub fn handle_input(&mut self, events: &[Event]) {
+        for &event in events {
             self.event(event);
         }
     }
