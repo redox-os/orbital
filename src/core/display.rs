@@ -50,8 +50,8 @@ impl Displays {
 
         let cursor_width = display_handle.get_driver_capability(DriverCapability::CursorHeight);
         let cursor_height = display_handle.get_driver_capability(DriverCapability::CursorWidth);
-        // We only support 32x32 cursors currently
-        let supports_hw_cursor = cursor_width.ok() == Some(32) && cursor_height.ok() == Some(32);
+        // We only support 64x64 cursors currently
+        let supports_hw_cursor = cursor_width.ok() == Some(64) && cursor_height.ok() == Some(64);
 
         let mut displays: Vec<Display> = vec![];
         for (i, &connector) in display_handle
