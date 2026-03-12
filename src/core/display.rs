@@ -1,6 +1,7 @@
 use libredox::{call::MmapArgs, flag};
 use log::error;
 use orbclient::{Color, Renderer};
+use std::io::{Read, Write};
 use std::{convert::TryInto, fs::File, io, os::unix::io::AsRawFd, slice};
 
 use crate::core::{
@@ -38,11 +39,11 @@ fn display_fd_unmap(image: &mut ImageRef) {
 }
 
 pub struct Display {
-    pub x: i32,
-    pub y: i32,
-    pub scale: i32,
-    pub file: File,
-    pub image: ImageRef<'static>,
+    x: i32,
+    y: i32,
+    scale: i32,
+    file: File,
+    image: ImageRef<'static>,
 }
 
 impl Display {
@@ -59,6 +60,18 @@ impl Display {
             file,
             image,
         })
+    }
+
+    pub fn supports_hw_cursor(&mut self) -> bool {
+        let mut buf_array = [0; 1];
+        let buf: &mut [u8] = &mut buf_array;
+        let _ret = self.file.read(buf);
+
+        buf[0] == 1
+    }
+
+    pub fn scale(&self) -> i32 {
+        self.scale
     }
 
     pub fn rect(&mut self, rect: &Rect, color: Color) {
@@ -94,6 +107,35 @@ impl Display {
 
     pub fn screen_rect(&self) -> Rect {
         Rect::new(self.x, self.y, self.image.width(), self.image.height())
+    }
+
+    pub fn cursor_command(&mut self, cmd: &graphics_ipc::v1::CursorDamage) -> io::Result<()> {
+        self.file
+            .write(unsafe {
+                slice::from_raw_parts(
+                    cmd as *const graphics_ipc::v1::CursorDamage as *const u8,
+                    size_of::<graphics_ipc::v1::CursorDamage>(),
+                )
+            })
+            .map(|_| ())
+    }
+
+    pub fn sync_rect(&mut self, rect: Rect) -> io::Result<()> {
+        let sync_rect = graphics_ipc::v1::Damage {
+            x: (rect.left() - self.x) as u32,
+            y: (rect.top() - self.y) as u32,
+            width: (rect.width()) as u32,
+            height: (rect.height()) as u32,
+        };
+
+        self.file
+            .write(unsafe {
+                slice::from_raw_parts(
+                    &sync_rect as *const graphics_ipc::v1::Damage as *const u8,
+                    size_of::<graphics_ipc::v1::Damage>(),
+                )
+            })
+            .map(|_| ())
     }
 }
 

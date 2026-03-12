@@ -108,7 +108,7 @@ impl OrbitalScheme {
     pub(crate) fn new(displays: Vec<Display>, config: Rc<Config>) -> Result<OrbitalScheme, String> {
         let mut scale = 1;
         for display in displays.iter() {
-            scale = cmp::max(scale, display.scale);
+            scale = cmp::max(scale, display.scale());
         }
 
         let mut cursors = BTreeMap::new();
@@ -251,8 +251,8 @@ impl OrbitalScheme {
     }
 
     /// Callback to handle events over the input handle
-    pub fn handle_input(&mut self, events: &mut [Event]) {
-        for &mut event in events {
+    pub fn handle_input(&mut self, events: &[Event]) {
+        for &event in events {
             self.event(event);
         }
     }

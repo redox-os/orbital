@@ -37,8 +37,8 @@ fn orbital() -> Result<(), String> {
     }
     let login_cmd = args.next().ok_or("no login manager argument")?;
 
-    let (orbital, displays) = Orbital::open_display(&vt)
-        .map_err(|e| format!("could not open display, caused by: {}", e))?;
+    let (orbital, displays) =
+        Orbital::open_display().map_err(|e| format!("could not open display, caused by: {}", e))?;
 
     match Command::new("inputd").arg("-A").arg(&vt).status() {
         Ok(status) => {
@@ -53,8 +53,8 @@ fn orbital() -> Result<(), String> {
 
     debug!(
         "found display {}x{}",
-        displays[0].image.width(),
-        displays[0].image.height()
+        displays[0].screen_rect().width(),
+        displays[0].screen_rect().height()
     );
     let config = Rc::new(Config::from_path("/ui/orbital.toml"));
     let scheme = OrbitalScheme::new(displays, config)?;

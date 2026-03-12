@@ -1,26 +1,11 @@
-use std::io::{Read, Write};
 use std::sync::Arc;
 use std::time::Instant;
-use std::{mem, slice};
 
 use log::{error, info};
 
 use crate::core::display::Display;
 use crate::core::image::Image;
 use crate::core::rect::Rect;
-
-#[repr(C, packed)]
-struct CursorCommand {
-    //header flag that indicates update_cursor or move_cursor
-    header: u32,
-    x: i32,
-    y: i32,
-    hot_x: i32,
-    hot_y: i32,
-    w: i32,
-    h: i32,
-    cursor_img: [u32; 4096],
-}
 
 pub struct Compositor {
     displays: Vec<Display>,
@@ -45,16 +30,9 @@ impl Compositor {
             redraws.push(display.screen_rect());
         }
 
-        //Reading display file is only used to check if GPU cursor is supported
-        let mut buf_array = [0; 1];
-        let buf: &mut [u8] = &mut buf_array;
-        let _ret = displays[0].file.read(buf);
-
-        let mut hw_cursor: bool = false;
-
-        if buf[0] == 1 {
+        let hw_cursor: bool = displays[0].supports_hw_cursor();
+        if hw_cursor {
             info!("Hardware cursor detected");
-            hw_cursor = true;
         }
 
         Compositor {
@@ -154,26 +132,26 @@ impl Compositor {
                 && self.cursor_hot_x == hot_x
                 && self.cursor_hot_y == hot_y
             {
-                self.send_cursor_command(&CursorCommand {
+                self.send_cursor_command(&graphics_ipc::v1::CursorDamage {
                     header: 0,
                     x,
                     y,
                     hot_x: 0,
                     hot_y: 0,
-                    w: 0,
-                    h: 0,
-                    cursor_img: [0; 4096],
+                    width: 0,
+                    height: 0,
+                    cursor_img_bytes: [0; 4096],
                 });
             } else {
-                self.send_cursor_command(&CursorCommand {
+                self.send_cursor_command(&graphics_ipc::v1::CursorDamage {
                     header: 1,
                     x,
                     y,
                     hot_x,
                     hot_y,
-                    w: cursor.width(),
-                    h: cursor.height(),
-                    cursor_img: cursor.get_cursor_data(),
+                    width: cursor.width(),
+                    height: cursor.height(),
+                    cursor_img_bytes: cursor.get_cursor_data(),
                 });
             }
         }
@@ -189,14 +167,9 @@ impl Compositor {
         }
     }
 
-    fn send_cursor_command(&mut self, cmd: &CursorCommand) {
+    fn send_cursor_command(&mut self, cmd: &graphics_ipc::v1::CursorDamage) {
         for (i, display) in self.displays.iter_mut().enumerate() {
-            match display.file.write(unsafe {
-                slice::from_raw_parts(
-                    cmd as *const CursorCommand as *const u8,
-                    mem::size_of::<CursorCommand>(),
-                )
-            }) {
+            match display.cursor_command(cmd) {
                 Ok(_) => (),
                 Err(err) => error!("failed to sync display {}: {}", i, err),
             }
@@ -233,15 +206,15 @@ impl Compositor {
     pub fn redraw_cursor(&mut self, total_redraw: Option<Rect>) {
         if self.hw_cursor {
             if self.update_cursor_timer.elapsed().as_millis() > 1000 {
-                self.send_cursor_command(&CursorCommand {
+                self.send_cursor_command(&graphics_ipc::v1::CursorDamage {
                     header: 1,
                     x: self.cursor_x,
                     y: self.cursor_y,
                     hot_x: self.cursor_hot_x,
                     hot_y: self.cursor_hot_y,
-                    w: self.cursor.width(),
-                    h: self.cursor.height(),
-                    cursor_img: self.cursor.get_cursor_data(),
+                    width: self.cursor.width(),
+                    height: self.cursor.height(),
+                    cursor_img_bytes: self.cursor.get_cursor_data(),
                 });
                 self.update_cursor_timer = Instant::now();
             }
@@ -275,29 +248,8 @@ impl Compositor {
         for (i, display) in self.displays.iter_mut().enumerate() {
             let display_redraw = total_redraw.intersection(&display.screen_rect());
             if !display_redraw.is_empty() {
-                // Keep synced with vesad
-                #[repr(C, packed)]
-                struct SyncRect {
-                    x: i32,
-                    y: i32,
-                    w: i32,
-                    h: i32,
-                }
-
-                let sync_rect = SyncRect {
-                    x: display_redraw.left() - display.x,
-                    y: display_redraw.top() - display.y,
-                    w: display_redraw.width(),
-                    h: display_redraw.height(),
-                };
-
-                match display.file.write(unsafe {
-                    slice::from_raw_parts(
-                        &sync_rect as *const SyncRect as *const u8,
-                        mem::size_of::<SyncRect>(),
-                    )
-                }) {
-                    Ok(_) => (),
+                match display.sync_rect(display_redraw) {
+                    Ok(()) => (),
                     Err(err) => error!("failed to sync display {}: {}", i, err),
                 }
             }
