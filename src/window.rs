@@ -79,8 +79,7 @@ impl Window {
             unclosable: false,
             zorder: WindowZOrder::Normal,
             restore: None,
-            // TODO: get a system constant for the page size
-            image: ImageAligned::new(w, h, 4096), // Ensure that image data is page aligned at beginning and end
+            image: ImageAligned::new(w, h, syscall::PAGE_SIZE),
             title_image: Image::new(0, 0),
             title_image_unfocused: Image::new(0, 0),
             events: VecDeque::new(),
@@ -185,25 +184,27 @@ impl Window {
     }
 
     pub fn max_contains(&self, x: i32, y: i32) -> bool {
-        !self.borderless
-            && x >= max(
-                self.x + 6 * self.scale,
-                self.x + self.width() - 36 * self.scale,
-            )
-            && y >= self.y - TITLE_HEIGHT * self.scale
-            && x < self.x + self.width() - 18 * self.scale
-            && y < self.y
+        if self.borderless {return false;}
+
+        x >= max(
+            self.x + 6 * self.scale,
+            self.x + self.width() - 36 * self.scale,
+        )
+        && y >= self.y - TITLE_HEIGHT * self.scale
+        && x < self.x + self.width() - 18 * self.scale
+        && y < self.y
     }
 
     pub fn close_contains(&self, x: i32, y: i32) -> bool {
-        !self.borderless
-            && x >= max(
-                self.x + 6 * self.scale,
-                self.x + self.width() - 18 * self.scale,
-            )
-            && y >= self.y - TITLE_HEIGHT * self.scale
-            && x < self.x + self.width()
-            && y < self.y
+        if self.borderless {return false;}
+
+        x >= max(
+            self.x + 6 * self.scale,
+            self.x + self.width() - 18 * self.scale,
+        )
+        && y >= self.y - TITLE_HEIGHT * self.scale
+        && x < self.x + self.width()
+        && y < self.y
     }
 
     pub fn draw_title(
@@ -214,87 +215,90 @@ impl Window {
         window_max: &Image,
         window_close: &Image,
     ) {
-        let bar_color = Color::from(self.config.bar_color);
-        let bar_highlight_color = Color::from(self.config.bar_highlight_color);
+        let bar_color = Color::from(if focused { self.config.bar_highlight_color } else { self.config.bar_color });
 
         let title_rect = self.title_rect();
         let title_intersect = rect.intersection(&title_rect);
-        if !title_intersect.is_empty() {
-            display.rect(
+
+        if title_intersect.is_empty() {
+            return;
+        }
+
+        display.rect(
                 &title_intersect,
-                if focused {
-                    bar_highlight_color
-                } else {
-                    bar_color
-                },
+                bar_color
             );
 
-            let mut x = self.x + 6 * self.scale;
-            let w = max(
-                self.x + 6 * self.scale,
-                self.x + self.width() - 18 * self.scale,
-            ) - x;
-            if w > 0 {
-                let title_image = if focused {
-                    &self.title_image
-                } else {
-                    &self.title_image_unfocused
-                };
+        let scale_6x = 6 * self.scale;
+        let scale_18x = scale_6x * 3;
+        let scale_36x = scale_18x * 3;
+        
+        let mut x = self.x + scale_6x;
+        let w = max(
+            x,
+            self.x + self.width() - scale_18x,
+        ) - x;
+
+        if w > 0 {
+            let title_image = if focused {
+                &self.title_image
+            } else {
+                &self.title_image_unfocused
+            };
+            let image_rect = Rect::new(
+                x,
+                title_rect.top() + scale_6x,
+                min(w, title_image.width()),
+                title_image.height(),
+            );
+            let image_intersect = rect.intersection(&image_rect);
+            if !image_intersect.is_empty() {
+                display.roi_mut(&image_intersect).blend(
+                    &title_image
+                        .roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())),
+                );
+            }
+        }
+
+        if self.resizable {
+            x = max(self.x + 6, self.x + self.width() - scale_36x);
+            if x + scale_36x <= self.x + self.width() {
                 let image_rect = Rect::new(
                     x,
-                    title_rect.top() + 6 * self.scale,
-                    min(w, title_image.width()),
-                    title_image.height(),
+                    title_rect.top() + 7 * self.scale,
+                    window_max.width(),
+                    window_max.height(),
                 );
                 let image_intersect = rect.intersection(&image_rect);
                 if !image_intersect.is_empty() {
                     display.roi_mut(&image_intersect).blend(
-                        &title_image
-                            .roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())),
+                        &window_max.roi(
+                            &image_intersect.offset(-image_rect.left(), -image_rect.top()),
+                        ),
                     );
                 }
             }
+        }
 
-            if self.resizable {
-                x = max(self.x + 6, self.x + self.width() - 36 * self.scale);
-                if x + 36 * self.scale <= self.x + self.width() {
-                    let image_rect = Rect::new(
-                        x,
-                        title_rect.top() + 7 * self.scale,
-                        window_max.width(),
-                        window_max.height(),
-                    );
-                    let image_intersect = rect.intersection(&image_rect);
-                    if !image_intersect.is_empty() {
-                        display.roi_mut(&image_intersect).blend(
-                            &window_max.roi(
-                                &image_intersect.offset(-image_rect.left(), -image_rect.top()),
-                            ),
-                        );
-                    }
-                }
-            }
-
-            if !self.unclosable {
-                x = max(
-                    self.x + 6 * self.scale,
-                    self.x + self.width() - 18 * self.scale,
+        if !self.unclosable {
+            x = max(
+                self.x + scale_6x,
+                self.x + self.width() - scale_18x,
+            );
+            if x + scale_18x <= self.x + self.width() {
+                let image_rect = Rect::new(
+                    x,
+                    title_rect.top() + 7 * self.scale,
+                    window_close.width(),
+                    window_close.height(),
                 );
-                if x + 18 * self.scale <= self.x + self.width() {
-                    let image_rect = Rect::new(
-                        x,
-                        title_rect.top() + 7 * self.scale,
-                        window_close.width(),
-                        window_close.height(),
+                let image_intersect = rect.intersection(&image_rect);
+                if !image_intersect.is_empty() {
+                    display.roi_mut(&image_intersect).blend(
+                        &window_close.roi(
+                            &image_intersect.offset(-image_rect.left(), -image_rect.top()),
+                        ),
                     );
-                    let image_intersect = rect.intersection(&image_rect);
-                    if !image_intersect.is_empty() {
-                        display.roi_mut(&image_intersect).blend(
-                            &window_close.roi(
-                                &image_intersect.offset(-image_rect.left(), -image_rect.top()),
-                            ),
-                        );
-                    }
                 }
             }
         }
@@ -466,7 +470,7 @@ impl Window {
         }
 
         //TODO: Invalidate old mappings
-        let mut new_image = ImageAligned::new(w, h, 4096);
+        let mut new_image = ImageAligned::new(w, h, syscall::PAGE_SIZE);
         let new_rect = Rect::new(0, 0, w, h);
 
         let rect = Rect::new(0, 0, self.image.width(), self.image.height());

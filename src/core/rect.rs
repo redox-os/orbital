@@ -45,10 +45,10 @@ impl Rect {
     }
 
     pub fn container(&self, other: &Rect) -> Rect {
-        let left = min(self.left(), other.left());
-        let right = max(self.right(), other.right());
-        let top = min(self.top(), other.top());
-        let bottom = max(self.bottom(), other.bottom());
+        let left = self.left().min(other.left());
+        let right = self.right().max(other.right());
+        let top = self.top().min(other.top());
+        let bottom = self.bottom().max(other.bottom());
 
         assert!(left <= right);
         assert!(top <= bottom);
@@ -65,12 +65,16 @@ impl Rect {
     }
 
     pub fn intersection(&self, other: &Rect) -> Rect {
-        let left = max(self.left(), other.left());
-        let right = min(self.right(), other.right());
-        let top = max(self.top(), other.top());
-        let bottom = min(self.bottom(), other.bottom());
+        let left = self.left().max(other.left());
+        let right = self.right().min(other.right());
+        let top = self.top().max(other.top());
+        let bottom = self.bottom().min(other.bottom());
 
-        Rect::new(left, top, max(0, right - left), max(0, bottom - top))
+        if right < left || bottom < top {
+            return Rect::new(0, 0, 0, 0);
+        }
+
+        Rect::new(left, top, right - left, bottom - top)
     }
 
     pub fn offset(&self, x: i32, y: i32) -> Rect {
