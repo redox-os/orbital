@@ -630,6 +630,7 @@ name = "orbital"
 version = "0.1.0"
 dependencies = [
  "ab_glyph_rasterizer",
+ "drm",
  "graphics-ipc",
  "inputd",
  "libc",
@@ -638,6 +639,7 @@ dependencies = [
  "orbclient",
  "orbfont",
  "orbimage",
+ "plain",
  "redox-log",
  "redox-scheme 0.9.1",
  "redox_event",

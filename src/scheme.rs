@@ -14,7 +14,8 @@ use syscall::error::{EBADF, Error, Result};
 
 use crate::compositor::Compositor;
 use crate::config::Config;
-use crate::core::{Orbital, Properties, display::Display, image::Image, rect::Rect};
+use crate::core::display::Displays;
+use crate::core::{Orbital, Properties, image::Image, rect::Rect};
 use crate::widget::fps::FpsWidget;
 use crate::window::{self, Window};
 use crate::window_order::{WindowOrder, WindowZOrder};
@@ -105,9 +106,9 @@ pub struct OrbitalScheme {
 }
 
 impl OrbitalScheme {
-    pub(crate) fn new(displays: Vec<Display>, config: Rc<Config>) -> Result<OrbitalScheme, String> {
+    pub(crate) fn new(displays: Displays, config: Rc<Config>) -> Result<OrbitalScheme, String> {
         let mut scale = 1;
-        for display in displays.iter() {
+        for display in displays.displays.iter() {
             scale = cmp::max(scale, display.scale());
         }
 
