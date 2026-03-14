@@ -132,27 +132,25 @@ impl Compositor {
                 && self.cursor_hot_x == hot_x
                 && self.cursor_hot_y == hot_y
             {
-                self.send_cursor_command(&graphics_ipc::v2::ipc::UpdateCursor {
-                    header: 0,
-                    x,
-                    y,
-                    hot_x: 0,
-                    hot_y: 0,
-                    width: 0,
-                    height: 0,
-                    cursor_img_bytes: [0; 4096],
-                });
+                match self.displays.displays[0].move_cursor(&self.displays.display_handle, x, y) {
+                    Ok(_) => (),
+                    Err(err) => error!("failed to move cursor: {}", err),
+                }
             } else {
-                self.send_cursor_command(&graphics_ipc::v2::ipc::UpdateCursor {
-                    header: 1,
-                    x,
-                    y,
+                match self.displays.displays[0].set_cursor(
+                    &self.displays.display_handle,
                     hot_x,
                     hot_y,
-                    width: cursor.width(),
-                    height: cursor.height(),
-                    cursor_img_bytes: cursor.get_cursor_data(),
-                });
+                    cursor,
+                ) {
+                    Ok(_) => (),
+                    Err(err) => error!("failed to update cursor: {}", err),
+                }
+
+                match self.displays.displays[0].move_cursor(&self.displays.display_handle, x, y) {
+                    Ok(_) => (),
+                    Err(err) => error!("failed to move cursor: {}", err),
+                }
             }
         }
 
@@ -164,13 +162,6 @@ impl Compositor {
 
         if !self.hw_cursor {
             self.schedule(self.cursor_rect());
-        }
-    }
-
-    fn send_cursor_command(&mut self, cmd: &graphics_ipc::v2::ipc::UpdateCursor) {
-        match self.displays.displays[0].cursor_command(&self.displays.display_handle, cmd) {
-            Ok(_) => (),
-            Err(err) => error!("failed to update cursor: {}", err),
         }
     }
 
@@ -204,16 +195,25 @@ impl Compositor {
     pub fn redraw_cursor(&mut self, total_redraw: Option<Rect>) {
         if self.hw_cursor {
             if self.update_cursor_timer.elapsed().as_millis() > 1000 {
-                self.send_cursor_command(&graphics_ipc::v2::ipc::UpdateCursor {
-                    header: 1,
-                    x: self.cursor_x,
-                    y: self.cursor_y,
-                    hot_x: self.cursor_hot_x,
-                    hot_y: self.cursor_hot_y,
-                    width: self.cursor.width(),
-                    height: self.cursor.height(),
-                    cursor_img_bytes: self.cursor.get_cursor_data(),
-                });
+                match self.displays.displays[0].set_cursor(
+                    &self.displays.display_handle,
+                    self.cursor_hot_x,
+                    self.cursor_hot_y,
+                    &self.cursor,
+                ) {
+                    Ok(_) => (),
+                    Err(err) => error!("failed to update cursor: {}", err),
+                }
+
+                match self.displays.displays[0].move_cursor(
+                    &self.displays.display_handle,
+                    self.cursor_x,
+                    self.cursor_y,
+                ) {
+                    Ok(_) => (),
+                    Err(err) => error!("failed to move cursor: {}", err),
+                }
+
                 self.update_cursor_timer = Instant::now();
             }
 
