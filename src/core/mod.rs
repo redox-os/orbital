@@ -148,6 +148,15 @@ impl Orbital {
         event_queue.subscribe(scheme_fd, Source::Scheme, event::EventFlags::READ)?;
         event_queue.subscribe(input_fd as usize, Source::Input, event::EventFlags::READ)?;
 
+        // Force a single frame to be presented before spawning the first gui application. Orbclient
+        // and winit read the display size directly from the graphics driver, which returns the
+        // configured size of the CRTC. Before we have presented an frame the CRTC hasn't had a mode
+        // configured, so the graphics driver would present the display size as the fallback value
+        // of 640x480. Presenting a frame does a modeset on the CRTC after which the graphics driver
+        // will return the correct size to gui applications. This won't be a problem anymore once we
+        // get Wayland as there the display server directly gives the display size to the gui apps.
+        me.handler.redraw();
+
         login_cmd.spawn()?;
 
         let mut event_iter = event_queue.map(|e| e.map(|e| e.user_data));
