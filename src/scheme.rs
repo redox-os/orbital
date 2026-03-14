@@ -518,7 +518,7 @@ impl OrbitalScheme {
         //TODO: implement better clipboard mechanism
     }
 
-    fn redraw(&mut self) {
+    pub fn redraw(&mut self) {
         self.fps_widget.start_measure();
         self.order
             .rezbuffer(&|id| self.windows.get(&id).unwrap().zorder);
