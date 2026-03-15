@@ -14,7 +14,7 @@ use log::error;
 use orbclient::{Color, Event};
 use redox_scheme::{
     CallerCtx, OpenResult, RequestKind, Response, SignalBehavior, Socket,
-    scheme::{IntoTag, Op, OpRead, SchemeSync, register_scheme_inner},
+    scheme::{IntoTag, Op, OpRead, SchemeState, SchemeSync, register_scheme_inner},
 };
 use syscall::{
     EACCES, EAGAIN, EBADF, ECANCELED, EINVAL, EOPNOTSUPP, EWOULDBLOCK, flag::EventFlags,
@@ -136,6 +136,7 @@ impl Orbital {
         let scheme_fd = self.scheme.inner().raw();
         let input_fd = self.input.event_handle().as_raw_fd();
 
+        let mut state = SchemeState::new();
         let mut me = OrbitalHandler {
             orb: self,
             handler,
@@ -236,7 +237,7 @@ impl Orbital {
                                     me.orb.scheme_write(Response::new(res, read_op))?;
                                 }
                             } else {
-                                let resp = op.handle_sync(caller_ctx, &mut me);
+                                let resp = op.handle_sync(caller_ctx, &mut me, &mut state);
                                 me.orb.scheme_write(resp)?;
                             }
                         }
