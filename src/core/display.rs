@@ -1,7 +1,7 @@
 use drm::buffer::{Buffer as _, DrmFourcc};
 use drm::control::connector::State;
 use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
-use drm::control::{Device as _, crtc, framebuffer};
+use drm::control::{ClipRect, Device as _, crtc, framebuffer};
 use drm::{ClientCapability, Device as _, DriverCapability};
 use graphics_ipc::v2::V2GraphicsHandle;
 use log::{debug, error};
@@ -16,21 +16,74 @@ use crate::core::{
 
 pub struct V2DisplayMap {
     fb: framebuffer::Handle,
+    crtc: crtc::Handle,
     buffer: DumbBuffer,
     mapping: DumbMapping<'static>,
 }
 
 impl V2DisplayMap {
-    pub fn new(display_handle: &V2GraphicsHandle, width: u32, height: u32) -> io::Result<Self> {
-        let mut buffer =
-            display_handle.create_dumb_buffer((width, height), DrmFourcc::Argb8888, 32)?;
-        let fb = display_handle.add_framebuffer(&buffer, 24, 32)?;
+    fn new(display_handle: &V2GraphicsHandle) -> io::Result<Self> {
+        let connector = display_handle.first_display().unwrap();
+        let connector_info = display_handle.get_connector(connector, true).unwrap();
+
+        let mode = connector_info.modes()[0];
+        let (width, height) = mode.size();
+
+        // FIXME do something smarter that avoids conflicts
+        let crtc = display_handle.resource_handles().unwrap().filter_crtcs(
+            display_handle
+                .get_encoder(connector_info.encoders()[0])
+                .unwrap()
+                .possible_crtcs(),
+        )[0];
+
+        let mut buffer = display_handle.create_dumb_buffer(
+            (width.into(), height.into()),
+            DrmFourcc::Argb8888,
+            32,
+        )?;
+        let fb = display_handle.add_framebuffer(&buffer, 32, 32)?;
+
+        display_handle.set_crtc(crtc, Some(fb), (0, 0), &[connector], Some(mode))?;
 
         let map = display_handle.map_dumb_buffer(&mut buffer)?;
         let map = unsafe { mem::transmute::<DumbMapping<'_>, DumbMapping<'static>>(map) };
 
         Ok(Self {
             fb,
+            crtc,
+            buffer,
+            mapping: map,
+        })
+    }
+
+    fn image_mut(&mut self) -> ImageRef<'_> {
+        let width = self.buffer.size().0;
+        let height = self.buffer.size().1;
+        let display_slice = unsafe {
+            slice::from_raw_parts_mut(
+                self.mapping.as_mut_ptr() as *mut Color,
+                (width * height) as usize,
+            )
+        };
+        ImageRef::from_data(width as i32, height as i32, display_slice)
+    }
+}
+
+struct CursorMap {
+    buffer: DumbBuffer,
+    mapping: DumbMapping<'static>,
+}
+
+impl CursorMap {
+    fn new(display_handle: &V2GraphicsHandle, width: u32, height: u32) -> io::Result<Self> {
+        let mut buffer =
+            display_handle.create_dumb_buffer((width, height), DrmFourcc::Argb8888, 32)?;
+
+        let map = display_handle.map_dumb_buffer(&mut buffer)?;
+        let map = unsafe { mem::transmute::<DumbMapping<'_>, DumbMapping<'static>>(map) };
+
+        Ok(Self {
             buffer,
             mapping: map,
         })
@@ -97,13 +150,11 @@ impl Displays {
 }
 
 pub struct Display {
-    connector: usize,
-    crtc: crtc::Handle,
     x: i32,
     y: i32,
     scale: i32,
     map: V2DisplayMap,
-    cursor_map: Option<V2DisplayMap>,
+    cursor_map: Option<CursorMap>,
 }
 
 impl Display {
@@ -120,24 +171,15 @@ impl Display {
         )?;
         let (width, height) = connector.modes()[0].size();
 
-        // FIXME do something smarter that avoids conflicts
-        let crtc = display_handle.resource_handles()?.filter_crtcs(
-            display_handle
-                .get_encoder(connector.encoders()[0])?
-                .possible_crtcs(),
-        )[0];
-
         debug!("Display at {}, {}, {}, {}", x, y, width, height);
 
         let scale = (height as i32 / 1600) + 1;
 
-        let map = V2DisplayMap::new(&display_handle, width as u32, height as u32)?;
+        let map = V2DisplayMap::new(display_handle)?;
         let cursor_map = hw_cursor
-            .map(|(width, height)| V2DisplayMap::new(&display_handle, width as u32, height as u32))
+            .map(|(width, height)| CursorMap::new(&display_handle, width as u32, height as u32))
             .transpose()?;
         Ok(Self {
-            connector: connector_id,
-            crtc,
             x,
             y,
             scale,
@@ -166,13 +208,13 @@ impl Display {
         );
     }
 
-    pub fn resize(&mut self, display_handle: &V2GraphicsHandle, width: i32, height: i32) {
-        match V2DisplayMap::new(display_handle, width as u32, height as u32) {
+    pub fn resize(&mut self, display_handle: &V2GraphicsHandle, _width: i32, _height: i32) {
+        match V2DisplayMap::new(display_handle) {
             Ok(map) => {
                 self.map = map;
             }
             Err(err) => {
-                error!("failed to resize display to {}x{}: {}", width, height, err);
+                error!("failed to resize display: {err}");
             }
         }
     }
@@ -204,7 +246,7 @@ impl Display {
         y: i32,
     ) -> io::Result<()> {
         #[allow(deprecated)]
-        display_handle.move_cursor(self.crtc, (x, y))
+        display_handle.move_cursor(self.map.crtc, (x, y))
     }
 
     pub fn set_cursor(
@@ -228,22 +270,23 @@ impl Display {
 
         #[allow(deprecated)]
         display_handle.set_cursor2(
-            self.crtc,
+            self.map.crtc,
             Some(&self.cursor_map.as_ref().unwrap().buffer),
             (hot_x, hot_y),
         )
     }
 
     pub fn sync_rect(&mut self, display_handle: &V2GraphicsHandle, rect: Rect) -> io::Result<()> {
-        let sync_rect = graphics_ipc::v2::Damage {
-            x: (rect.left() - self.x) as u32,
-            y: (rect.top() - self.y) as u32,
-            width: (rect.width()) as u32,
-            height: (rect.height()) as u32,
-        };
-
         display_handle
-            .update_plane(self.connector, self.map.fb.into(), sync_rect)
+            .dirty_framebuffer(
+                self.map.fb,
+                &[ClipRect::new(
+                    (rect.left() - self.x) as u16,
+                    (rect.top() - self.y) as u16,
+                    (rect.right() - self.x) as u16,
+                    (rect.bottom() - self.y) as u16,
+                )],
+            )
             .map(|_| ())
     }
 }
