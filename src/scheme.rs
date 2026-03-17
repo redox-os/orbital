@@ -244,7 +244,7 @@ impl OrbitalScheme {
 
 impl OrbitalScheme {
     /// Return true if a packet should be delayed until a display event
-    pub fn should_delay(&mut self, id: usize) -> bool {
+    pub fn should_delay(&self, id: usize) -> bool {
         self.windows
             .get(&id)
             .map(|window| !window.asynchronous)

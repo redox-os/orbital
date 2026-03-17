@@ -221,7 +221,7 @@ impl Orbital {
                                 }
                             };
                             if let Op::Read(mut read_op) = op {
-                                let should_delay = me.handler.should_delay(read_op.fd);
+                                let should_delay = me.should_delay(read_op.fd);
                                 let res = me.read(
                                     read_op.fd,
                                     read_op.buf(),
@@ -257,7 +257,7 @@ impl Orbital {
                                 {
                                     delayed_left -= 1;
 
-                                    let should_delay = me.handler.should_delay(read_op.fd);
+                                    let should_delay = me.should_delay(read_op.fd);
 
                                     // TODO: deduplicate with the same code above
                                     let res = me.read(
@@ -623,6 +623,17 @@ impl SchemeSync for OrbitalHandler {
     }
 }
 impl OrbitalHandler {
+    fn should_delay(&self, id: usize) -> bool {
+        if let Some(handle) = self.handles.get(&id) {
+            match *handle {
+                Handle::Clipboard(id) | Handle::Window(id) => self.handler.should_delay(id),
+                Handle::SchemeRoot => false,
+            }
+        } else {
+            false
+        }
+    }
+
     fn on_close(&mut self, id: usize) {
         let Some(handle) = self.handles.get(&id) else {
             return;
