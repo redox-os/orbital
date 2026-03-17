@@ -192,6 +192,15 @@ impl OrbitalScheme {
         Ok(orbital_scheme)
     }
 
+    pub(crate) fn display_count(&self) -> usize {
+        self.compositor.displays().len()
+    }
+
+    pub(crate) fn display_size(&self, display: usize) -> (i32, i32) {
+        let rect = self.compositor.displays()[display].screen_rect();
+        (rect.width(), rect.height())
+    }
+
     fn update_window(
         compositor: &mut Compositor,
         window: &mut Window,
@@ -244,7 +253,7 @@ impl OrbitalScheme {
 
 impl OrbitalScheme {
     /// Return true if a packet should be delayed until a display event
-    pub fn should_delay(&mut self, id: usize) -> bool {
+    pub fn should_delay(&self, id: usize) -> bool {
         self.windows
             .get(&id)
             .map(|window| !window.asynchronous)
