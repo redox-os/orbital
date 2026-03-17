@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, VecDeque},
-    env,
     io::{self, Write},
     mem,
     os::unix::io::AsRawFd,
@@ -43,14 +42,6 @@ impl From<syscall::Error> for Error {
     }
 }
 
-/// Convenience function for setting DISPLAY environment variable
-pub fn fix_env(display_path: &str) -> io::Result<()> {
-    unsafe {
-        env::set_var("DISPLAY", display_path);
-    }
-    Ok(())
-}
-
 pub struct Properties<'a> {
     //TODO: avoid allocation
     pub flags: String,
@@ -72,20 +63,7 @@ pub struct Orbital {
 impl Orbital {
     /// Open an orbital display and connect to the scheme
     pub fn open_display() -> io::Result<(Self, Displays)> {
-        let mut buffer = [0; 1024];
-
         let input_handle = ConsumerHandle::new_vt()?;
-
-        // FIXME remove this code once orbclient no longer depends on the DISPLAY env var
-        let written = libredox::call::fpath(
-            input_handle.event_handle().as_raw_fd() as usize,
-            &mut buffer,
-        )
-        .expect("init: failed to get the path to the display device");
-        assert!(written <= buffer.len());
-        let display_path =
-            std::str::from_utf8(&buffer[..written]).expect("init: display path UTF-8 check failed");
-        fix_env(&display_path)?;
 
         let display = input_handle.open_display_v2().map_err(|err| {
             error!("failed to open display: {}", err);
@@ -145,18 +123,16 @@ impl Orbital {
         };
         let cap_id = me.scheme_root()?;
         register_scheme_inner(&mut me.orb.scheme, "orbital", cap_id)?;
-        unsafe { std::env::set_var("ORBITAL_DISPLAY", "/scheme/orbital") };
+
+        unsafe {
+            // FIXME remove DISPLAY env var once orbclient no longer depends on it
+            std::env::set_var("DISPLAY", "orbital:99.0");
+
+            std::env::set_var("ORBITAL_DISPLAY", "/scheme/orbital")
+        };
+
         event_queue.subscribe(scheme_fd, Source::Scheme, event::EventFlags::READ)?;
         event_queue.subscribe(input_fd as usize, Source::Input, event::EventFlags::READ)?;
-
-        // Force a single frame to be presented before spawning the first gui application. Orbclient
-        // and winit read the display size directly from the graphics driver, which returns the
-        // configured size of the CRTC. Before we have presented an frame the CRTC hasn't had a mode
-        // configured, so the graphics driver would present the display size as the fallback value
-        // of 640x480. Presenting a frame does a modeset on the CRTC after which the graphics driver
-        // will return the correct size to gui applications. This won't be a problem anymore once we
-        // get Wayland as there the display server directly gives the display size to the gui apps.
-        me.handler.redraw();
 
         login_cmd.spawn()?;
 
@@ -292,6 +268,7 @@ impl Orbital {
 }
 enum Handle {
     SchemeRoot,
+    DisplaySize(usize),
     Window(usize),
     Clipboard(usize),
 }
@@ -324,6 +301,23 @@ impl SchemeSync for OrbitalHandler {
                 return Err(syscall::Error::new(EACCES));
             }
         }
+
+        // FIXME remove once orbclient no longer depends on the DISPLAY env var
+        if let Some(display) = path.strip_prefix("99.") {
+            let display = display.parse().map_err(|_| syscall::Error::new(EINVAL))?;
+            if display >= self.handler.display_count() {
+                return Err(syscall::Error::new(EINVAL));
+            }
+
+            let new_id = self.next_id;
+            self.handles.insert(new_id, Handle::DisplaySize(display));
+            self.next_id += 1;
+            return Ok(OpenResult::ThisScheme {
+                number: new_id,
+                flags: NewFdFlags::empty(),
+            });
+        }
+
         let mut parts = path.split('/');
 
         let path_first_char = path.chars().nth(0).unwrap_or('\0');
@@ -389,7 +383,7 @@ impl SchemeSync for OrbitalHandler {
         let id = match *handle {
             Handle::Clipboard(id) => return self.handler.handle_clipboard_read(id, buf),
             Handle::Window(id) => id,
-            Handle::SchemeRoot => return Err(syscall::Error::new(EBADF)),
+            Handle::SchemeRoot | Handle::DisplaySize(_) => return Err(syscall::Error::new(EBADF)),
         };
 
         let slice: &mut [Event] = unsafe {
@@ -416,7 +410,7 @@ impl SchemeSync for OrbitalHandler {
         let id = match *handle {
             Handle::Clipboard(id) => return self.handler.handle_clipboard_write(id, buf),
             Handle::Window(id) => id,
-            Handle::SchemeRoot => return Err(syscall::Error::new(EBADF)),
+            Handle::SchemeRoot | Handle::DisplaySize(_) => return Err(syscall::Error::new(EBADF)),
         };
 
         if let Ok(msg) = str::from_utf8(buf) {
@@ -566,18 +560,26 @@ impl SchemeSync for OrbitalHandler {
     }
     */
     fn fpath(&mut self, id: usize, mut buf: &mut [u8], _ctx: &CallerCtx) -> syscall::Result<usize> {
-        let Some(&Handle::Window(id) | &Handle::Clipboard(id)) = self.handles.get(&id) else {
-            return Err(syscall::Error::new(EBADF));
-        };
-        let props = self.handler.handle_window_properties(id)?;
-        let original_len = buf.len();
-        #[allow(clippy::write_literal)] // TODO: Z order
-        let _ = write!(
-            buf,
-            "{}/{}/{}/{}/{}/{}",
-            props.flags, props.x, props.y, props.width, props.height, props.title
-        );
-        Ok(original_len - buf.len())
+        match self.handles.get(&id) {
+            Some(&Handle::DisplaySize(display)) => {
+                let (width, height) = self.handler.display_size(display);
+                let original_len = buf.len();
+                let _ = write!(buf, "orbital:99.{display}/{}/{}", width, height);
+                Ok(original_len - buf.len())
+            }
+            Some(&Handle::Window(id) | &Handle::Clipboard(id)) => {
+                let props = self.handler.handle_window_properties(id)?;
+                let original_len = buf.len();
+                #[allow(clippy::write_literal)] // TODO: Z order
+                let _ = write!(
+                    buf,
+                    "{}/{}/{}/{}/{}/{}",
+                    props.flags, props.x, props.y, props.width, props.height, props.title
+                );
+                Ok(original_len - buf.len())
+            }
+            _ => Err(syscall::Error::new(EBADF)),
+        }
     }
     fn fsync(&mut self, id: usize, _ctx: &CallerCtx) -> syscall::Result<()> {
         let Some(&Handle::Window(id) | &Handle::Clipboard(id)) = self.handles.get(&id) else {
@@ -627,7 +629,7 @@ impl OrbitalHandler {
         if let Some(handle) = self.handles.get(&id) {
             match *handle {
                 Handle::Clipboard(id) | Handle::Window(id) => self.handler.should_delay(id),
-                Handle::SchemeRoot => false,
+                Handle::SchemeRoot | Handle::DisplaySize(_) => false,
             }
         } else {
             false
@@ -642,7 +644,7 @@ impl OrbitalHandler {
         let id = match *handle {
             Handle::Clipboard(id) => return self.handler.handle_clipboard_close(id),
             Handle::Window(id) => id,
-            Handle::SchemeRoot => return,
+            Handle::SchemeRoot | Handle::DisplaySize(_) => return,
         };
 
         self.handler.handle_window_close(id)
