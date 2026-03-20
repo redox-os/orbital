@@ -31,6 +31,9 @@ pub const ORBITAL_FLAG_RESIZABLE: char = 'r';
 pub const ORBITAL_FLAG_TRANSPARENT: char = 't';
 pub const ORBITAL_FLAG_UNCLOSABLE: char = 'u';
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct WindowId(pub usize);
+
 pub struct Window {
     pub x: i32,
     pub y: i32,
