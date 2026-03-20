@@ -637,16 +637,14 @@ impl OrbitalHandler {
     }
 
     fn on_close(&mut self, id: usize) {
-        let Some(handle) = self.handles.get(&id) else {
+        let Some(handle) = self.handles.remove(&id) else {
             return;
         };
         //TODO: implement better clipboard mechanism
-        let id = match *handle {
-            Handle::Clipboard(id) => return self.handler.handle_clipboard_close(id),
-            Handle::Window(id) => id,
-            Handle::SchemeRoot | Handle::DisplaySize(_) => return,
+        match handle {
+            Handle::Clipboard(id) => self.handler.handle_clipboard_close(id),
+            Handle::Window(id) => self.handler.handle_window_close(id),
+            Handle::SchemeRoot | Handle::DisplaySize(_) => {}
         };
-
-        self.handler.handle_window_close(id)
     }
 }
