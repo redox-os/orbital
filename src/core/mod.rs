@@ -22,6 +22,7 @@ use syscall::{
 
 use crate::core::display::Displays;
 use crate::scheme::OrbitalScheme;
+use crate::window::WindowId;
 
 pub(crate) mod display;
 pub(crate) mod image;
@@ -217,7 +218,7 @@ impl Orbital {
                                 me.orb.scheme_write(resp)?;
                             }
                         }
-                        me.handler.handle_after(&mut me.orb)?;
+                        me.handler.handle_after(&mut me.orb, &me.handles)?;
                     }
                 }
                 Source::Input => {
@@ -257,7 +258,7 @@ impl Orbital {
                             ConsumerHandleEvent::Handoff => {}
                         }
                     }
-                    me.handler.handle_after(&mut me.orb)?;
+                    me.handler.handle_after(&mut me.orb, &me.handles)?;
                 }
             }
         }
@@ -266,11 +267,11 @@ impl Orbital {
         Ok(())
     }
 }
-enum Handle {
+pub(crate) enum Handle {
     SchemeRoot,
     DisplaySize(usize),
-    Window(usize),
-    Clipboard(usize),
+    Window(WindowId),
+    Clipboard(WindowId),
 }
 pub struct OrbitalHandler {
     orb: Orbital,
