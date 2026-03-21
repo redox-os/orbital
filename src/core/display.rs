@@ -1,5 +1,5 @@
 use drm::buffer::{Buffer as _, DrmFourcc};
-use drm::control::connector::State;
+use drm::control::connector::{self, State};
 use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
 use drm::control::{ClipRect, Device as _, crtc, framebuffer};
 use drm::{ClientCapability, Device as _, DriverCapability};
@@ -16,6 +16,7 @@ use crate::core::{
 
 pub struct V2DisplayMap {
     fb: framebuffer::Handle,
+    connector: connector::Handle,
     crtc: crtc::Handle,
     buffer: DumbBuffer,
     mapping: DumbMapping<'static>,
@@ -51,10 +52,50 @@ impl V2DisplayMap {
 
         Ok(Self {
             fb,
+            connector,
             crtc,
             buffer,
             mapping: map,
         })
+    }
+
+    fn resize_if_necessary(&mut self, display_handle: &V2GraphicsHandle) -> io::Result<bool> {
+        let connector_info = display_handle.get_connector(self.connector, false).unwrap();
+
+        let mode = connector_info.modes()[0];
+        let (width, height) = mode.size();
+
+        if (u32::from(width), u32::from(height)) == self.buffer.size() {
+            return Ok(false);
+        }
+
+        let mut new_buffer = display_handle.create_dumb_buffer(
+            (u32::from(mode.size().0), u32::from(mode.size().1)),
+            DrmFourcc::Argb8888,
+            32,
+        )?;
+        let new_fb = display_handle.add_framebuffer(&new_buffer, 24, 32)?;
+
+        let new_mapping = display_handle.map_dumb_buffer(&mut new_buffer)?;
+        let new_mapping =
+            unsafe { mem::transmute::<DumbMapping<'_>, DumbMapping<'static>>(new_mapping) };
+
+        let old_buffer = mem::replace(&mut self.buffer, new_buffer);
+        let old_fb = mem::replace(&mut self.fb, new_fb);
+        self.mapping = new_mapping;
+
+        display_handle.set_crtc(
+            self.crtc,
+            Some(self.fb),
+            (0, 0),
+            &[self.connector],
+            Some(mode),
+        )?;
+
+        let _ = display_handle.destroy_dumb_buffer(old_buffer);
+        let _ = display_handle.destroy_framebuffer(old_fb);
+
+        Ok(true)
     }
 
     fn image_mut(&mut self) -> ImageRef<'_> {
@@ -208,13 +249,12 @@ impl Display {
         );
     }
 
-    pub fn resize(&mut self, display_handle: &V2GraphicsHandle, _width: i32, _height: i32) {
-        match V2DisplayMap::new(display_handle) {
-            Ok(map) => {
-                self.map = map;
-            }
+    pub fn resize_if_necessary(&mut self, display_handle: &V2GraphicsHandle) -> bool {
+        match self.map.resize_if_necessary(display_handle) {
+            Ok(resized) => resized,
             Err(err) => {
                 error!("failed to resize display: {err}");
+                false
             }
         }
     }

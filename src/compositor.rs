@@ -87,13 +87,18 @@ impl Compositor {
         )
     }
 
-    /// Resize the inner image buffer.
-    pub fn resize(&mut self, width: i32, height: i32) {
-        //TODO: should other screens be moved after a resize?
-        //TODO: support resizing other screens?
-        self.displays.displays[0].resize(&self.displays.display_handle, width, height);
-
-        self.schedule(self.screen_rect());
+    pub fn resize_if_necessary(&mut self) -> bool {
+        //TODO: should screens be moved after a resize?
+        let mut any_resized = false;
+        for i in 0..self.displays.displays.len() {
+            let resized =
+                self.displays.displays[i].resize_if_necessary(&self.displays.display_handle);
+            any_resized |= resized;
+            if resized {
+                self.schedule(self.displays.displays[i].screen_rect());
+            }
+        }
+        any_resized
     }
 
     pub fn schedule(&mut self, request: Rect) {
