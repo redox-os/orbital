@@ -3,7 +3,7 @@ use drm::control::connector::{self, State};
 use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
 use drm::control::{ClipRect, Device as _, crtc, framebuffer};
 use drm::{ClientCapability, Device as _, DriverCapability};
-use graphics_ipc::v2::V2GraphicsHandle;
+use graphics_ipc::V2GraphicsHandle;
 use log::{debug, error};
 use orbclient::{Color, Renderer};
 use std::mem;
