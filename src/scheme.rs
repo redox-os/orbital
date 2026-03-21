@@ -539,6 +539,8 @@ impl OrbitalScheme {
     }
 
     pub fn redraw(&mut self) {
+        self.resize_if_necessary();
+
         self.fps_widget.start_measure();
         self.order
             .rezbuffer(&|id| self.windows.get(&id).unwrap().zorder);
@@ -1570,9 +1572,10 @@ impl OrbitalScheme {
         self.cursor_right = event.right;
     }
 
-    fn resize_event(&mut self, event: ResizeEvent) {
-        self.compositor
-            .resize(event.width as i32, event.height as i32);
+    fn resize_if_necessary(&mut self) {
+        if !self.compositor.resize_if_necessary() {
+            return;
+        }
 
         let screen_event = ScreenEvent {
             width: self.compositor.screen_rect().width() as u32,
@@ -1612,7 +1615,6 @@ impl OrbitalScheme {
                     }
                 }
             }
-            EventOption::Resize(event) => self.resize_event(event),
             event => error!("unexpected event: {:?}", event),
         }
     }
