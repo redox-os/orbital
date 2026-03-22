@@ -3,7 +3,7 @@ use drm::control::connector::{self, State};
 use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
 use drm::control::{ClipRect, Device as _, crtc, framebuffer};
 use drm::{ClientCapability, Device as _, DriverCapability};
-use graphics_ipc::v2::V2GraphicsHandle;
+use graphics_ipc::{CpuBackedBuffer, V2GraphicsHandle};
 use log::{debug, error};
 use orbclient::{Color, Renderer};
 use std::mem;
@@ -18,8 +18,7 @@ pub struct V2DisplayMap {
     fb: framebuffer::Handle,
     connector: connector::Handle,
     crtc: crtc::Handle,
-    buffer: DumbBuffer,
-    mapping: DumbMapping<'static>,
+    buffer: CpuBackedBuffer,
 }
 
 impl V2DisplayMap {
@@ -38,24 +37,21 @@ impl V2DisplayMap {
                 .possible_crtcs(),
         )[0];
 
-        let mut buffer = display_handle.create_dumb_buffer(
+        let buffer = CpuBackedBuffer::new(
+            display_handle,
             (width.into(), height.into()),
             DrmFourcc::Argb8888,
             32,
         )?;
-        let fb = display_handle.add_framebuffer(&buffer, 32, 32)?;
+        let fb = display_handle.add_framebuffer(buffer.buffer(), 32, 32)?;
 
         display_handle.set_crtc(crtc, Some(fb), (0, 0), &[connector], Some(mode))?;
-
-        let map = display_handle.map_dumb_buffer(&mut buffer)?;
-        let map = unsafe { mem::transmute::<DumbMapping<'_>, DumbMapping<'static>>(map) };
 
         Ok(Self {
             fb,
             connector,
             crtc,
             buffer,
-            mapping: map,
         })
     }
 
@@ -65,25 +61,22 @@ impl V2DisplayMap {
         let mode = connector_info.modes()[0];
         let (width, height) = mode.size();
 
-        if (u32::from(width), u32::from(height)) == self.buffer.size() {
+        if (u32::from(width), u32::from(height)) == self.buffer.buffer().size() {
             return Ok(false);
         }
 
-        let mut new_buffer = display_handle.create_dumb_buffer(
+        let new_buffer = CpuBackedBuffer::new(
+            display_handle,
             (u32::from(mode.size().0), u32::from(mode.size().1)),
             DrmFourcc::Argb8888,
             32,
         )?;
-        let new_fb = display_handle.add_framebuffer(&new_buffer, 24, 32)?;
-
-        let new_mapping = display_handle.map_dumb_buffer(&mut new_buffer)?;
-        let new_mapping =
-            unsafe { mem::transmute::<DumbMapping<'_>, DumbMapping<'static>>(new_mapping) };
+        let new_fb = display_handle.add_framebuffer(new_buffer.buffer(), 32, 32)?;
 
         let old_buffer = mem::replace(&mut self.buffer, new_buffer);
-        let old_fb = mem::replace(&mut self.fb, new_fb);
-        self.mapping = new_mapping;
+        old_buffer.destroy(display_handle)?;
 
+        let old_fb = mem::replace(&mut self.fb, new_fb);
         display_handle.set_crtc(
             self.crtc,
             Some(self.fb),
@@ -91,19 +84,16 @@ impl V2DisplayMap {
             &[self.connector],
             Some(mode),
         )?;
-
-        let _ = display_handle.destroy_dumb_buffer(old_buffer);
         let _ = display_handle.destroy_framebuffer(old_fb);
 
         Ok(true)
     }
 
     fn image_mut(&mut self) -> ImageRef<'_> {
-        let width = self.buffer.size().0;
-        let height = self.buffer.size().1;
+        let (width, height) = self.buffer.buffer().size();
         let display_slice = unsafe {
             slice::from_raw_parts_mut(
-                self.mapping.as_mut_ptr() as *mut Color,
+                self.buffer.shadow_buf().as_mut_ptr() as *mut Color,
                 (width * height) as usize,
             )
         };
@@ -274,8 +264,8 @@ impl Display {
         Rect::new(
             self.x,
             self.y,
-            self.map.buffer.size().0 as i32,
-            self.map.buffer.size().1 as i32,
+            self.map.buffer.buffer().size().0 as i32,
+            self.map.buffer.buffer().size().1 as i32,
         )
     }
 
@@ -317,15 +307,20 @@ impl Display {
     }
 
     pub fn sync_rect(&mut self, display_handle: &V2GraphicsHandle, rect: Rect) -> io::Result<()> {
+        let x1 = (rect.left() - self.x) as usize;
+        let y1 = (rect.top() - self.y) as usize;
+        let x2 = (rect.right() - self.x) as usize;
+        let y2 = (rect.bottom() - self.y) as usize;
+
+        let pitch = self.map.buffer.buffer().pitch() as usize;
+        self.map
+            .buffer
+            .sync_range((y1..y2).map(|row| row * pitch + x1 * 4..row * pitch + x2 * 4));
+
         display_handle
             .dirty_framebuffer(
                 self.map.fb,
-                &[ClipRect::new(
-                    (rect.left() - self.x) as u16,
-                    (rect.top() - self.y) as u16,
-                    (rect.right() - self.x) as u16,
-                    (rect.bottom() - self.y) as u16,
-                )],
+                &[ClipRect::new(x1 as u16, y1 as u16, x2 as u16, y2 as u16)],
             )
             .map(|_| ())
     }
