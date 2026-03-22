@@ -170,16 +170,24 @@ impl Compositor {
         }
     }
 
-    pub fn redraw_windows(
-        &mut self,
-        total_redraw_opt: &mut Option<Rect>,
-        draw_windows: impl Fn(&mut Display, Rect),
-    ) {
+    pub fn redraw(&mut self, draw_windows: impl Fn(&mut Display, Rect)) {
+        let total_redraw_opt = self.redraw_windows(draw_windows);
+        self.redraw_cursor(total_redraw_opt);
+
+        // Sync any parts of displays that changed
+        if let Some(total_redraw) = total_redraw_opt {
+            self.sync_rect(total_redraw);
+        }
+    }
+
+    fn redraw_windows(&mut self, draw_windows: impl Fn(&mut Display, Rect)) -> Option<Rect> {
+        let mut total_redraw_opt: Option<Rect> = None;
+
         // go through the list of rectangles pending a redraw and expand the total redraw rectangle
         // to encompass all of them
         for original_rect in self.redraws.drain(..) {
             if !original_rect.is_empty() {
-                *total_redraw_opt = Some(
+                total_redraw_opt = Some(
                     total_redraw_opt
                         .unwrap_or(original_rect)
                         .container(&original_rect),
@@ -195,9 +203,11 @@ impl Compositor {
                 draw_windows(display, rect);
             }
         }
+
+        total_redraw_opt
     }
 
-    pub fn redraw_cursor(&mut self, total_redraw: Option<Rect>) {
+    fn redraw_cursor(&mut self, total_redraw: Option<Rect>) {
         if self.hw_cursor {
             if self.update_cursor_timer.elapsed().as_millis() > 1000 {
                 match self.displays.displays[0].set_cursor(

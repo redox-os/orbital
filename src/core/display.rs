@@ -121,8 +121,7 @@ impl CursorMap {
     }
 
     fn image_mut(&mut self) -> ImageRef<'_> {
-        let width = self.buffer.size().0;
-        let height = self.buffer.size().1;
+        let (width, height) = self.buffer.size();
         let display_slice = unsafe {
             slice::from_raw_parts_mut(
                 self.mapping.as_mut_ptr() as *mut Color,
@@ -158,7 +157,7 @@ impl Displays {
         {
             if display_handle.get_connector(connector, true)?.state() == State::Connected {
                 let x = if let Some(last) = displays.last() {
-                    last.screen_rect().left() + last.screen_rect().width()
+                    last.screen_rect().right()
                 } else {
                     0
                 };
@@ -223,14 +222,10 @@ impl Display {
         self.scale
     }
 
-    fn image_mut(&mut self) -> ImageRef<'_> {
-        self.map.image_mut()
-    }
-
     pub fn rect(&mut self, rect: &Rect, color: Color) {
         let x = self.x;
         let y = self.y;
-        self.image_mut().rect(
+        self.map.image_mut().rect(
             rect.left() - x,
             rect.top() - y,
             rect.width().try_into().unwrap_or(0),
@@ -252,7 +247,7 @@ impl Display {
     pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut<'_> {
         let x = self.x;
         let y = self.y;
-        self.image_mut().roi_mut(&Rect::new(
+        self.map.image_mut().roi_mut(&Rect::new(
             rect.left() - x,
             rect.top() - y,
             rect.width(),
