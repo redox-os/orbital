@@ -7,7 +7,7 @@ use std::{
 };
 
 use event::{EventQueue, user_data};
-use graphics_ipc::v2::V2GraphicsHandle;
+use graphics_ipc::V2GraphicsHandle;
 use inputd::{ConsumerHandle, ConsumerHandleEvent};
 use log::error;
 use orbclient::{Color, Event};
