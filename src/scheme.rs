@@ -587,55 +587,45 @@ impl OrbitalScheme {
             }
         }
 
-        let mut total_redraw_opt: Option<Rect> = None;
+        self.compositor.redraw(|display, rect| {
+            display.rect(&rect, self.config.background_color.into());
 
-        self.compositor
-            .redraw_windows(&mut total_redraw_opt, |display, rect| {
-                display.rect(&rect, self.config.background_color.into());
-
-                for (id, focused) in self.order.iter_back_to_front() {
-                    if let Some(window) = self.windows.get(&id) {
-                        window.draw_title(
-                            display,
-                            &rect,
-                            focused,
-                            if focused {
-                                &self.window_max
-                            } else {
-                                &self.window_max_unfocused
-                            },
-                            if focused {
-                                &self.window_close
-                            } else {
-                                &self.window_close_unfocused
-                            },
-                        );
-                        window.draw(display, &rect);
-                    }
+            for (id, focused) in self.order.iter_back_to_front() {
+                if let Some(window) = self.windows.get(&id) {
+                    window.draw_title(
+                        display,
+                        &rect,
+                        focused,
+                        if focused {
+                            &self.window_max
+                        } else {
+                            &self.window_max_unfocused
+                        },
+                        if focused {
+                            &self.window_close
+                        } else {
+                            &self.window_close_unfocused
+                        },
+                    );
+                    window.draw(display, &rect);
                 }
+            }
 
-                if let Some(popup) = &popup {
-                    display
-                        .roi_mut(popup_rect.as_ref().unwrap())
-                        .blend(&popup.roi(&Rect::new(0, 0, popup.width(), popup.height())));
-                }
+            if let Some(popup) = &popup {
+                display
+                    .roi_mut(popup_rect.as_ref().unwrap())
+                    .blend(&popup.roi(&Rect::new(0, 0, popup.width(), popup.height())));
+            }
 
-                if let Some((image, rect)) = self.fps_widget.get_rendered_osd() {
-                    display.roi_mut(rect).blend(&image.roi(&Rect::new(
-                        0,
-                        0,
-                        image.width(),
-                        image.height(),
-                    )));
-                }
-            });
-
-        self.compositor.redraw_cursor(total_redraw_opt);
-
-        // Sync any parts of displays that changed
-        if let Some(total_redraw) = total_redraw_opt {
-            self.compositor.sync_rect(total_redraw);
-        }
+            if let Some((image, rect)) = self.fps_widget.get_rendered_osd() {
+                display.roi_mut(rect).blend(&image.roi(&Rect::new(
+                    0,
+                    0,
+                    image.width(),
+                    image.height(),
+                )));
+            }
+        });
 
         self.fps_widget.end_measure();
     }
