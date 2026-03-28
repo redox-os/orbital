@@ -307,10 +307,12 @@ impl Display {
         let x2 = (rect.right() - self.x) as usize;
         let y2 = (rect.bottom() - self.y) as usize;
 
-        let pitch = self.map.buffer.buffer().pitch() as usize;
-        self.map
-            .buffer
-            .sync_range((y1..y2).map(|row| row * pitch + x1 * 4..row * pitch + x2 * 4));
+        self.map.buffer.sync_rect(
+            rect.left() as u32,
+            rect.top() as u32,
+            rect.width() as u32,
+            rect.height() as u32,
+        );
 
         display_handle
             .dirty_framebuffer(
