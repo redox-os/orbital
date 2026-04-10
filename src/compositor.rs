@@ -109,20 +109,11 @@ impl Compositor {
     }
 
     pub fn schedule(&mut self, request: Rect) {
-        let mut push = true;
-        for rect in self.redraws.iter_mut() {
-            //If contained, ignore new redraw request
-            let container = rect.container(&request);
-            if container.area() <= rect.area() + request.area() {
-                *rect = container;
-                push = false;
-                break;
-            }
+        if request.is_empty() {
+            return;
         }
 
-        if push {
-            self.redraws.push(request);
-        }
+        self.redraws.push(request);
     }
 
     fn cursor_rect(&self) -> Rect {
