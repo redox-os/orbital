@@ -830,6 +830,7 @@ impl OrbitalScheme {
         "Super-M: Toggle window max (maximize or restore)",
         "Super-ENTER: Toggle window max (maximize or restore)",
         "Super-Numpad-0: Enable mouse accessibility keys using numpad",
+        "Super-F10: Enable damage borders on screen",
         "Super-F12: Enable FPS counter on screen",
     ];
 
@@ -1080,6 +1081,9 @@ impl OrbitalScheme {
                 orbclient::K_C => self.clipboard_event(orbclient::CLIPBOARD_COPY),
                 orbclient::K_X => self.clipboard_event(orbclient::CLIPBOARD_CUT),
                 orbclient::K_V => self.clipboard_event(orbclient::CLIPBOARD_PASTE),
+                orbclient::K_F10 => {
+                    self.compositor.toggle_damage_border();
+                }
                 orbclient::K_F12 => {
                     if let Some(damage) = self.fps_widget.toggle_enabled() {
                         self.compositor.schedule(damage);

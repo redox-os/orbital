@@ -234,6 +234,15 @@ impl Display {
         );
     }
 
+    pub fn border_rect(&mut self, rect: &Rect, color: Color, thickness: i32) {
+        let (x, y, w, h) = (rect.left(), rect.top(), rect.width(), rect.height());
+        let t = thickness;
+        self.rect(&Rect::new(x, y, w, t), color); // top
+        self.rect(&Rect::new(x, y + h - t, w, t), color); // bottom
+        self.rect(&Rect::new(x, y, t, h), color); // left
+        self.rect(&Rect::new(x + w - t, y, t, h), color); // right
+    }
+
     pub fn resize_if_necessary(&mut self, display_handle: &V2GraphicsHandle) -> bool {
         match self.map.resize_if_necessary(display_handle) {
             Ok(resized) => resized,
