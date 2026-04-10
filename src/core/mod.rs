@@ -20,7 +20,7 @@ use syscall::{
     schemev2::NewFdFlags,
 };
 
-use crate::core::display::Displays;
+use crate::core::{display::Displays, rect::Rect};
 use crate::scheme::OrbitalScheme;
 use crate::window::WindowId;
 
@@ -509,6 +509,20 @@ impl SchemeSync for OrbitalHandler {
 
                     Ok(buf.len())
                 }
+                "Y" => {
+                    let mut parts = data.split(',').peekable();
+                    let mut damages = Vec::new();
+                    while parts.peek().is_some() {
+                        let x = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+                        let y = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+                        let w = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+                        let h = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+                        damages.push(Rect::new(x, y, w, h));
+                    }
+                    self.handler.handle_window_sync(id, Some(damages))?;
+
+                    Ok(buf.len())
+                }
                 _ => Err(syscall::Error::new(EINVAL)),
             }
         } else {
@@ -586,7 +600,7 @@ impl SchemeSync for OrbitalHandler {
         let Some(&Handle::Window(id) | &Handle::Clipboard(id)) = self.handles.get(&id) else {
             return Err(syscall::Error::new(EBADF));
         };
-        self.handler.handle_window_sync(id)
+        self.handler.handle_window_sync(id, None)
     }
     fn mmap_prep(
         &mut self,
