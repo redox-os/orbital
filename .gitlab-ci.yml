@@ -1,5 +1,15 @@
 image: "redoxos/redoxer:latest"
 
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master" && $CI_PROJECT_NAMESPACE == "redox-os"'
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"'
+
+fmt:
+  script:
+      - rustup component add rustfmt-preview
+      - cargo fmt --check
+
 test:redox:
   script:
-  - redoxer test --verbose
+  - redoxer test -- -- --nocapture

@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use log::{error, info};
+use orbclient::Color;
 
 use crate::core::display::{Display, Displays};
 use crate::core::image::Image;
@@ -13,6 +14,7 @@ pub struct Compositor {
     redraws: Vec<Rect>,
 
     hw_cursor: bool,
+    damage_borders: bool,
     //QEMU UIs do not grab the pointer in case an absolute pointing device is present
     //and since releasing our gpu cursor makes it disappear, updating it every second fixes it
     update_cursor_timer: Instant,
@@ -41,6 +43,7 @@ impl Compositor {
             redraws,
 
             hw_cursor,
+            damage_borders: false,
             update_cursor_timer: Instant::now(),
             cursor: Arc::new(Image::new(0, 0)),
             cursor_x: 0,
@@ -52,6 +55,10 @@ impl Compositor {
 
     pub fn displays(&self) -> &[Display] {
         &self.displays.displays
+    }
+
+    pub fn toggle_damage_border(&mut self) {
+        self.damage_borders = !self.damage_borders;
     }
 
     /// Return the screen rectangle
@@ -261,6 +268,10 @@ impl Compositor {
         for (i, display) in self.displays.displays.iter_mut().enumerate() {
             let display_redraw = total_redraw.intersection(&display.screen_rect());
             if !display_redraw.is_empty() {
+                if self.damage_borders {
+                    const DAMAGE_COLOR: Color = Color::rgba(255, 0, 255, 80);
+                    display.border_rect(&display_redraw, DAMAGE_COLOR, 2);
+                }
                 match display.sync_rect(&self.displays.display_handle, display_redraw) {
                     Ok(()) => (),
                     Err(err) => error!("failed to sync display {}: {}", i, err),
