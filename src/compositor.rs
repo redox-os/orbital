@@ -168,7 +168,7 @@ impl Compositor {
         }
     }
 
-    pub fn redraw(&mut self, draw_windows: impl Fn(&mut Display, Rect)) {
+    pub fn redraw(&mut self, draw_windows: impl Fn(&mut Display, Rect)) -> bool {
         let total_redraw_opt = self.redraw_windows(draw_windows);
         self.redraw_cursor(total_redraw_opt);
 
@@ -176,6 +176,7 @@ impl Compositor {
         if let Some(total_redraw) = total_redraw_opt {
             self.sync_rect(total_redraw);
         }
+        total_redraw_opt.is_some()
     }
 
     fn redraw_windows(&mut self, draw_windows: impl Fn(&mut Display, Rect)) -> Option<Rect> {
@@ -184,16 +185,15 @@ impl Compositor {
         // go through the list of rectangles pending a redraw and expand the total redraw rectangle
         // to encompass all of them
         for original_rect in self.redraws.drain(..) {
-            if !original_rect.is_empty() {
-                total_redraw_opt = Some(
-                    total_redraw_opt
-                        .unwrap_or(original_rect)
-                        .container(&original_rect),
-                );
-            }
+            total_redraw_opt = match total_redraw_opt {
+                Some(r) => Some(r.container(&original_rect)),
+                None => Some(original_rect),
+            };
+        }
 
+        if let Some(total_redraw) = total_redraw_opt {
             for display in self.displays.displays.iter_mut() {
-                let rect = original_rect.intersection(&display.screen_rect());
+                let rect = total_redraw.intersection(&display.screen_rect());
                 if rect.is_empty() {
                     continue;
                 }
@@ -260,8 +260,14 @@ impl Compositor {
             let display_redraw = total_redraw.intersection(&display.screen_rect());
             if !display_redraw.is_empty() {
                 if self.damage_borders {
-                    const DAMAGE_COLOR: Color = Color::rgba(255, 0, 255, 80);
-                    display.border_rect(&display_redraw, DAMAGE_COLOR, 2);
+                    const DAMAGE_ON_SHADOW: Color = Color::rgba(255, 0, 255, 80);
+                    const DAMAGE_NO_SHADOW: Color = Color::rgba(0, 200, 255, 80);
+                    let damage_color = if display.has_shadow_buf() {
+                        DAMAGE_ON_SHADOW
+                    } else {
+                        DAMAGE_NO_SHADOW
+                    };
+                    display.border_rect(&display_redraw, damage_color, 2);
                 }
                 match display.sync_rect(&self.displays.display_handle, display_redraw) {
                     Ok(()) => (),

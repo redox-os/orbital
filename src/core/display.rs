@@ -310,6 +310,10 @@ impl Display {
         )
     }
 
+    pub fn has_shadow_buf(&self) -> bool {
+        self.map.buffer.has_shadow_buf()
+    }
+
     pub fn sync_rect(&mut self, display_handle: &V2GraphicsHandle, rect: Rect) -> io::Result<()> {
         let x1 = (rect.left() - self.x) as usize;
         let y1 = (rect.top() - self.y) as usize;
