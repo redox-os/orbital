@@ -168,7 +168,7 @@ impl Compositor {
         }
     }
 
-    pub fn redraw(&mut self, draw_windows: impl Fn(&mut Display, Rect)) {
+    pub fn redraw(&mut self, draw_windows: impl Fn(&mut Display, Rect)) -> bool {
         let total_redraw_opt = self.redraw_windows(draw_windows);
         self.redraw_cursor(total_redraw_opt);
 
@@ -176,6 +176,7 @@ impl Compositor {
         if let Some(total_redraw) = total_redraw_opt {
             self.sync_rect(total_redraw);
         }
+        total_redraw_opt.is_some()
     }
 
     fn redraw_windows(&mut self, draw_windows: impl Fn(&mut Display, Rect)) -> Option<Rect> {
@@ -188,9 +189,11 @@ impl Compositor {
                 Some(r) => Some(r.container(&original_rect)),
                 None => Some(original_rect),
             };
+        }
 
+        if let Some(total_redraw) = total_redraw_opt {
             for display in self.displays.displays.iter_mut() {
-                let rect = original_rect.intersection(&display.screen_rect());
+                let rect = total_redraw.intersection(&display.screen_rect());
                 if rect.is_empty() {
                     continue;
                 }
