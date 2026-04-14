@@ -105,6 +105,7 @@ impl Orbital {
             enum Source {
                 Scheme,
                 Input,
+                Time,
             }
         }
 
@@ -134,6 +135,13 @@ impl Orbital {
 
         event_queue.subscribe(scheme_fd, Source::Scheme, event::EventFlags::READ)?;
         event_queue.subscribe(input_fd as usize, Source::Input, event::EventFlags::READ)?;
+        if let Some(timer) = &me.handler.get_timer_handle() {
+            event_queue.subscribe(
+                timer.as_raw_fd() as usize,
+                Source::Time,
+                event::EventFlags::READ,
+            )?;
+        }
 
         login_cmd.spawn()?;
 
@@ -259,6 +267,9 @@ impl Orbital {
                         }
                     }
                     me.handler.handle_after(&mut me.orb, &me.handles)?;
+                }
+                Source::Time => {
+                    me.handler.handle_timer();
                 }
             }
         }

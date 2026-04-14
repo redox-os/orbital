@@ -184,16 +184,15 @@ impl Compositor {
         // go through the list of rectangles pending a redraw and expand the total redraw rectangle
         // to encompass all of them
         for original_rect in self.redraws.drain(..) {
-            if !original_rect.is_empty() {
-                total_redraw_opt = Some(
-                    total_redraw_opt
-                        .unwrap_or(original_rect)
-                        .container(&original_rect),
-                );
-            }
+            total_redraw_opt = match total_redraw_opt {
+                Some(r) => Some(r.container(&original_rect)),
+                None => Some(original_rect),
+            };
+        }
 
+        if let Some(total_redraw) = total_redraw_opt {
             for display in self.displays.displays.iter_mut() {
-                let rect = original_rect.intersection(&display.screen_rect());
+                let rect = total_redraw.intersection(&display.screen_rect());
                 if rect.is_empty() {
                     continue;
                 }

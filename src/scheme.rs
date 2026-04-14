@@ -1,6 +1,9 @@
 use std::collections::HashMap;
+use std::fs::File;
+use std::os::fd::AsRawFd;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Instant;
 use std::{cmp, collections::BTreeMap, fs, io, str};
 
 use log::{error, info, warn};
@@ -103,7 +106,12 @@ pub struct OrbitalScheme {
     volume_osd: bool,
     shortcuts_osd: bool,
     last_popup_rect: Option<Rect>,
+    last_redraw: Instant,
     fps_widget: FpsWidget,
+    // 0 = false, 1 = true, 2 = stale
+    redraw_timer_armed: i32,
+    redraw_timer_fd: Option<File>,
+    redraw_timer_intv: i32,
 }
 
 impl OrbitalScheme {
@@ -149,6 +157,7 @@ impl OrbitalScheme {
         );
 
         let font = orbfont::Font::find(Some("Sans"), None, None)?;
+        let timerfd = File::open("/scheme/time/4").ok();
 
         let mut orbital_scheme = OrbitalScheme {
             compositor: Compositor::new(displays),
@@ -186,6 +195,11 @@ impl OrbitalScheme {
             shortcuts_osd: false,
             last_popup_rect: None,
             fps_widget: FpsWidget::new(),
+            last_redraw: Instant::now(),
+            redraw_timer_fd: timerfd,
+            redraw_timer_armed: 0,
+            // TODO: Hardcoded 60 FPS (16 ms). Read from Displays?
+            redraw_timer_intv: 16,
         };
 
         orbital_scheme.update_cursor(0, 0, CursorKind::LeftPtr);
@@ -222,6 +236,10 @@ impl OrbitalScheme {
                 window.event(FocusEvent { focused }.to_event());
             });
         }
+    }
+
+    pub fn get_timer_handle(&self) -> &Option<File> {
+        &self.redraw_timer_fd
     }
 
     //TODO: update cursor in more places to ensure consistency:
@@ -268,6 +286,13 @@ impl OrbitalScheme {
         }
     }
 
+    pub fn handle_timer(&mut self) {
+        if self.redraw_timer_armed == 1 {
+            self.redraw();
+        }
+        self.redraw_timer_armed = 0;
+    }
+
     /// Called after a batch of any events have been handled
     pub fn handle_after(
         &mut self,
@@ -291,7 +316,35 @@ impl OrbitalScheme {
             }
         }
 
-        self.redraw();
+        let now = Instant::now();
+        if now.duration_since(self.last_redraw).as_millis() >= self.redraw_timer_intv as u128 {
+            self.redraw();
+            self.last_redraw = now;
+            if self.redraw_timer_armed == 1 {
+                self.redraw_timer_armed = 2
+            }
+        } else if self.redraw_timer_armed == 0 {
+            // arming timer is cheaper than redraw
+            if let Some(timer) = self.get_timer_handle() {
+                // TODO: use libredox when it able to set timer (tv_nsec is differ here)
+                let mut tp = syscall::TimeSpec::default();
+                if syscall::clock_gettime(4, &mut tp).is_ok() {
+                    tp.tv_nsec += self.redraw_timer_intv * 2 * 1_000_000;
+
+                    let buf_to_write = unsafe {
+                        core::slice::from_raw_parts(
+                            &tp as *const _ as *const u8,
+                            core::mem::size_of::<syscall::TimeSpec>(),
+                        )
+                    };
+                    if syscall::write(timer.as_raw_fd() as usize, buf_to_write).is_ok() {
+                        self.redraw_timer_armed = 1;
+                    }
+                }
+            }
+        } else if self.redraw_timer_armed == 2 {
+            self.redraw_timer_armed = 1;
+        }
         Ok(())
     }
 
