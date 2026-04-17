@@ -30,6 +30,7 @@ pub const ORBITAL_FLAG_FULLSCREEN: char = 'M';
 pub const ORBITAL_FLAG_RESIZABLE: char = 'r';
 pub const ORBITAL_FLAG_TRANSPARENT: char = 't';
 pub const ORBITAL_FLAG_UNCLOSABLE: char = 'u';
+pub const ORBITAL_FLAG_SCALE_TWO: char = '2';
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WindowId(pub usize);
@@ -397,6 +398,9 @@ impl Window {
             WindowZOrder::Back => flags.push(ORBITAL_FLAG_BACK),
             WindowZOrder::Normal => {}
             WindowZOrder::Front => flags.push(ORBITAL_FLAG_FRONT),
+        }
+        if self.scale == 2 {
+            flags.push(ORBITAL_FLAG_SCALE_TWO);
         }
         Properties {
             flags,
