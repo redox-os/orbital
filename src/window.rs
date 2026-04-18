@@ -1,14 +1,13 @@
 use crate::{
-    core::{
-        Properties,
-        display::Display,
-        image::{Image, ImageAligned},
-        rect::Rect,
-    },
+    core::{Properties, display::Display},
     scheme::TilePosition,
     window_order::WindowZOrder,
 };
-use orbclient::{Color, Event, Renderer};
+use orbclient::{
+    Color, Event, Renderer,
+    image::{Image, ImageAligned},
+    rect::{Rect, RectAlignment, RectEdge},
+};
 use orbfont::Font;
 
 use std::cmp::{max, min};
@@ -37,7 +36,7 @@ pub struct WindowId(pub usize);
 pub struct Window {
     pub x: i32,
     pub y: i32,
-    pub scale: i32,
+    pub scale: u32,
     pub title: String,
     pub asynchronous: bool,
     pub borderless: bool,
@@ -62,13 +61,14 @@ pub struct Window {
     config: Rc<Config>,
 }
 
-const TITLE_HEIGHT: i32 = 28;
-const TITLE_TEXT_HEIGHT: i32 = 16;
+const TITLE_HEIGHT: u32 = 28;
+const TITLE_TEXT_HEIGHT: u32 = 16;
+const BORDER_WIDTH: u32 = 8;
 
 impl Window {
     // TODO Consider creating Rect for the title area, max and close areas and removing a lot
     // of the inline size calculations below
-    pub fn new(x: i32, y: i32, w: i32, h: i32, scale: i32, config: Rc<Config>) -> Window {
+    pub fn new(x: i32, y: i32, w: u32, h: u32, scale: u32, config: Rc<Config>) -> Window {
         Window {
             x,
             y,
@@ -98,12 +98,20 @@ impl Window {
         }
     }
 
-    pub fn width(&self) -> i32 {
+    pub fn width(&self) -> u32 {
         self.image.width()
     }
 
-    pub fn height(&self) -> i32 {
+    pub fn height(&self) -> u32 {
         self.image.height()
+    }
+
+    pub fn iwidth(&self) -> i32 {
+        self.image.width() as i32
+    }
+
+    pub fn iheight(&self) -> i32 {
+        self.image.height() as i32
     }
 
     pub fn rect(&self) -> Rect {
@@ -118,94 +126,39 @@ impl Window {
         if self.borderless || self.hidden {
             Rect::new(self.x, self.y, 0, 0)
         } else {
-            Rect::new(
-                self.x,
-                self.y - TITLE_HEIGHT * self.scale,
-                self.width(),
-                TITLE_HEIGHT * self.scale,
-            )
+            self.rect()
+                .edge(0, TITLE_HEIGHT * self.scale, RectEdge::Top)
         }
     }
 
     pub fn cascade_rect(&self) -> Rect {
-        let title_rect = self.title_rect();
-        Rect::new(title_rect.left(), title_rect.top(), 32, 32)
+        self.title_rect().resize(32, 32, RectAlignment::TopLeft)
     }
 
-    pub fn bottom_border_rect(&self) -> Rect {
+    pub fn border_rect(&self, edge: RectEdge) -> Rect {
         if self.resizable {
-            Rect::new(self.x, self.y + self.height(), self.width(), 8 * self.scale)
+            self.rect().edge(0, BORDER_WIDTH * self.scale, edge)
         } else {
-            Rect::new(-1, -1, 0, 0)
-        }
-    }
-
-    pub fn bottom_left_border_rect(&self) -> Rect {
-        if self.resizable {
-            Rect::new(
-                self.x - 8 * self.scale,
-                self.y + self.height(),
-                8 * self.scale,
-                8 * self.scale,
-            )
-        } else {
-            Rect::new(-1, -1, 0, 0)
-        }
-    }
-
-    pub fn bottom_right_border_rect(&self) -> Rect {
-        if self.resizable {
-            Rect::new(
-                self.x + self.width(),
-                self.y + self.height(),
-                8 * self.scale,
-                8 * self.scale,
-            )
-        } else {
-            Rect::new(-1, -1, 0, 0)
-        }
-    }
-
-    pub fn left_border_rect(&self) -> Rect {
-        if self.resizable {
-            Rect::new(
-                self.x - 8 * self.scale,
-                self.y,
-                8 * self.scale,
-                self.height(),
-            )
-        } else {
-            Rect::new(-1, -1, 0, 0)
-        }
-    }
-
-    pub fn right_border_rect(&self) -> Rect {
-        if self.resizable {
-            Rect::new(self.x + self.width(), self.y, 8 * self.scale, self.height())
-        } else {
-            Rect::new(-1, -1, 0, 0)
+            Rect::default()
         }
     }
 
     pub fn max_contains(&self, x: i32, y: i32) -> bool {
-        !self.borderless
-            && x >= max(
-                self.x + 6 * self.scale,
-                self.x + self.width() - 36 * self.scale,
-            )
-            && y >= self.y - TITLE_HEIGHT * self.scale
-            && x < self.x + self.width() - 18 * self.scale
-            && y < self.y
+        !self.borderless && self.btn_contains(x, y, 2)
     }
 
     pub fn close_contains(&self, x: i32, y: i32) -> bool {
-        !self.borderless
-            && x >= max(
-                self.x + 6 * self.scale,
-                self.x + self.width() - 18 * self.scale,
-            )
-            && y >= self.y - TITLE_HEIGHT * self.scale
-            && x < self.x + self.width()
+        !self.borderless && self.btn_contains(x, y, 1)
+    }
+
+    fn btn_contains(&self, x: i32, y: i32, nth: u32) -> bool {
+        x >= self.x.saturating_add_unsigned(max(
+            6 * self.scale,
+            self.width().saturating_sub(18 * nth * self.scale),
+        )) && y >= self.y.saturating_sub_unsigned(TITLE_HEIGHT * self.scale)
+            && x < self
+                .x
+                .saturating_add_unsigned(self.width().saturating_sub(18 * (nth - 1) * self.scale))
             && y < self.y
     }
 
@@ -223,6 +176,7 @@ impl Window {
         let title_rect = self.title_rect();
         let title_intersect = rect.intersection(&title_rect);
         if !title_intersect.is_empty() {
+            let scale = self.scale as i32;
             display.rect(
                 &title_intersect,
                 if focused {
@@ -232,11 +186,8 @@ impl Window {
                 },
             );
 
-            let mut x = self.x + 6 * self.scale;
-            let w = max(
-                self.x + 6 * self.scale,
-                self.x + self.width() - 18 * self.scale,
-            ) - x;
+            let mut x = self.x + 6 * scale;
+            let w = max(self.x + 6 * scale, self.x + self.iwidth() - 18 * scale) - x;
             if w > 0 {
                 let title_image = if focused {
                     &self.title_image
@@ -245,58 +196,52 @@ impl Window {
                 };
                 let image_rect = Rect::new(
                     x,
-                    title_rect.top() + 6 * self.scale,
-                    min(w, title_image.width()),
+                    title_rect.top() + 6 * scale,
+                    min(w as u32, title_image.width()),
                     title_image.height(),
                 );
                 let image_intersect = rect.intersection(&image_rect);
                 if !image_intersect.is_empty() {
-                    display.roi_mut(&image_intersect).blend(
-                        &title_image
-                            .roi(&image_intersect.offset(-image_rect.left(), -image_rect.top())),
-                    );
+                    display
+                        .roi_mut(&image_intersect)
+                        .blend(&title_image.roi(
+                            &image_intersect.translate(-image_rect.left(), -image_rect.top()),
+                        ));
                 }
             }
 
             if self.resizable {
-                x = max(self.x + 6, self.x + self.width() - 36 * self.scale);
-                if x + 36 * self.scale <= self.x + self.width() {
+                x = max(self.x + 6, self.x + self.iwidth() - 36 * scale);
+                if x + 36 * scale <= self.x + self.iwidth() {
                     let image_rect = Rect::new(
                         x,
-                        title_rect.top() + 7 * self.scale,
+                        title_rect.top() + 7 * scale,
                         window_max.width(),
                         window_max.height(),
                     );
                     let image_intersect = rect.intersection(&image_rect);
                     if !image_intersect.is_empty() {
-                        display.roi_mut(&image_intersect).blend(
-                            &window_max.roi(
-                                &image_intersect.offset(-image_rect.left(), -image_rect.top()),
-                            ),
-                        );
+                        display.roi_mut(&image_intersect).blend(&window_max.roi(
+                            &image_intersect.translate(-image_rect.left(), -image_rect.top()),
+                        ));
                     }
                 }
             }
 
             if !self.unclosable {
-                x = max(
-                    self.x + 6 * self.scale,
-                    self.x + self.width() - 18 * self.scale,
-                );
-                if x + 18 * self.scale <= self.x + self.width() {
+                x = max(self.x + 6 * scale, self.x + self.iwidth() - 18 * scale);
+                if x + 18 * scale <= self.x + self.iwidth() {
                     let image_rect = Rect::new(
                         x,
-                        title_rect.top() + 7 * self.scale,
+                        title_rect.top() + 7 * scale as i32,
                         window_close.width(),
                         window_close.height(),
                     );
                     let image_intersect = rect.intersection(&image_rect);
                     if !image_intersect.is_empty() {
-                        display.roi_mut(&image_intersect).blend(
-                            &window_close.roi(
-                                &image_intersect.offset(-image_rect.left(), -image_rect.top()),
-                            ),
-                        );
+                        display.roi_mut(&image_intersect).blend(&window_close.roi(
+                            &image_intersect.translate(-image_rect.left(), -image_rect.top()),
+                        ));
                     }
                 }
             }
@@ -311,13 +256,13 @@ impl Window {
                 display.roi_mut(&intersect).blend(
                     &self
                         .image
-                        .roi(&intersect.offset(-self_rect.left(), -self_rect.top())),
+                        .roi(&intersect.translate(-self_rect.left(), -self_rect.top())),
                 );
             } else {
                 display.roi_mut(&intersect).blit(
                     &self
                         .image
-                        .roi(&intersect.offset(-self_rect.left(), -self_rect.top())),
+                        .roi(&intersect.translate(-self_rect.left(), -self_rect.top())),
                 );
             }
         }
@@ -416,19 +361,13 @@ impl Window {
 
         let color_blank = Color::rgba(0, 0, 0, 0);
 
-        self.title_image = Image::from_color(
-            title_render.width() as i32,
-            title_render.height() as i32,
-            color_blank,
-        );
+        self.title_image =
+            Image::from_color(title_render.width(), title_render.height(), color_blank);
         self.title_image.mode().set(orbclient::Mode::Overwrite);
         title_render.draw(&mut self.title_image, 0, 0, text_highlight_color.into());
 
-        self.title_image_unfocused = Image::from_color(
-            title_render.width() as i32,
-            title_render.height() as i32,
-            color_blank,
-        );
+        self.title_image_unfocused =
+            Image::from_color(title_render.width(), title_render.height(), color_blank);
         self.title_image_unfocused
             .mode()
             .set(orbclient::Mode::Overwrite);
@@ -463,7 +402,7 @@ impl Window {
         }
     }
 
-    pub fn set_size(&mut self, w: i32, h: i32) {
+    pub fn set_size(&mut self, w: u32, h: u32) {
         if self.maps > 0 {
             log::warn!("resized while {} mapping(s) still held", self.maps);
         }

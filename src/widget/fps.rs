@@ -1,12 +1,9 @@
 use std::time::Instant;
 
-use orbclient::Renderer;
+use orbclient::{Renderer, image::Image, rect::Rect};
 use orbfont::Font;
 
-use crate::{
-    config::Config,
-    core::{image::Image, rect::Rect},
-};
+use crate::config::Config;
 
 pub struct FpsWidget {
     pub enabled: bool,
@@ -47,7 +44,7 @@ impl FpsWidget {
         }
     }
 
-    pub fn draw_fps_osd(&mut self, scale: i32, config: &Config, font: &Font) -> Option<&Image> {
+    pub fn draw_fps_osd(&mut self, scale: u32, config: &Config, font: &Font) -> Option<&Image> {
         if !self.enabled {
             return None;
         }
@@ -80,10 +77,10 @@ impl FpsWidget {
             ..
         } = &config;
 
-        let row_width: i32 = 120 * scale;
+        let row_width: u32 = 120 * scale;
         let popup_border: u32 = 5 * scale as u32;
         let font_height: f32 = (18 * scale) as f32;
-        let row_height: i32 = 18 * scale + 8;
+        let row_height: u32 = 18 * scale + 8;
 
         let mut image = Image::from_color(row_width, row_height, (*bar_color).into());
         let text = font.render(&self.fps_measured, font_height);
