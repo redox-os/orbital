@@ -112,6 +112,15 @@ impl Compositor {
             return;
         }
 
+        for rect in self.redraws.iter_mut() {
+            //If contained, ignore new redraw request
+            let container = rect.container(&request);
+            if container.width() == request.width() && container.height() == request.height() {
+                *rect = container;
+                return;
+            }
+        }
+
         self.redraws.push(request);
     }
 
