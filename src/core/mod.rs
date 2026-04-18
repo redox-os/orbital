@@ -10,7 +10,7 @@ use event::{EventQueue, user_data};
 use graphics_ipc::V2GraphicsHandle;
 use inputd::{ConsumerHandle, ConsumerHandleEvent};
 use log::error;
-use orbclient::{Color, Event};
+use orbclient::{Color, Event, rect::Rect};
 use redox_scheme::{
     CallerCtx, OpenResult, RequestKind, Response, SignalBehavior, Socket,
     scheme::{IntoTag, Op, OpRead, SchemeState, SchemeSync, register_scheme_inner},
@@ -20,13 +20,10 @@ use syscall::{
     schemev2::NewFdFlags,
 };
 
-use crate::core::{display::Displays, rect::Rect};
-use crate::scheme::OrbitalScheme;
 use crate::window::WindowId;
+use crate::{core::display::Displays, scheme::OrbitalScheme};
 
 pub(crate) mod display;
-pub(crate) mod image;
-pub(crate) mod rect;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -48,8 +45,8 @@ pub struct Properties<'a> {
     pub flags: String,
     pub x: i32,
     pub y: i32,
-    pub width: i32,
-    pub height: i32,
+    pub width: u32,
+    pub height: u32,
     pub title: &'a str,
 }
 
@@ -331,8 +328,8 @@ impl SchemeSync for OrbitalHandler {
 
         let x = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
         let y = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-        let width = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-        let height = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+        let width = parts.next().unwrap_or("").parse::<u32>().unwrap_or(0);
+        let height = parts.next().unwrap_or("").parse::<u32>().unwrap_or(0);
 
         let mut title = parts.next().unwrap_or("").to_string();
         for part in parts {
@@ -497,8 +494,8 @@ impl SchemeSync for OrbitalHandler {
                 }
                 "S" => {
                     let mut parts = data.split(',');
-                    let w = parts.next().unwrap_or("").parse::<i32>().ok();
-                    let h = parts.next().unwrap_or("").parse::<i32>().ok();
+                    let w = parts.next().unwrap_or("").parse::<u32>().ok();
+                    let h = parts.next().unwrap_or("").parse::<u32>().ok();
 
                     self.handler.handle_window_resize(id, w, h)?;
 
@@ -515,8 +512,8 @@ impl SchemeSync for OrbitalHandler {
                     while parts.peek().is_some() {
                         let x = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
                         let y = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-                        let w = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
-                        let h = parts.next().unwrap_or("").parse::<i32>().unwrap_or(0);
+                        let w = parts.next().unwrap_or("").parse::<u32>().unwrap_or(0);
+                        let h = parts.next().unwrap_or("").parse::<u32>().unwrap_or(0);
                         damages.push(Rect::new(x, y, w, h));
                     }
                     self.handler.handle_window_sync(id, Some(damages))?;

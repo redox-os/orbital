@@ -5,14 +5,11 @@ use drm::control::{ClipRect, Device as _, crtc, framebuffer};
 use drm::{ClientCapability, Device as _, DriverCapability};
 use graphics_ipc::{CpuBackedBuffer, V2GraphicsHandle};
 use log::{debug, error};
+use orbclient::image::{Image, ImageRef, ImageRoiMut};
+use orbclient::rect::{Rect, RectEdge};
 use orbclient::{Color, Renderer};
 use std::mem;
 use std::{convert::TryInto, io, slice};
-
-use crate::core::{
-    image::{Image, ImageRef, ImageRoiMut},
-    rect::Rect,
-};
 
 pub struct V2DisplayMap {
     fb: framebuffer::Handle,
@@ -97,7 +94,7 @@ impl V2DisplayMap {
                 (width * height) as usize,
             )
         };
-        ImageRef::from_data(width as i32, height as i32, display_slice)
+        ImageRef::from_data(width, height, display_slice)
     }
 }
 
@@ -128,7 +125,7 @@ impl CursorMap {
                 (width * height) as usize,
             )
         };
-        ImageRef::from_data(width as i32, height as i32, display_slice)
+        ImageRef::from_data(width, height, display_slice)
     }
 }
 
@@ -234,13 +231,11 @@ impl Display {
         );
     }
 
-    pub fn border_rect(&mut self, rect: &Rect, color: Color, thickness: i32) {
-        let (x, y, w, h) = (rect.left(), rect.top(), rect.width(), rect.height());
-        let t = thickness;
-        self.rect(&Rect::new(x, y, w, t), color); // top
-        self.rect(&Rect::new(x, y + h - t, w, t), color); // bottom
-        self.rect(&Rect::new(x, y, t, h), color); // left
-        self.rect(&Rect::new(x + w - t, y, t, h), color); // right
+    pub fn border_rect(&mut self, rect: &Rect, color: Color, thickness: u32) {
+        self.rect(&rect.edge(thickness, 0, RectEdge::Top), color);
+        self.rect(&rect.edge(thickness, 0, RectEdge::Bottom), color);
+        self.rect(&rect.edge(thickness, 0, RectEdge::Left), color);
+        self.rect(&rect.edge(thickness, 0, RectEdge::Right), color);
     }
 
     pub fn resize_if_necessary(&mut self, display_handle: &V2GraphicsHandle) -> bool {
@@ -265,12 +260,8 @@ impl Display {
     }
 
     pub fn screen_rect(&self) -> Rect {
-        Rect::new(
-            self.x,
-            self.y,
-            self.map.buffer.buffer().size().0 as i32,
-            self.map.buffer.buffer().size().1 as i32,
-        )
+        let size = self.map.buffer.buffer().size();
+        Rect::new(self.x, self.y, size.0, size.1)
     }
 
     pub fn move_cursor(
