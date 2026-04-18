@@ -588,12 +588,14 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 
 [[package]]
 name = "orbclient"
-version = "0.3.51"
+version = "0.3.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59aed3b33578edcfa1bc96a321d590d31832b6ad55a26f0313362ce687e9abd6"
+checksum = "12c6933ddbbd16539a7672e697bb8d41ac3a4e99ac43eeb40c07236bd7fcb2dd"
 dependencies = [
+ "image",
  "libc",
  "libredox",
+ "resize",
  "sdl2",
 ]
 
@@ -609,17 +611,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "orbimage"
-version = "0.1.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39fe3f9612b797a312bf122a67ebce408936b34996b9be419dbf0b3d4638c424"
-dependencies = [
- "image",
- "orbclient",
- "resize",
-]
-
-[[package]]
 name = "orbital"
 version = "0.1.0"
 dependencies = [
@@ -632,7 +623,6 @@ dependencies = [
  "log",
  "orbclient",
  "orbfont",
- "orbimage",
  "plain",
  "redox-log",
  "redox-scheme",

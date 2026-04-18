@@ -2,11 +2,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use log::{error, info};
-use orbclient::Color;
+use orbclient::rect::Rect;
+use orbclient::{Color, image::Image};
 
 use crate::core::display::{Display, Displays};
-use crate::core::image::Image;
-use crate::core::rect::Rect;
 
 pub struct Compositor {
     displays: Displays,
@@ -245,9 +244,9 @@ impl Compositor {
                 let cursor_intersect = rect.intersection(&cursor_rect);
                 if !cursor_intersect.is_empty() {
                     display.roi_mut(&cursor_intersect).blend(
-                        &self
-                            .cursor
-                            .roi(&cursor_intersect.offset(-cursor_rect.left(), -cursor_rect.top())),
+                        &self.cursor.roi(
+                            &cursor_intersect.translate(-cursor_rect.left(), -cursor_rect.top()),
+                        ),
                     );
                 }
             }
