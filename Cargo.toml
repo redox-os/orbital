@@ -9,12 +9,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-drm = "0.14.2"
+drm = "0.15"
 graphics-ipc = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
 inputd = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
 libc = "0.2.48"
 log = "0.4.14"
-orbclient = { version = "0.3.53", features = ["image"] }
+orbclient = { version = "0.3.54", features = ["image"] }
 orbfont = "0.1"
 redox-log = { git = "https://gitlab.redox-os.org/redox-os/redox-log.git" }
 redox_syscall = { version = "0.7.0", features = ["std"] }
