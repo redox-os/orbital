@@ -84,7 +84,7 @@ impl Compositor {
         let mut height = screen_rect.height();
         // TODO: This is a hack, orblauncher should
         // talk with orbital to register this value
-        height -= 48 * ((height / 1600) + 1);
+        height.saturating_sub(48 * ((height / 1600) + 1));
         Rect::new(
             screen_rect.left(),
             screen_rect.top(),
