@@ -1641,10 +1641,10 @@ impl OrbitalScheme {
         // Automatic placement
         if x < 0 && y < 0 {
             // Center by default in allowed area
-            let center_x = cmp::max(0, (allow_rect.width() - width) / 2) as i32;
+            let center_x = cmp::max(0, (allow_rect.iwidth() - width as i32) / 2);
             let center_y = cmp::max(
-                window.title_rect().height(),
-                (allow_rect.height() - height) / 2,
+                window.title_rect().iheight(),
+                (allow_rect.iheight() - height as i32) / 2,
             ) as i32;
             window.x = center_x;
             window.y = center_y;

@@ -252,18 +252,15 @@ impl Window {
         let self_rect = self.rect();
         let intersect = self_rect.intersection(rect);
         if !intersect.is_empty() {
+            let window_rect = intersect.translate(-self_rect.left(), -self_rect.top());
             if self.transparent {
-                display.roi_mut(&intersect).blend(
-                    &self
-                        .image
-                        .roi(&intersect.translate(-self_rect.left(), -self_rect.top())),
-                );
+                display
+                    .roi_mut(&intersect)
+                    .blend(&self.image.roi(&window_rect));
             } else {
-                display.roi_mut(&intersect).blit(
-                    &self
-                        .image
-                        .roi(&intersect.translate(-self_rect.left(), -self_rect.top())),
-                );
+                display
+                    .roi_mut(&intersect)
+                    .blit(&self.image.roi(&window_rect));
             }
         }
     }
