@@ -81,15 +81,15 @@ impl Compositor {
 
     /// Reduce the rect height based on orblauncher bar height
     pub fn get_window_rect_from_screen_rect(&self, screen_rect: &Rect) -> Rect {
-        let mut height = screen_rect.height();
+        let height = screen_rect.height();
         // TODO: This is a hack, orblauncher should
         // talk with orbital to register this value
-        height.saturating_sub(48 * ((height / 1600) + 1));
+        let taskbar_h = 48 * ((height / 1600) + 1);
         Rect::new(
             screen_rect.left(),
             screen_rect.top(),
             screen_rect.width(),
-            height,
+            height.saturating_sub(taskbar_h),
         )
     }
 
