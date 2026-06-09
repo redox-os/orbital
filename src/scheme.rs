@@ -1095,8 +1095,7 @@ impl OrbitalScheme {
                     }
                 }
                 _ => {
-                    //TODO: remove hack for sending super events to lowest numbered window
-                    // ADM is this related to Launcher or Background or something?
+                    //TODO: send all modifier instead by repurposing unused 'character' then remove this hack
                     if let Some((id, window)) = self.windows.iter_mut().next() {
                         info!("sending super {:?} to {}, {}", event, id.0, window.title);
                         let mut super_event = event.to_event();
@@ -1115,14 +1114,26 @@ impl OrbitalScheme {
         if self.modifier_state & SUPER_MODIFIER == 0 {
             if let Some(id) = self.order.focused() {
                 if let Some(window) = self.windows.get_mut(&id) {
-                    if event.pressed && event.character != '\0' {
+                    // TODO: ALT GR mapping is not handled
+                    if event.pressed
+                        && event.character != '\0'
+                        && self.modifier_state & (CONTROL_MODIFIER | ALT_MODIFIER) == 0
+                    {
                         let text_input_event = TextInputEvent {
                             character: event.character,
                         }
                         .to_event();
                         window.event(text_input_event);
                     }
-                    window.event(event.to_event());
+                    // TODO: Remove event.character or repurpose it to send all modifiers
+                    window.event(
+                        KeyEvent {
+                            character: '\0',
+                            pressed: event.pressed,
+                            scancode: event.scancode,
+                        }
+                        .to_event(),
+                    );
                 }
             }
         }
