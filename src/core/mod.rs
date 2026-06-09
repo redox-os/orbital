@@ -360,7 +360,7 @@ impl SchemeSync for OrbitalHandler {
             self.next_id += 1;
             Ok(OpenResult::ThisScheme {
                 number: new_id,
-                flags: NewFdFlags::empty(),
+                flags: NewFdFlags::POSITIONED,
             })
         } else {
             Err(syscall::Error::new(EINVAL))
@@ -370,7 +370,7 @@ impl SchemeSync for OrbitalHandler {
         &mut self,
         id: usize,
         buf: &mut [u8],
-        _offset: u64,
+        offset: u64,
         _flags: u32,
         _ctx: &CallerCtx,
     ) -> syscall::Result<usize> {
@@ -379,7 +379,7 @@ impl SchemeSync for OrbitalHandler {
         };
         //TODO: implement better clipboard mechanism
         let id = match *handle {
-            Handle::Clipboard(id) => return self.handler.handle_clipboard_read(id, buf),
+            Handle::Clipboard(id) => return self.handler.handle_clipboard_read(id, offset, buf),
             Handle::Window(id) => id,
             Handle::SchemeRoot | Handle::DisplaySize(_) => return Err(syscall::Error::new(EBADF)),
         };
@@ -397,7 +397,7 @@ impl SchemeSync for OrbitalHandler {
         &mut self,
         id: usize,
         buf: &[u8],
-        _offset: u64,
+        offset: u64,
         _flags: u32,
         _ctx: &CallerCtx,
     ) -> syscall::Result<usize> {
@@ -406,7 +406,7 @@ impl SchemeSync for OrbitalHandler {
         };
         //TODO: implement better clipboard mechanism
         let id = match *handle {
-            Handle::Clipboard(id) => return self.handler.handle_clipboard_write(id, buf),
+            Handle::Clipboard(id) => return self.handler.handle_clipboard_write(id, offset, buf),
             Handle::Window(id) => id,
             Handle::SchemeRoot | Handle::DisplaySize(_) => return Err(syscall::Error::new(EBADF)),
         };

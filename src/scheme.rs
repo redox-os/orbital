@@ -498,33 +498,42 @@ impl OrbitalScheme {
     pub fn handle_clipboard_new(&mut self, id: WindowId) -> Result<WindowId> {
         //TODO: implement better clipboard mechanism
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
-        window.clipboard_seek = 0;
         Ok(id)
     }
 
     /// Read window clipboard
-    pub fn handle_clipboard_read(&mut self, id: WindowId, buf: &mut [u8]) -> Result<usize> {
+    pub fn handle_clipboard_read(
+        &mut self,
+        id: WindowId,
+        offset: u64,
+        buf: &mut [u8],
+    ) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         let mut i = 0;
-        while i < buf.len() && window.clipboard_seek < self.clipboard.len() {
+        let mut offset = offset as usize;
+        while i < buf.len() && offset < self.clipboard.len() {
             buf[i] = self.clipboard[i];
             i += 1;
-            window.clipboard_seek += 1;
+            offset += 1;
         }
         Ok(i)
     }
 
     /// Write window clipboard
-    pub fn handle_clipboard_write(&mut self, id: WindowId, buf: &[u8]) -> Result<usize> {
+    pub fn handle_clipboard_write(
+        &mut self,
+        id: WindowId,
+        offset: u64,
+        buf: &[u8],
+    ) -> Result<usize> {
         //TODO: implement better clipboard mechanism
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         let mut i = 0;
-        self.clipboard.truncate(window.clipboard_seek);
+        self.clipboard.truncate(offset as usize);
         while i < buf.len() {
             self.clipboard.push(buf[i]);
             i += 1;
-            window.clipboard_seek += 1;
         }
         Ok(i)
     }
