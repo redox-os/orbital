@@ -20,7 +20,7 @@ pub struct V2DisplayMap {
 
 impl V2DisplayMap {
     fn new(display_handle: &V2GraphicsHandle) -> io::Result<Self> {
-        let connector = display_handle.first_display().unwrap();
+        let connector = display_handle.first_display().unwrap().handle();
         let connector_info = display_handle.get_connector(connector, true).unwrap();
 
         let mode = connector_info.modes()[0];

@@ -3,14 +3,15 @@ use std::{
     io::{self, Write},
     mem,
     os::unix::io::AsRawFd,
-    slice, str,
+    slice,
+    str::{self, FromStr},
 };
 
 use event::{EventQueue, user_data};
 use graphics_ipc::V2GraphicsHandle;
 use inputd::{ConsumerHandle, ConsumerHandleEvent};
 use log::error;
-use orbclient::{Color, Event, rect::Rect};
+use orbclient::{Color, Event, WindowDragKind, rect::Rect};
 use redox_scheme::{
     CallerCtx, OpenResult, RequestKind, Response, SignalBehavior, Socket,
     scheme::{IntoTag, Op, OpRead, SchemeState, SchemeSync, register_scheme_inner},
@@ -430,19 +431,13 @@ impl SchemeSync for OrbitalHandler {
                     }
                     _ => Err(syscall::Error::new(EINVAL)),
                 },
-                "D" => match data {
-                    "" => {
-                        self.handler.handle_window_drag(id)?;
-                        Ok(buf.len())
-                    }
-                    //TODO: resize by dragging edge
-                    // Comma separated
-                    // B is bottom
-                    // L is left
-                    // R is right
-                    // T is top
-                    _ => Err(syscall::Error::new(EINVAL)),
-                },
+                "D" => {
+                    let Ok(mode) = WindowDragKind::from_str(data) else {
+                        return Err(syscall::Error::new(EINVAL));
+                    };
+                    self.handler.handle_window_drag(id, mode)?;
+                    Ok(buf.len())
+                }
                 "F" => {
                     let mut parts = data.split(',');
                     let flags = parts.next().unwrap_or("");
