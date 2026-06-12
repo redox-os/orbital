@@ -34,6 +34,7 @@ enum CursorKind {
 enum DragMode {
     None,
     Title(WindowId, i32, i32),
+    TopBorder(WindowId, i32, i32),
     LeftBorder(WindowId, i32, i32),
     RightBorder(WindowId, i32),
     BottomBorder(WindowId, i32),
@@ -308,11 +309,29 @@ impl OrbitalScheme {
     }
 
     /// Called when the window asks to be dragged
-    pub fn handle_window_drag(&mut self, id: WindowId /*TODO: resize sides */) -> Result<()> {
-        let _window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
-        if self.cursor_left {
-            self.dragging = DragMode::Title(id, self.cursor_x, self.cursor_y);
+    pub fn handle_window_drag(&mut self, id: WindowId, mode: WindowDragKind) -> Result<()> {
+        if self.hover != Some(id) {
+            return Ok(());
         }
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+
+        self.dragging = match mode {
+            WindowDragKind::Move => DragMode::Title(id, self.cursor_x, self.cursor_y),
+            WindowDragKind::ResizeTop => {
+                DragMode::TopBorder(id, self.cursor_y - window.y, window.y + window.iheight())
+            }
+            WindowDragKind::ResizeLeft => {
+                DragMode::LeftBorder(id, self.cursor_x - window.x, window.x + window.iwidth())
+            }
+            WindowDragKind::ResizeRight => {
+                DragMode::RightBorder(id, self.cursor_x - (window.x + window.iwidth()))
+            }
+            WindowDragKind::ResizeBottom => {
+                DragMode::BottomBorder(id, self.cursor_y - (window.y + window.iheight()))
+            }
+            WindowDragKind::None => DragMode::None,
+        };
+
         Ok(())
     }
 
@@ -373,7 +392,6 @@ impl OrbitalScheme {
     /// Called when the window wants to set a flag
     pub fn handle_window_set_flag(&mut self, id: WindowId, flag: char, value: bool) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
-
         // Handle maximized flag custom
         if flag == window::ORBITAL_FLAG_MAXIMIZED || flag == window::ORBITAL_FLAG_FULLSCREEN {
             let toggle_tile = if value {
@@ -1263,6 +1281,38 @@ impl OrbitalScheme {
                     self.dragging = DragMode::None;
                 }
             }
+            DragMode::TopBorder(window_id, off_y, bottom_y) => {
+                if let Some(window) = self.windows.get_mut(&window_id) {
+                    new_cursor = CursorKind::BottomSide; // TODO
+
+                    let y = event.y - off_y;
+                    let h = bottom_y - y;
+
+                    if h > 0 {
+                        if y != window.y {
+                            Self::update_window(
+                                &mut self.compositor,
+                                window,
+                                |_compositor, window| {
+                                    window.y = y;
+                                    window.event(MoveEvent { x: window.x, y: y }.to_event());
+                                },
+                            );
+                        }
+
+                        if h != window.iheight() {
+                            let resize_event = ResizeEvent {
+                                width: window.width(),
+                                height: h as u32,
+                            }
+                            .to_event();
+                            window.event(resize_event);
+                        }
+                    }
+                } else {
+                    self.dragging = DragMode::None;
+                }
+            }
             DragMode::LeftBorder(window_id, off_x, right_x) => {
                 if let Some(window) = self.windows.get_mut(&window_id) {
                     new_cursor = CursorKind::LeftSide;
@@ -1285,7 +1335,7 @@ impl OrbitalScheme {
                         if w != window.iwidth() {
                             let resize_event = ResizeEvent {
                                 width: w as u32,
-                                height: window.height() as u32,
+                                height: window.height(),
                             }
                             .to_event();
                             window.event(resize_event);
@@ -1302,7 +1352,7 @@ impl OrbitalScheme {
                     if w > 0 && w != window.iwidth() {
                         let resize_event = ResizeEvent {
                             width: w as u32,
-                            height: window.height() as u32,
+                            height: window.height(),
                         }
                         .to_event();
                         window.event(resize_event);
@@ -1317,7 +1367,7 @@ impl OrbitalScheme {
                     let h = event.y - off_y - window.y;
                     if h > 0 && h != window.iheight() {
                         let resize_event = ResizeEvent {
-                            width: window.width() as u32,
+                            width: window.width(),
                             height: h as u32,
                         }
                         .to_event();
