@@ -7,11 +7,7 @@ use std::{cmp, collections::BTreeMap, fs, io, str};
 use log::{error, info, warn};
 use orbclient::image::Image;
 use orbclient::rect::{Rect, RectEdge};
-use orbclient::{
-    self, ButtonEvent, ClipboardEvent, Color, Event, EventOption, FocusEvent, HoverEvent, KeyEvent,
-    MouseEvent, MouseRelativeEvent, MoveEvent, QuitEvent, Renderer, ResizeEvent, ScreenEvent,
-    TextInputEvent,
-};
+use orbclient::*;
 use redox_scheme::Response;
 use syscall::EVENT_READ;
 use syscall::error::{EBADF, Error, Result};
@@ -497,19 +493,17 @@ impl OrbitalScheme {
     /// Create a clipboard from a window
     pub fn handle_clipboard_new(&mut self, id: WindowId) -> Result<WindowId> {
         //TODO: implement better clipboard mechanism
-        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         Ok(id)
     }
 
     /// Read window clipboard
     pub fn handle_clipboard_read(
         &mut self,
-        id: WindowId,
+        _id: WindowId,
         offset: u64,
         buf: &mut [u8],
     ) -> Result<usize> {
         //TODO: implement better clipboard mechanism
-        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         let mut i = 0;
         let mut offset = offset as usize;
         while i < buf.len() && offset < self.clipboard.len() {
@@ -523,12 +517,11 @@ impl OrbitalScheme {
     /// Write window clipboard
     pub fn handle_clipboard_write(
         &mut self,
-        id: WindowId,
+        _id: WindowId,
         offset: u64,
         buf: &[u8],
     ) -> Result<usize> {
         //TODO: implement better clipboard mechanism
-        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         let mut i = 0;
         self.clipboard.truncate(offset as usize);
         while i < buf.len() {
@@ -947,11 +940,16 @@ impl OrbitalScheme {
         }
     }
 
-    fn clipboard_event(&mut self, kind: u8) {
+    fn clipboard_event(&mut self, kind: ClipboardAction) {
         if let Some(id) = self.order.focused() {
             if let Some(window) = self.windows.get_mut(&id) {
+                let size = if matches!(kind, ClipboardAction::Paste) {
+                    self.clipboard.len().saturating_sub(1)
+                } else {
+                    0
+                };
                 //TODO: set window's clipboard to primary
-                let clipboard_event = ClipboardEvent { kind, size: 0 }.to_event();
+                let clipboard_event = ClipboardEvent { kind, size }.to_event();
                 window.event(clipboard_event);
             }
         }
@@ -1083,9 +1081,9 @@ impl OrbitalScheme {
                 orbclient::K_DOWN => self.move_front_window(0, GRID_SIZE),
                 orbclient::K_LEFT => self.move_front_window(-GRID_SIZE, 0),
                 orbclient::K_RIGHT => self.move_front_window(GRID_SIZE, 0),
-                orbclient::K_C => self.clipboard_event(orbclient::CLIPBOARD_COPY),
-                orbclient::K_X => self.clipboard_event(orbclient::CLIPBOARD_CUT),
-                orbclient::K_V => self.clipboard_event(orbclient::CLIPBOARD_PASTE),
+                orbclient::K_C => self.clipboard_event(ClipboardAction::Copy),
+                orbclient::K_X => self.clipboard_event(ClipboardAction::Cut),
+                orbclient::K_V => self.clipboard_event(ClipboardAction::Paste),
                 orbclient::K_F10 => {
                     self.compositor.toggle_damage_border();
                 }
