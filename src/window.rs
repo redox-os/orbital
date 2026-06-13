@@ -27,6 +27,7 @@ pub const ORBITAL_FLAG_BORDERLESS: char = 'l';
 pub const ORBITAL_FLAG_MAXIMIZED: char = 'm';
 pub const ORBITAL_FLAG_FULLSCREEN: char = 'M';
 pub const ORBITAL_FLAG_RESIZABLE: char = 'r';
+pub const ORBITAL_FLAG_SCALABLE: char = 's';
 pub const ORBITAL_FLAG_TRANSPARENT: char = 't';
 pub const ORBITAL_FLAG_UNCLOSABLE: char = 'u';
 
@@ -42,6 +43,7 @@ pub struct Window {
     pub borderless: bool,
     pub hidden: bool,
     pub resizable: bool,
+    pub scalable: bool,
     pub transparent: bool,
     pub unclosable: bool,
     pub zorder: WindowZOrder,
@@ -77,6 +79,7 @@ impl Window {
             hidden: false,
             resizable: false,
             transparent: false,
+            scalable: false,
             unclosable: false,
             zorder: WindowZOrder::Normal,
             restore: None,
@@ -270,7 +273,8 @@ impl Window {
                     orbclient::EVENT_MOUSE
                     | orbclient::EVENT_MOVE
                     | orbclient::EVENT_RESIZE
-                    | orbclient::EVENT_SCREEN => {
+                    | orbclient::EVENT_SCREEN
+                    | orbclient::EVENT_SCALE => {
                         *last_event = event;
                         return;
                     }
@@ -388,6 +392,7 @@ impl Window {
             ORBITAL_FLAG_BORDERLESS => self.borderless = value,
             ORBITAL_FLAG_RESIZABLE => self.resizable = value,
             ORBITAL_FLAG_TRANSPARENT => self.transparent = value,
+            ORBITAL_FLAG_SCALABLE => self.scalable = value,
             ORBITAL_FLAG_UNCLOSABLE => self.unclosable = value,
             _ => {
                 log::warn!("unknown window flag {:?}", flag);
