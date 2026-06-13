@@ -110,7 +110,7 @@ impl OrbitalScheme {
     pub(crate) fn new(displays: Displays, config: Rc<Config>) -> Result<OrbitalScheme, String> {
         let mut scale = NonZero::new(1).unwrap();
         for display in displays.displays.iter() {
-            if let Some(s) = NonZero::new(display.scale().cast_unsigned()) {
+            if let Some(s) = NonZero::new(display.scale()) {
                 scale = cmp::max(scale, s);
             }
         }
@@ -182,9 +182,9 @@ impl OrbitalScheme {
         self.compositor.displays().len()
     }
 
-    pub(crate) fn display_size(&self, display: usize) -> (u32, u32) {
+    pub(crate) fn display_size(&self, display: usize) -> (u32, u32, u32) {
         let rect = self.compositor.displays()[display].screen_rect();
-        (rect.width(), rect.height())
+        (rect.width(), rect.height(), self.scale)
     }
 
     fn update_window(
@@ -417,6 +417,13 @@ impl OrbitalScheme {
             Self::update_window(&mut self.compositor, window, |_compositor, window| {
                 window.set_flag(flag, value);
             });
+            // Send scale event to the window, not part of queue redraw
+            if flag == window::ORBITAL_FLAG_SCALABLE && value {
+                let scale_event = ScaleEvent {
+                    scale: self.scale as i32,
+                };
+                window.event(scale_event.to_event());
+            }
         }
 
         Ok(())
@@ -1227,6 +1234,10 @@ impl OrbitalScheme {
                                 let mut window_event = event.to_event();
                                 window_event.a -= window.x as i64;
                                 window_event.b -= window.y as i64;
+                                if window.scalable {
+                                    window_event.a /= window.scale as i64;
+                                    window_event.b /= window.scale as i64;
+                                }
                                 window.event(window_event);
                             }
                             break;
@@ -1632,6 +1643,20 @@ impl OrbitalScheme {
         for (_window_id, window) in self.windows.iter_mut() {
             window.event(screen_event);
         }
+
+        let new_scale = self.compositor.scale();
+        if self.scale != new_scale {
+            self.scale = new_scale;
+            let scale_event = ScaleEvent {
+                scale: new_scale as i32,
+            }
+            .to_event();
+            for (_window_id, window) in self.windows.iter_mut() {
+                if window.scalable {
+                    window.event(scale_event);
+                }
+            }
+        }
     }
 
     fn event(&mut self, event_union: Event) {
@@ -1705,14 +1730,19 @@ impl OrbitalScheme {
 
         window.title = title;
         window.render_title(&self.font);
+        let scalable = flags.contains(window::ORBITAL_FLAG_SCALABLE) && self.scale > 1;
 
         // Automatic placement
         if x < 0 && y < 0 {
             // Center by default in allowed area
-            let center_x = cmp::max(0, (allow_rect.iwidth() - width as i32) / 2);
+            let mut scale = 1;
+            if scalable {
+                scale = self.scale;
+            }
+            let center_x = cmp::max(0, (allow_rect.iwidth() - (width * scale) as i32) / 2);
             let center_y = cmp::max(
                 window.title_rect().iheight(),
-                (allow_rect.iheight() - height as i32) / 2,
+                (allow_rect.iheight() - (height * scale) as i32) / 2,
             ) as i32;
             window.x = center_x;
             window.y = center_y;
@@ -1770,6 +1800,15 @@ impl OrbitalScheme {
         // Add to zorder as appropriate
         self.order.add_window(id, window.zorder);
 
+        if scalable {
+            window.event(
+                ScaleEvent {
+                    scale: self.scale as _,
+                }
+                .to_event(),
+            );
+        }
+
         self.windows.insert(id, window);
 
         // Focus new top window
@@ -1778,11 +1817,10 @@ impl OrbitalScheme {
         }
 
         // Ensure mouse cursor is correct
-        let event = MouseEvent {
+        self.mouse_event(MouseEvent {
             x: self.cursor_x,
             y: self.cursor_y,
-        };
-        self.mouse_event(event);
+        });
 
         Ok(id)
     }

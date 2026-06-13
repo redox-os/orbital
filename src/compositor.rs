@@ -60,9 +60,14 @@ impl Compositor {
         self.damage_borders = !self.damage_borders;
     }
 
-    /// Return the screen rectangle
+    /// Return the first display screen rectangle
     pub fn screen_rect(&self) -> Rect {
         self.displays()[0].screen_rect()
+    }
+
+    /// Return the first display scale rectangle
+    pub fn scale(&self) -> u32 {
+        self.displays()[0].scale()
     }
 
     /// Find the display that a window (`rect`) most overlaps and return it's screen_rect
