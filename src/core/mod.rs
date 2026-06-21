@@ -569,9 +569,9 @@ impl SchemeSync for OrbitalHandler {
     fn fpath(&mut self, id: usize, mut buf: &mut [u8], _ctx: &CallerCtx) -> syscall::Result<usize> {
         match self.handles.get(&id) {
             Some(&Handle::DisplaySize(display)) => {
-                let (width, height) = self.handler.display_size(display);
+                let (width, height, scale) = self.handler.display_size(display);
                 let original_len = buf.len();
-                let _ = write!(buf, "orbital:99.{display}/{}/{}", width, height);
+                let _ = write!(buf, "orbital:99.{display}/{}/{}/{}", width, height, scale);
                 Ok(original_len - buf.len())
             }
             Some(&Handle::Window(id) | &Handle::Clipboard(id)) => {

@@ -179,7 +179,7 @@ impl Displays {
 pub struct Display {
     x: i32,
     y: i32,
-    scale: i32,
+    scale: u32,
     map: V2DisplayMap,
     cursor_map: Option<CursorMap>,
 }
@@ -200,7 +200,7 @@ impl Display {
 
         debug!("Display at {}, {}, {}, {}", x, y, width, height);
 
-        let scale = (height as i32 / 1600) + 1;
+        let scale = Self::calculate_scale(height as u32);
 
         let map = V2DisplayMap::new(display_handle)?;
         let cursor_map = hw_cursor
@@ -215,8 +215,12 @@ impl Display {
         })
     }
 
-    pub fn scale(&self) -> i32 {
+    pub fn scale(&self) -> u32 {
         self.scale
+    }
+
+    fn calculate_scale(height: u32) -> u32 {
+        height / 1600 + 1
     }
 
     pub fn rect(&mut self, rect: &Rect, color: Color) {
@@ -240,7 +244,13 @@ impl Display {
 
     pub fn resize_if_necessary(&mut self, display_handle: &V2GraphicsHandle) -> bool {
         match self.map.resize_if_necessary(display_handle) {
-            Ok(resized) => resized,
+            Ok(resized) => {
+                if resized {
+                    let (_, height) = self.map.buffer.buffer().size();
+                    self.scale = Self::calculate_scale(height);
+                }
+                resized
+            }
             Err(err) => {
                 error!("failed to resize display: {err}");
                 false
