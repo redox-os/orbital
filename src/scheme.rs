@@ -1680,7 +1680,9 @@ impl OrbitalScheme {
             }
             EventOption::MouseRelative(event) => self.mouse_relative_event(event),
             EventOption::Button(event) => self.button_event(event),
-            EventOption::Scroll(_) => {
+            EventOption::Scroll(_)
+            | EventOption::ControllerAxis(_)
+            | EventOption::ControllerButton(_) => {
                 if let Some(id) = self.order.iter_front_to_back().next() {
                     if let Some(window) = self.windows.get_mut(&id) {
                         window.event(event_union);
