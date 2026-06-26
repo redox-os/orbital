@@ -11,6 +11,8 @@ use orbclient::{Color, Renderer};
 use std::mem;
 use std::{convert::TryInto, io, slice};
 
+pub const SCALE_BASELINE: u32 = 160;
+
 pub struct V2DisplayMap {
     fb: framebuffer::Handle,
     connector: connector::Handle,
@@ -180,6 +182,7 @@ pub struct Display {
     x: i32,
     y: i32,
     scale: u32,
+    factored_scale: u32,
     map: V2DisplayMap,
     cursor_map: Option<CursorMap>,
 }
@@ -201,6 +204,7 @@ impl Display {
         debug!("Display at {}, {}, {}, {}", x, y, width, height);
 
         let scale = Self::calculate_scale(height as u32);
+        let factored_scale = Self::calculate_factored(height as u32);
 
         let map = V2DisplayMap::new(display_handle)?;
         let cursor_map = hw_cursor
@@ -210,6 +214,7 @@ impl Display {
             x,
             y,
             scale,
+            factored_scale,
             map,
             cursor_map,
         })
@@ -219,8 +224,24 @@ impl Display {
         self.scale
     }
 
+    pub fn factored_scale(&self) -> u32 {
+        self.factored_scale
+    }
+
+    /// Non-fractional scaling (e.g. 1600px -> 2x, 3200px -> 3x)
+    /// used for orbital elements
     fn calculate_scale(height: u32) -> u32 {
         height / 1600 + 1
+    }
+
+    /// Fractional scaling (e.g. 1600px -> 1.5x, 2400px -> 2x, 3200px -> 2.5x)
+    /// used for windows that implements scalable
+    fn calculate_factored(height: u32) -> u32 {
+        const BASELINE_OFFSET: u32 = SCALE_BASELINE * 5;
+        if height < BASELINE_OFFSET {
+            return SCALE_BASELINE;
+        }
+        SCALE_BASELINE + ((height - BASELINE_OFFSET) / 10)
     }
 
     pub fn rect(&mut self, rect: &Rect, color: Color) {
