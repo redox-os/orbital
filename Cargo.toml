@@ -14,7 +14,7 @@ graphics-ipc = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
 inputd = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
 libc = "0.2.48"
 log = "0.4.14"
-orbclient = { version = "0.4.1", features = ["image"] }
+orbclient = { version = "0.4.2", features = ["image"] }
 orbfont = "0.4"
 redox-log = { git = "https://gitlab.redox-os.org/redox-os/redox-log.git" }
 redox_syscall = { version = "0.8.0", features = ["std"] }

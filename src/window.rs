@@ -1,5 +1,8 @@
 use crate::{
-    core::{Properties, display::Display},
+    core::{
+        Properties,
+        display::{Display, SCALE_BASELINE},
+    },
     scheme::TilePosition,
     window_order::WindowZOrder,
 };
@@ -38,6 +41,7 @@ pub struct Window {
     pub x: i32,
     pub y: i32,
     pub scale: u32,
+    pub factored_scale: u32,
     pub title: String,
     pub asynchronous: bool,
     pub borderless: bool,
@@ -73,6 +77,7 @@ impl Window {
             x,
             y,
             scale,
+            factored_scale: SCALE_BASELINE,
             title: String::new(),
             asynchronous: false,
             borderless: false,
