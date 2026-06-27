@@ -17,7 +17,7 @@ use crate::config::Config;
 use crate::core::display::{Displays, SCALE_BASELINE};
 use crate::core::{Orbital, Properties};
 use crate::widget::fps::FpsWidget;
-use crate::window::{self, Window, WindowId};
+use crate::window::{Window, WindowId};
 use crate::window_order::{WindowOrder, WindowZOrder};
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
@@ -394,10 +394,15 @@ impl OrbitalScheme {
     }
 
     /// Called when the window wants to set a flag
-    pub fn handle_window_set_flag(&mut self, id: WindowId, flag: char, value: bool) -> Result<()> {
+    pub fn handle_window_set_flag(
+        &mut self,
+        id: WindowId,
+        flag: WindowFlag,
+        value: bool,
+    ) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
         // Handle maximized flag custom
-        if flag == window::ORBITAL_FLAG_MAXIMIZED || flag == window::ORBITAL_FLAG_FULLSCREEN {
+        if matches!(flag, WindowFlag::Maximized | WindowFlag::Fullscreen) {
             let toggle_tile = if value {
                 window.restore = None;
                 true
@@ -409,7 +414,7 @@ impl OrbitalScheme {
                     &mut self.compositor,
                     &mut self.windows,
                     id,
-                    if flag == window::ORBITAL_FLAG_FULLSCREEN {
+                    if flag == WindowFlag::Fullscreen {
                         TilePosition::FullScreen
                     } else {
                         TilePosition::Maximized
@@ -422,7 +427,7 @@ impl OrbitalScheme {
                 window.set_flag(flag, value);
             });
             // Send scale event to the window, not part of queue redraw
-            if flag == window::ORBITAL_FLAG_SCALABLE && value {
+            if flag == WindowFlag::Scalable && value {
                 let scale_event = ScaleEvent {
                     scale: self.factored_scale as i32,
                     baseline: SCALE_BASELINE as i32,
@@ -1730,20 +1735,22 @@ impl OrbitalScheme {
         let allow_rect = self
             .compositor
             .get_window_rect_from_screen_rect(&screen_rect);
-        if flags.contains(window::ORBITAL_FLAG_RESIZABLE) {
+
+        let flags = WindowFlags::new(flags);
+        if flags.contains(WindowFlag::Resizable) {
             width = width.min(allow_rect.width());
             height = height.min(allow_rect.height());
         }
 
         let mut window = Window::new(x, y, width, height, self.scale, Rc::clone(&self.config));
 
-        for flag in flags.chars() {
+        for flag in flags {
             window.set_flag(flag, true);
         }
 
         window.title = title;
         window.render_title(&self.font);
-        let scalable = flags.contains(window::ORBITAL_FLAG_SCALABLE) && self.scale > 1;
+        let scalable = flags.contains(WindowFlag::Scalable) && self.scale > 1;
 
         // Automatic placement
         if x < 0 && y < 0 {
