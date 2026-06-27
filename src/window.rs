@@ -7,7 +7,7 @@ use crate::{
     window_order::WindowZOrder,
 };
 use orbclient::{
-    Color, Event, Renderer,
+    Color, Event, Renderer, WindowFlag, WindowFlags,
     image::{Image, ImageAligned},
     rect::{Rect, RectAlignment, RectEdge},
 };
@@ -20,19 +20,6 @@ use std::rc::Rc;
 
 // use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 use crate::config::Config;
-
-//TODO: move to orbclient?
-pub const ORBITAL_FLAG_ASYNC: char = 'a';
-pub const ORBITAL_FLAG_BACK: char = 'b';
-pub const ORBITAL_FLAG_FRONT: char = 'f';
-pub const ORBITAL_FLAG_HIDDEN: char = 'h';
-pub const ORBITAL_FLAG_BORDERLESS: char = 'l';
-pub const ORBITAL_FLAG_MAXIMIZED: char = 'm';
-pub const ORBITAL_FLAG_FULLSCREEN: char = 'M';
-pub const ORBITAL_FLAG_RESIZABLE: char = 'r';
-pub const ORBITAL_FLAG_SCALABLE: char = 's';
-pub const ORBITAL_FLAG_TRANSPARENT: char = 't';
-pub const ORBITAL_FLAG_UNCLOSABLE: char = 'u';
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WindowId(pub usize);
@@ -314,36 +301,35 @@ impl Window {
     }
 
     pub fn properties(&self) -> Properties<'_> {
-        //TODO: avoid allocation
-        let mut flags = String::with_capacity(9);
+        let mut flags = WindowFlags::default();
         if self.asynchronous {
-            flags.push(ORBITAL_FLAG_ASYNC);
+            flags.push(WindowFlag::Async);
         }
         if self.borderless {
-            flags.push(ORBITAL_FLAG_BORDERLESS);
+            flags.push(WindowFlag::Borderless);
         }
         if self.hidden {
-            flags.push(ORBITAL_FLAG_HIDDEN);
+            flags.push(WindowFlag::Hidden);
         }
         if let Some((_, position)) = &self.restore {
-            flags.push(ORBITAL_FLAG_MAXIMIZED);
+            flags.push(WindowFlag::Maximized);
             if matches!(position, TilePosition::FullScreen) {
-                flags.push(ORBITAL_FLAG_FULLSCREEN);
+                flags.push(WindowFlag::Fullscreen);
             }
         }
         if self.resizable {
-            flags.push(ORBITAL_FLAG_RESIZABLE);
+            flags.push(WindowFlag::Resizable);
         }
         if self.transparent {
-            flags.push(ORBITAL_FLAG_TRANSPARENT);
+            flags.push(WindowFlag::Transparent);
         }
         if self.unclosable {
-            flags.push(ORBITAL_FLAG_UNCLOSABLE);
+            flags.push(WindowFlag::Unclosable);
         }
         match self.zorder {
-            WindowZOrder::Back => flags.push(ORBITAL_FLAG_BACK),
+            WindowZOrder::Back => flags.push(WindowFlag::Back),
             WindowZOrder::Normal => {}
-            WindowZOrder::Front => flags.push(ORBITAL_FLAG_FRONT),
+            WindowZOrder::Front => flags.push(WindowFlag::Front),
         }
         Properties {
             flags,
@@ -376,29 +362,29 @@ impl Window {
         title_render.draw(&mut self.title_image_unfocused, 0, 0, text_color.into());
     }
 
-    pub fn set_flag(&mut self, flag: char, value: bool) {
+    pub fn set_flag(&mut self, flag: WindowFlag, value: bool) {
         match flag {
-            ORBITAL_FLAG_ASYNC => self.asynchronous = value,
-            ORBITAL_FLAG_BACK => {
+            WindowFlag::Async => self.asynchronous = value,
+            WindowFlag::Back => {
                 self.zorder = if value {
                     WindowZOrder::Back
                 } else {
                     WindowZOrder::Normal
                 }
             }
-            ORBITAL_FLAG_FRONT => {
+            WindowFlag::Front => {
                 self.zorder = if value {
                     WindowZOrder::Front
                 } else {
                     WindowZOrder::Normal
                 }
             }
-            ORBITAL_FLAG_HIDDEN => self.hidden = value,
-            ORBITAL_FLAG_BORDERLESS => self.borderless = value,
-            ORBITAL_FLAG_RESIZABLE => self.resizable = value,
-            ORBITAL_FLAG_TRANSPARENT => self.transparent = value,
-            ORBITAL_FLAG_SCALABLE => self.scalable = value,
-            ORBITAL_FLAG_UNCLOSABLE => self.unclosable = value,
+            WindowFlag::Hidden => self.hidden = value,
+            WindowFlag::Borderless => self.borderless = value,
+            WindowFlag::Resizable => self.resizable = value,
+            WindowFlag::Transparent => self.transparent = value,
+            WindowFlag::Scalable => self.scalable = value,
+            WindowFlag::Unclosable => self.unclosable = value,
             _ => {
                 log::warn!("unknown window flag {:?}", flag);
             }

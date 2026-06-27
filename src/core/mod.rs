@@ -11,7 +11,7 @@ use event::{EventQueue, user_data};
 use graphics_ipc::V2GraphicsHandle;
 use inputd::{ConsumerHandle, ConsumerHandleEvent};
 use log::error;
-use orbclient::{Color, Event, WindowDragKind, rect::Rect};
+use orbclient::{Color, Event, WindowDragKind, WindowFlags, rect::Rect};
 use redox_scheme::{
     CallerCtx, OpenResult, RequestKind, Response, SignalBehavior, Socket,
     scheme::{IntoTag, Op, OpRead, SchemeState, SchemeSync, register_scheme_inner},
@@ -42,8 +42,7 @@ impl From<syscall::Error> for Error {
 }
 
 pub struct Properties<'a> {
-    //TODO: avoid allocation
-    pub flags: String,
+    pub flags: WindowFlags,
     pub x: i32,
     pub y: i32,
     pub width: u32,
@@ -446,7 +445,7 @@ impl SchemeSync for OrbitalHandler {
                         "1" => true,
                         _ => return Err(syscall::Error::new(EINVAL)),
                     };
-                    for flag in flags.chars() {
+                    for flag in WindowFlags::new(flags) {
                         self.handler.handle_window_set_flag(id, flag, value)?;
                     }
                     Ok(buf.len())

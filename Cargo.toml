@@ -30,6 +30,7 @@ ab_glyph_rasterizer = "=0.1.5"
 redox_event = "0.4.3"
 
 [patch.crates-io]
+orbclient = { git = "https://gitlab.redox-os.org/willnode/orbclient", branch = "heapless-flags" }
 redox-log = { git = "https://gitlab.redox-os.org/redox-os/redox-log.git" }
 
 [patch."https://gitlab.redox-os.org/redox-os/base.git"]
