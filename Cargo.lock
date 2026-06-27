@@ -126,12 +126,12 @@ checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#dab7d039e2d563110def96e3091e9a6937f40b17"
+source = "git+https://gitlab.redox-os.org/Ibuki.O/base.git?branch=avoid-blocking-nsmgr#6631ce18d9379098aa3468d6e8d4b800ec71bb32"
 dependencies = [
- "libredox",
+ "libredox 0.1.18",
  "log",
  "redox-log",
- "redox_syscall",
+ "redox_syscall 0.9.0",
 ]
 
 [[package]]
@@ -214,12 +214,12 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 [[package]]
 name = "daemon"
 version = "0.0.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#dab7d039e2d563110def96e3091e9a6937f40b17"
+source = "git+https://gitlab.redox-os.org/Ibuki.O/base.git?branch=avoid-blocking-nsmgr#6631ce18d9379098aa3468d6e8d4b800ec71bb32"
 dependencies = [
  "libc",
- "libredox",
+ "libredox 0.1.18",
  "redox-scheme",
- "redox_syscall",
+ "redox_syscall 0.9.0",
 ]
 
 [[package]]
@@ -387,7 +387,7 @@ dependencies = [
 [[package]]
 name = "graphics-ipc"
 version = "0.1.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#dab7d039e2d563110def96e3091e9a6937f40b17"
+source = "git+https://gitlab.redox-os.org/Ibuki.O/base.git?branch=avoid-blocking-nsmgr#6631ce18d9379098aa3468d6e8d4b800ec71bb32"
 dependencies = [
  "drm",
 ]
@@ -462,16 +462,16 @@ dependencies = [
 [[package]]
 name = "inputd"
 version = "0.1.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#dab7d039e2d563110def96e3091e9a6937f40b17"
+source = "git+https://gitlab.redox-os.org/Ibuki.O/base.git?branch=avoid-blocking-nsmgr#6631ce18d9379098aa3468d6e8d4b800ec71bb32"
 dependencies = [
  "anyhow",
  "common",
  "daemon",
- "libredox",
+ "libredox 0.1.18",
  "log",
- "orbclient",
+ "orbclient 0.4.3",
  "redox-scheme",
- "redox_syscall",
+ "redox_syscall 0.9.0",
  "scheme-utils",
 ]
 
@@ -517,7 +517,18 @@ dependencies = [
  "bitflags 2.11.1",
  "libc",
  "plain",
- "redox_syscall",
+ "redox_syscall 0.8.1",
+]
+
+[[package]]
+name = "libredox"
+version = "0.1.18"
+source = "git+https://gitlab.redox-os.org/Ibuki.O/libredox.git?branch=fcntl#08a65ee90b513923388469bbb83322b3ee1c345f"
+dependencies = [
+ "bitflags 2.11.1",
+ "libc",
+ "plain",
+ "redox_syscall 0.9.0",
 ]
 
 [[package]]
@@ -619,9 +630,19 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d6a81febac10e8d8e15c33b67a4a88807d587d9ac5689392239b6b83d9fa2ae"
 dependencies = [
+ "libc",
+ "libredox 0.1.17",
+ "sdl2",
+]
+
+[[package]]
+name = "orbclient"
+version = "0.4.3"
+source = "git+https://gitlab.redox-os.org/Ibuki.O/orbclient.git?branch=update-libredox#41f20e81bcdecbbee19a8f8eefa380fe26923a2a"
+dependencies = [
  "image",
  "libc",
- "libredox",
+ "libredox 0.1.18",
  "resize",
  "sdl2",
 ]
@@ -633,7 +654,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "889db9a98b8a62ff2b1028089cb48a4226bbb2c0e8ff8122df76884286ec756d"
 dependencies = [
  "font-loader",
- "orbclient",
+ "orbclient 0.4.1",
  "rusttype",
 ]
 
@@ -646,15 +667,15 @@ dependencies = [
  "graphics-ipc",
  "inputd",
  "libc",
- "libredox",
+ "libredox 0.1.18",
  "log",
- "orbclient",
+ "orbclient 0.4.3",
  "orbfont",
  "plain",
  "redox-log",
  "redox-scheme",
  "redox_event",
- "redox_syscall",
+ "redox_syscall 0.9.0",
  "serde",
  "serde_derive",
  "thiserror",
@@ -770,21 +791,19 @@ dependencies = [
 [[package]]
 name = "redox-scheme"
 version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecd26e368655cb4fdda914512c46c5640221ebe5fa6df5da19c941b9f06ed153"
+source = "git+https://gitlab.redox-os.org/Ibuki.O/redox-scheme.git?branch=libredox-socket-create_inner#7c9c706fe4bea866c91ad7086485acd38aca64db"
 dependencies = [
- "libredox",
- "redox_syscall",
+ "libredox 0.1.18",
+ "redox_syscall 0.9.0",
 ]
 
 [[package]]
 name = "redox_event"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ea3e412d205440c7b0218af26247226f979ed1201674cda7a33cc70609084b5"
+version = "0.4.8"
+source = "git+https://gitlab.redox-os.org/Ibuki.O/event.git?branch=update-redox-crates#f2d5d34a518ae982fa5acd7ebc6108cd1fcd6a6c"
 dependencies = [
  "bitflags 2.11.1",
- "libredox",
+ "libredox 0.1.18",
 ]
 
 [[package]]
@@ -792,6 +811,14 @@ name = "redox_syscall"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b44b894f2a6e36457d665d1e08c3866add6ed5e70050c1b4ba8a8ddedb02ce7"
+dependencies = [
+ "bitflags 2.11.1",
+]
+
+[[package]]
+name = "redox_syscall"
+version = "0.9.0"
+source = "git+https://gitlab.redox-os.org/Ibuki.O/syscall.git?branch=remove-fd-allocation#4b76625ed9fdb305969b59e18a20a0d5855251cc"
 dependencies = [
  "bitflags 2.11.1",
 ]
@@ -834,11 +861,11 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 [[package]]
 name = "scheme-utils"
 version = "0.0.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#dab7d039e2d563110def96e3091e9a6937f40b17"
+source = "git+https://gitlab.redox-os.org/Ibuki.O/base.git?branch=avoid-blocking-nsmgr#6631ce18d9379098aa3468d6e8d4b800ec71bb32"
 dependencies = [
- "libredox",
+ "libredox 0.1.18",
  "redox-scheme",
- "redox_syscall",
+ "redox_syscall 0.9.0",
 ]
 
 [[package]]
