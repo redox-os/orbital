@@ -14,7 +14,7 @@ use syscall::error::{EBADF, Error, Result};
 
 use crate::compositor::Compositor;
 use crate::config::Config;
-use crate::core::display::Displays;
+use crate::core::display::{Displays, SCALE_BASELINE};
 use crate::core::{Orbital, Properties};
 use crate::widget::fps::FpsWidget;
 use crate::window::{self, Window, WindowId};
@@ -95,6 +95,7 @@ pub struct OrbitalScheme {
     font: orbfont::Font,
     clipboard: Vec<u8>,
     scale: u32,
+    factored_scale: u32,
     config: Rc<Config>,
     // Is the user currently switching windows with win-tab
     // Set true when win-tab is pressed, set false when win is released.
@@ -109,10 +110,12 @@ pub struct OrbitalScheme {
 impl OrbitalScheme {
     pub(crate) fn new(displays: Displays, config: Rc<Config>) -> Result<OrbitalScheme, String> {
         let mut scale = NonZero::new(1).unwrap();
+        let mut factored_scale = 160;
         for display in displays.displays.iter() {
             if let Some(s) = NonZero::new(display.scale()) {
                 scale = cmp::max(scale, s);
             }
+            factored_scale = cmp::max(factored_scale, display.factored_scale());
         }
 
         let load_image = |path| {
@@ -165,6 +168,7 @@ impl OrbitalScheme {
             font,
             clipboard: Vec::new(),
             scale: scale.get(),
+            factored_scale: factored_scale,
             config: Rc::clone(&config),
             win_tabbing: false,
             volume_osd: false,
@@ -420,7 +424,8 @@ impl OrbitalScheme {
             // Send scale event to the window, not part of queue redraw
             if flag == window::ORBITAL_FLAG_SCALABLE && value {
                 let scale_event = ScaleEvent {
-                    scale: self.scale as i32,
+                    scale: self.factored_scale as i32,
+                    baseline: SCALE_BASELINE as i32,
                 };
                 window.event(scale_event.to_event());
             }
@@ -1235,8 +1240,10 @@ impl OrbitalScheme {
                                 window_event.a -= window.x as i64;
                                 window_event.b -= window.y as i64;
                                 if window.scalable {
-                                    window_event.a /= window.scale as i64;
-                                    window_event.b /= window.scale as i64;
+                                    window_event.a = window_event.a * (SCALE_BASELINE as i64)
+                                        / window.factored_scale as i64;
+                                    window_event.b = window_event.b * (SCALE_BASELINE as i64)
+                                        / window.factored_scale as i64;
                                 }
                                 window.event(window_event);
                             }
@@ -1644,15 +1651,19 @@ impl OrbitalScheme {
             window.event(screen_event);
         }
 
-        let new_scale = self.compositor.scale();
-        if self.scale != new_scale {
-            self.scale = new_scale;
+        let new_scale = self.compositor.factored_scale();
+        if self.factored_scale != new_scale {
+            self.factored_scale = new_scale;
+            self.scale = self.compositor.scale();
             let scale_event = ScaleEvent {
                 scale: new_scale as i32,
+                baseline: SCALE_BASELINE as i32,
             }
             .to_event();
             for (_window_id, window) in self.windows.iter_mut() {
                 if window.scalable {
+                    window.scale = self.scale;
+                    window.factored_scale = self.factored_scale;
                     window.event(scale_event);
                 }
             }
@@ -1803,9 +1814,11 @@ impl OrbitalScheme {
         self.order.add_window(id, window.zorder);
 
         if scalable {
+            window.factored_scale = self.factored_scale;
             window.event(
                 ScaleEvent {
-                    scale: self.scale as _,
+                    scale: self.factored_scale as _,
+                    baseline: SCALE_BASELINE as _,
                 }
                 .to_event(),
             );

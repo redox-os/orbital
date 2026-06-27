@@ -70,6 +70,11 @@ impl Compositor {
         self.displays()[0].scale()
     }
 
+    /// Return the first display factored scale
+    pub fn factored_scale(&self) -> u32 {
+        self.displays()[0].factored_scale()
+    }
+
     /// Find the display that a window (`rect`) most overlaps and return it's screen_rect
     pub fn get_screen_rect_for_window(&self, rect: &Rect) -> Rect {
         let mut screen_rect = self.displays()[0].screen_rect();
