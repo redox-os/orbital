@@ -31,6 +31,7 @@ redox_event = { git = "https://gitlab.redox-os.org/Ibuki.O/event.git", branch = 
 
 [patch.crates-io]
 redox-log = { git = "https://gitlab.redox-os.org/redox-os/redox-log.git" }
+orbclient = { git = "https://gitlab.redox-os.org/Ibuki.O/orbclient.git", branch = "update-libredox" }
 
 [patch."https://gitlab.redox-os.org/redox-os/base.git"]
 #graphics-ipc = { path = "../../../core/base/source/drivers/graphics/graphics-ipc" }
