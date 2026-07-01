@@ -17,9 +17,9 @@ log = "0.4.14"
 orbclient = { version = "0.4.2", features = ["image"] }
 orbfont = "0.4"
 redox-log = { git = "https://gitlab.redox-os.org/redox-os/redox-log.git" }
-redox_syscall = { version = "0.8.0", features = ["std"] }
-redox-scheme = "0.11.0"
-libredox = "0.1.12"
+redox_syscall = { version = "0.9.0",  features = ["std"] }
+redox-scheme = "0.11.2"
+libredox = "0.1.18"
 plain = "0.2"
 serde = "1"
 serde_derive = "1"
@@ -27,7 +27,7 @@ thiserror = "2.0.12"
 toml = "0.7"
 # Downgrade due to improper x86 CPU feature detection
 ab_glyph_rasterizer = "=0.1.5"
-redox_event = "0.4.3"
+redox_event = "0.4.8"
 
 [patch.crates-io]
 redox-log = { git = "https://gitlab.redox-os.org/redox-os/redox-log.git" }
