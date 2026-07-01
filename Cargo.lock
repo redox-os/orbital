@@ -126,7 +126,7 @@ checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://gitlab.redox-os.org/Ibuki.O/base.git?branch=avoid-blocking-nsmgr#6631ce18d9379098aa3468d6e8d4b800ec71bb32"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#a301f50bca302abc35e7a627ef3dee2b0cf6f2c0"
 dependencies = [
  "libredox",
  "log",
@@ -214,7 +214,7 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 [[package]]
 name = "daemon"
 version = "0.0.0"
-source = "git+https://gitlab.redox-os.org/Ibuki.O/base.git?branch=avoid-blocking-nsmgr#6631ce18d9379098aa3468d6e8d4b800ec71bb32"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#a301f50bca302abc35e7a627ef3dee2b0cf6f2c0"
 dependencies = [
  "libc",
  "libredox",
@@ -387,7 +387,7 @@ dependencies = [
 [[package]]
 name = "graphics-ipc"
 version = "0.1.0"
-source = "git+https://gitlab.redox-os.org/Ibuki.O/base.git?branch=avoid-blocking-nsmgr#6631ce18d9379098aa3468d6e8d4b800ec71bb32"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#a301f50bca302abc35e7a627ef3dee2b0cf6f2c0"
 dependencies = [
  "drm",
 ]
@@ -462,7 +462,7 @@ dependencies = [
 [[package]]
 name = "inputd"
 version = "0.1.0"
-source = "git+https://gitlab.redox-os.org/Ibuki.O/base.git?branch=avoid-blocking-nsmgr#6631ce18d9379098aa3468d6e8d4b800ec71bb32"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#a301f50bca302abc35e7a627ef3dee2b0cf6f2c0"
 dependencies = [
  "anyhow",
  "common",
@@ -511,7 +511,8 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 [[package]]
 name = "libredox"
 version = "0.1.18"
-source = "git+https://gitlab.redox-os.org/Ibuki.O/libredox.git?branch=fcntl#08a65ee90b513923388469bbb83322b3ee1c345f"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c943259e342f1e06ff2da7a83eabdfe7f92ce10262688dbf1895ff0b3e6e4652"
 dependencies = [
  "bitflags 2.11.1",
  "libc",
@@ -614,8 +615,9 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "orbclient"
-version = "0.4.3"
-source = "git+https://gitlab.redox-os.org/Ibuki.O/orbclient.git?branch=update-libredox#41f20e81bcdecbbee19a8f8eefa380fe26923a2a"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccbf30fea937f00c68caf77cd6fdf2c6c0616ea88e629c42b56670c0978f8cee"
 dependencies = [
  "image",
  "libc",
@@ -767,8 +769,9 @@ dependencies = [
 
 [[package]]
 name = "redox-scheme"
-version = "0.11.1"
-source = "git+https://gitlab.redox-os.org/Ibuki.O/redox-scheme.git?branch=libredox-socket-create_inner#7c9c706fe4bea866c91ad7086485acd38aca64db"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5928b2f572e06a74e9c210fcacf15b70b8ffa6fdb3d8650f4601b83c12fe194b"
 dependencies = [
  "libredox",
  "redox_syscall",
@@ -777,7 +780,8 @@ dependencies = [
 [[package]]
 name = "redox_event"
 version = "0.4.8"
-source = "git+https://gitlab.redox-os.org/Ibuki.O/event.git?branch=update-redox-crates#f2d5d34a518ae982fa5acd7ebc6108cd1fcd6a6c"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5018d583d6d2f5499352aea8d177e9067d1eb03ab17c78169d5ba7a30001b15"
 dependencies = [
  "bitflags 2.11.1",
  "libredox",
@@ -786,7 +790,8 @@ dependencies = [
 [[package]]
 name = "redox_syscall"
 version = "0.9.0"
-source = "git+https://gitlab.redox-os.org/Ibuki.O/syscall.git?branch=remove-fd-allocation#4b76625ed9fdb305969b59e18a20a0d5855251cc"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5102a6aaa05aa011a238e178e6bca86d2cb56fc9f586d37cb80f5bca6e07759"
 dependencies = [
  "bitflags 2.11.1",
 ]
@@ -829,7 +834,7 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 [[package]]
 name = "scheme-utils"
 version = "0.0.0"
-source = "git+https://gitlab.redox-os.org/Ibuki.O/base.git?branch=avoid-blocking-nsmgr#6631ce18d9379098aa3468d6e8d4b800ec71bb32"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#a301f50bca302abc35e7a627ef3dee2b0cf6f2c0"
 dependencies = [
  "libredox",
  "redox-scheme",

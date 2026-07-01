@@ -10,16 +10,16 @@ edition = "2024"
 
 [dependencies]
 drm = "0.15"
-graphics-ipc = { git = "https://gitlab.redox-os.org/Ibuki.O/base.git", branch = "avoid-blocking-nsmgr" }
-inputd = { git = "https://gitlab.redox-os.org/Ibuki.O/base.git", branch = "avoid-blocking-nsmgr" }
+graphics-ipc = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
+inputd = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
 libc = "0.2.48"
 log = "0.4.14"
-orbclient = { git = "https://gitlab.redox-os.org/Ibuki.O/orbclient.git", branch = "update-libredox", features = ["image"] }
+orbclient = { version = "0.4.2", features = ["image"] }
 orbfont = "0.4"
 redox-log = { git = "https://gitlab.redox-os.org/redox-os/redox-log.git" }
-redox_syscall = { git = "https://gitlab.redox-os.org/Ibuki.O/syscall.git", branch = "remove-fd-allocation",  features = ["std"] }
-redox-scheme = { git = "https://gitlab.redox-os.org/Ibuki.O/redox-scheme.git", branch = "libredox-socket-create_inner" }
-libredox = { git = "https://gitlab.redox-os.org/Ibuki.O/libredox.git", branch = "fcntl" }
+redox_syscall = { version = "0.9.0",  features = ["std"] }
+redox-scheme = "0.11.2"
+libredox = "0.1.18"
 plain = "0.2"
 serde = "1"
 serde_derive = "1"
@@ -27,11 +27,10 @@ thiserror = "2.0.12"
 toml = "0.7"
 # Downgrade due to improper x86 CPU feature detection
 ab_glyph_rasterizer = "=0.1.5"
-redox_event = { git = "https://gitlab.redox-os.org/Ibuki.O/event.git", branch = "update-redox-crates" }
+redox_event = "0.4.8"
 
 [patch.crates-io]
 redox-log = { git = "https://gitlab.redox-os.org/redox-os/redox-log.git" }
-orbclient = { git = "https://gitlab.redox-os.org/Ibuki.O/orbclient.git", branch = "update-libredox" }
 
 [patch."https://gitlab.redox-os.org/redox-os/base.git"]
 #graphics-ipc = { path = "../../../core/base/source/drivers/graphics/graphics-ipc" }
