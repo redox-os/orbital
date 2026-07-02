@@ -282,7 +282,7 @@ impl Display {
     pub fn roi_mut(&mut self, rect: &Rect) -> ImageRoiMut<'_> {
         let x = self.x;
         let y = self.y;
-        self.map.image_mut().roi_mut(&Rect::new(
+        self.map.image_mut().into_roi_mut(Rect::new(
             rect.left() - x,
             rect.top() - y,
             rect.width(),
