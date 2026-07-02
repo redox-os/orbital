@@ -1740,8 +1740,11 @@ impl OrbitalScheme {
         let flags = WindowFlags::from_str(flags).unwrap_or_else(|e| {
             warn!("unknown window flags: {e:?} from {flags:?}");
             // attempt to recover working flags
-            let flags = &flags.as_bytes()[..e.len()];
-            let Ok(flags) = core::str::from_utf8(&flags) else {
+            let flags = flags.as_bytes();
+            let Some(Ok(flags)) = flags
+                .get(..flags.len().saturating_sub(e.len()))
+                .map(core::str::from_utf8)
+            else {
                 return WindowFlags::default();
             };
             WindowFlags::from_str(flags).unwrap_or_default()
