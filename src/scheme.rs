@@ -18,6 +18,7 @@ use crate::config::Config;
 use crate::core::display::{Displays, SCALE_BASELINE};
 use crate::core::{Orbital, Properties};
 use crate::widget::fps::FpsWidget;
+use crate::widget::shortcuts::ShortcutsWidget;
 use crate::window::{Window, WindowId};
 use crate::window_order::{WindowOrder, WindowZOrder};
 
@@ -103,8 +104,8 @@ pub struct OrbitalScheme {
     // While it is true, redraw() calls draw_window_list()
     win_tabbing: bool,
     volume_osd: bool,
-    shortcuts_osd: bool,
     last_popup_rect: Option<Rect>,
+    shortcuts_widget: ShortcutsWidget,
     fps_widget: FpsWidget,
 }
 
@@ -173,8 +174,8 @@ impl OrbitalScheme {
             config: Rc::clone(&config),
             win_tabbing: false,
             volume_osd: false,
-            shortcuts_osd: false,
             last_popup_rect: None,
+            shortcuts_widget: ShortcutsWidget::new(),
             fps_widget: FpsWidget::new(),
         };
 
@@ -579,12 +580,16 @@ impl OrbitalScheme {
         self.order
             .rezbuffer(&|id| self.windows.get(&id).unwrap().zorder);
 
-        let popup = if self.shortcuts_osd {
-            Some(self.draw_shortcuts_osd())
+        let popup_owned;
+        let popup = if self.shortcuts_widget.enabled {
+            self.shortcuts_widget
+                .draw_osd(self.scale, &self.config, &self.font)
         } else if self.volume_osd {
-            Some(self.draw_volume_osd())
+            popup_owned = Some(self.draw_volume_osd());
+            popup_owned.as_ref()
         } else if self.win_tabbing {
-            self.draw_window_list_osd()
+            popup_owned = self.draw_window_list_osd();
+            popup_owned.as_ref()
         } else {
             None
         };
@@ -608,7 +613,7 @@ impl OrbitalScheme {
         {
             let popup = self
                 .fps_widget
-                .draw_fps_osd(self.scale, &self.config, &self.font);
+                .draw_osd(self.scale, &self.config, &self.font);
             if let Some(popup) = popup {
                 let rect = Rect::new(
                     (self.compositor.screen_rect().iwidth() - popup.width() as i32) / 2,
@@ -844,70 +849,6 @@ impl OrbitalScheme {
         image
     }
 
-    const SHORTCUTS_LIST: &'static [&'static str] = &[
-        "Super-Q: Quit current window",
-        "Super-TAB: Cycle through active windows bringing to the front of the stack",
-        "Super-{: Volume down",
-        "Super-}: Volume up",
-        "Super-\\: Volume toggle (mute / unmute)",
-        "Super-Shift-left: Tile window to left",
-        "Super-Shift-right: Tile window to right",
-        "Super-Shift-up: Tile window to top",
-        "Super-Shift-down: Tile window to bottom",
-        "Super-left_arrow: Move window left",
-        "Super-right_arrow: Move window right",
-        "Super-up_arrow: Move window up",
-        "Super-down_arrow: Move window down",
-        "Super-C: Copy to copy buffer",
-        "Super-X: Cut to copy buffer",
-        "Super-V: Paste from the copy buffer",
-        "Super-M: Toggle window max (maximize or restore)",
-        "Super-ENTER: Toggle window max (maximize or restore)",
-        "Super-Numpad-0: Enable mouse accessibility keys using numpad",
-        "Super-F10: Enable damage borders on screen",
-        "Super-F12: Enable FPS counter on screen",
-    ];
-
-    // Draw an on screen display (overlay) of available SUPER keyboard shortcuts
-    fn draw_shortcuts_osd(&mut self) -> Image {
-        const ROW_HEIGHT: u32 = 20;
-        const ROW_WIDTH: u32 = 400;
-        const POPUP_BORDER: u32 = 2;
-        const FONT_HEIGHT: f32 = 16.0;
-
-        // follow the look of the current config - in terms of colors
-        let Config {
-            bar_color,
-            bar_highlight_color,
-            text_highlight_color,
-            ..
-        } = *self.config;
-
-        let list_h = Self::SHORTCUTS_LIST.len() as u32 * ROW_HEIGHT + (POPUP_BORDER * 2);
-        let list_w = ROW_WIDTH;
-        let mut image = Image::from_color(list_w, list_h, bar_color.into());
-
-        for (index, shortcut) in Self::SHORTCUTS_LIST.iter().enumerate() {
-            let vertical_offset = index as i32 * ROW_HEIGHT as i32 + POPUP_BORDER as i32;
-            let text = self.font.render(shortcut, FONT_HEIGHT);
-            image.rect(
-                0,
-                vertical_offset,
-                list_w as u32,
-                ROW_HEIGHT,
-                bar_highlight_color.into(),
-            );
-            text.draw(
-                &mut image,
-                POPUP_BORDER as i32,
-                vertical_offset + POPUP_BORDER as i32,
-                text_highlight_color.into(),
-            );
-        }
-
-        image
-    }
-
     // Keep track of the modifier keys state based on past keydown/keyup events
     fn track_modifier_state(&mut self, scancode: u8, pressed: bool) {
         match (scancode, pressed) {
@@ -1072,7 +1013,7 @@ impl OrbitalScheme {
         // disable drawing of the win-tab or volume popup or shortcuts overlay on redraw
         self.win_tabbing = false;
         self.volume_osd = false;
-        self.shortcuts_osd = false;
+        self.shortcuts_widget.enabled = false;
     }
 
     // Process incoming key events
@@ -1080,7 +1021,7 @@ impl OrbitalScheme {
         self.track_modifier_state(event.scancode, event.pressed);
 
         match (event.scancode, event.pressed) {
-            (orbclient::K_SUPER, true) => self.shortcuts_osd = true,
+            (orbclient::K_SUPER, true) => self.shortcuts_widget.enabled = true,
             (orbclient::K_SUPER, false) => self.close_overlays(),
             (orbclient::K_VOLUME_TOGGLE, true) => self.volume(Volume::Toggle),
             (orbclient::K_VOLUME_DOWN, true) => self.volume(Volume::Down),

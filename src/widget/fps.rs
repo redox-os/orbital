@@ -44,7 +44,7 @@ impl FpsWidget {
         }
     }
 
-    pub fn draw_fps_osd(&mut self, scale: u32, config: &Config, font: &Font) -> Option<&Image> {
+    pub fn draw_osd(&mut self, scale: u32, config: &Config, font: &Font) -> Option<&Image> {
         if !self.enabled {
             return None;
         }
