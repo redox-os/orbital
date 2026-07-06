@@ -14,6 +14,7 @@ pub struct FpsWidget {
     fps_popup_image: Option<Image>,
     fps_popup_rect: Option<Rect>,
     fps_measure_instant: Option<Instant>,
+    fps_ticking: bool,
 }
 
 impl FpsWidget {
@@ -27,6 +28,7 @@ impl FpsWidget {
             fps_popup_image: None,
             fps_popup_rect: None,
             fps_measure_instant: None,
+            fps_ticking: false,
         }
     }
 
@@ -42,6 +44,14 @@ impl FpsWidget {
                 self.fps_cputime += time.elapsed().as_micros() as u64;
             }
         }
+    }
+
+    pub fn need_redraw(&mut self) -> bool {
+        if self.fps_ticking {
+            self.fps_ticking = false;
+            return true;
+        }
+        false
     }
 
     pub fn draw_osd(&mut self, scale: u32, config: &Config, font: &Font) -> Option<&Image> {
@@ -66,6 +76,7 @@ impl FpsWidget {
             self.fps_counted = 0;
             self.fps_cputime = 0;
             self.fps_instant = std::time::Instant::now();
+            self.fps_ticking = true;
         } else {
             return None;
         }

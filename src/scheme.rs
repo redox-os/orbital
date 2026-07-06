@@ -581,20 +581,27 @@ impl OrbitalScheme {
             .rezbuffer(&|id| self.windows.get(&id).unwrap().zorder);
 
         let popup_owned;
+        let popup_lazy;
         let popup = if self.shortcuts_widget.enabled {
+            popup_lazy = true; // shortcuts_widget never need to update
             self.shortcuts_widget
                 .draw_osd(self.scale, &self.config, &self.font)
         } else if self.volume_osd {
+            popup_lazy = false; // TODO: make it lazy like fps widget
             popup_owned = Some(self.draw_volume_osd());
             popup_owned.as_ref()
         } else if self.win_tabbing {
+            popup_lazy = false; // TODO: make it lazy like fps widget
             popup_owned = self.draw_window_list_osd();
             popup_owned.as_ref()
         } else {
+            popup_lazy = false;
             None
         };
-        if let Some(last_popup_rect) = self.last_popup_rect.take() {
-            self.compositor.schedule(last_popup_rect);
+        if popup.is_none() {
+            if let Some(last_popup_rect) = self.last_popup_rect.take() {
+                self.compositor.schedule(last_popup_rect);
+            }
         }
         let popup_rect = if let Some(popup) = &popup {
             let rect = Rect::new(
@@ -603,8 +610,14 @@ impl OrbitalScheme {
                 popup.width(),
                 popup.height(),
             );
-            self.last_popup_rect = Some(rect);
-            self.compositor.schedule(rect);
+            if !popup_lazy
+                || self
+                    .last_popup_rect
+                    .is_none_or(|s| s.width() != rect.width() || s.height() != rect.height())
+            {
+                self.last_popup_rect = Some(rect);
+                self.compositor.schedule(rect);
+            }
             Some(rect)
         } else {
             None
@@ -622,7 +635,9 @@ impl OrbitalScheme {
                     popup.height(),
                 );
                 self.fps_widget.set_osd_position(rect);
-                self.compositor.schedule(rect);
+                if self.fps_widget.need_redraw() {
+                    self.compositor.schedule(rect);
+                }
             }
         }
 
