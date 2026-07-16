@@ -573,7 +573,7 @@ impl OrbitalScheme {
         //TODO: implement better clipboard mechanism
     }
 
-    pub fn redraw(&mut self) {
+    fn redraw(&mut self) {
         self.resize_if_necessary();
 
         self.fps_widget.start_measure();

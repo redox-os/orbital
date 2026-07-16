@@ -272,7 +272,7 @@ impl Compositor {
         }
     }
 
-    pub fn sync_rect(&mut self, total_redraw: Rect) {
+    fn sync_rect(&mut self, total_redraw: Rect) {
         // Sync any parts of displays that changed
         for (i, display) in self.displays.displays.iter_mut().enumerate() {
             let display_redraw = total_redraw.intersection(&display.screen_rect());

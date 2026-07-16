@@ -13,7 +13,7 @@ use std::{convert::TryInto, io, slice};
 
 pub const SCALE_BASELINE: u32 = 160;
 
-pub struct V2DisplayMap {
+struct V2DisplayMap {
     fb: framebuffer::Handle,
     connector: connector::Handle,
     crtc: crtc::Handle,
@@ -188,7 +188,7 @@ pub struct Display {
 }
 
 impl Display {
-    pub fn new(
+    fn new(
         x: i32,
         y: i32,
         display_handle: &V2GraphicsHandle,

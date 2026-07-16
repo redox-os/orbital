@@ -51,11 +51,11 @@ pub struct Properties<'a> {
 }
 
 pub struct Orbital {
-    pub scheme: Socket,
-    pub delayed: VecDeque<(CallerCtx, OpRead)>,
+    scheme: Socket,
+    delayed: VecDeque<(CallerCtx, OpRead)>,
 
     /// Handle to "/scheme/input/consumer" to receive input events.
-    pub input: ConsumerHandle,
+    input: ConsumerHandle,
 }
 
 impl Orbital {
@@ -270,7 +270,7 @@ pub(crate) enum Handle {
     Window(WindowId),
     Clipboard(WindowId),
 }
-pub struct OrbitalHandler {
+struct OrbitalHandler {
     orb: Orbital,
     handler: OrbitalScheme,
     handles: HashMap<usize, Handle>,
