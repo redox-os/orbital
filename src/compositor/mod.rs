@@ -1,3 +1,4 @@
+use std::cmp;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -11,6 +12,8 @@ pub(crate) use self::display::{Display, Displays, SCALE_BASELINE};
 
 pub struct Compositor {
     displays: Displays,
+    scale: u32,
+    factored_scale: u32,
 
     redraws: Vec<Rect>,
 
@@ -38,8 +41,17 @@ impl Compositor {
             info!("Hardware cursor detected");
         }
 
+        let mut scale = 1;
+        let mut factored_scale = 160;
+        for display in displays.displays().iter() {
+            scale = cmp::max(scale, display.scale());
+            factored_scale = cmp::max(factored_scale, display.factored_scale());
+        }
+
         Compositor {
             displays,
+            scale,
+            factored_scale,
 
             redraws,
 
@@ -69,12 +81,12 @@ impl Compositor {
 
     /// Return the first display scale rectangle
     pub fn scale(&self) -> u32 {
-        self.displays()[0].scale()
+        self.scale
     }
 
     /// Return the first display factored scale
     pub fn factored_scale(&self) -> u32 {
-        self.displays()[0].factored_scale()
+        self.factored_scale
     }
 
     /// Find the display that a window (`rect`) most overlaps and return it's screen_rect
@@ -116,6 +128,16 @@ impl Compositor {
                 self.schedule(self.displays.displays[i].screen_rect());
             }
         }
+
+        if any_resized {
+            let mut max_scale = 1;
+            let mut max_factored_scale = 160;
+            for display in self.displays.displays.iter() {
+                max_scale = cmp::max(max_scale, display.scale());
+                max_factored_scale = cmp::max(max_factored_scale, display.factored_scale());
+            }
+        }
+
         any_resized
     }
 

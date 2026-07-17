@@ -1,12 +1,13 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
-use crate::core::Orbital;
 use log::{debug, error, info, warn};
 use redox_log::{OutputBuilder, RedoxLogger};
 use std::{env, process::Command, rc::Rc};
 
+use compositor::Compositor;
 use config::Config;
+use core::Orbital;
 use scheme::OrbitalScheme;
 
 mod compositor;
@@ -57,7 +58,7 @@ fn orbital() -> Result<(), String> {
         displays.displays()[0].screen_rect().height()
     );
     let config = Rc::new(Config::from_path("/ui/orbital.toml"));
-    let scheme = OrbitalScheme::new(displays, config)?;
+    let scheme = OrbitalScheme::new(Compositor::new(displays), config)?;
 
     orbital
         .run(scheme, Command::new(login_cmd).args(args))
