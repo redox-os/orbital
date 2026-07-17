@@ -353,7 +353,3 @@ impl Display {
             .map(|_| ())
     }
 }
-
-impl Drop for Display {
-    fn drop(&mut self) {}
-}
