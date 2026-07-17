@@ -16,7 +16,6 @@ use std::collections::VecDeque;
 
 use std::rc::Rc;
 
-// use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 use crate::config::Config;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
