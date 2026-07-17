@@ -1,14 +1,17 @@
-use std::cmp;
 use std::sync::Arc;
 use std::time::Instant;
+use std::{cmp, io};
 
+use graphics_ipc::V2GraphicsHandle;
 use log::{error, info};
 use orbclient::rect::Rect;
 use orbclient::{Color, image::Image};
 
 mod display;
 
-pub(crate) use self::display::{Display, Displays, SCALE_BASELINE};
+use self::display::Displays;
+
+pub(crate) use self::display::{Display, SCALE_BASELINE};
 
 pub struct Compositor {
     displays: Displays,
@@ -30,7 +33,9 @@ pub struct Compositor {
 }
 
 impl Compositor {
-    pub fn new(displays: Displays) -> Self {
+    pub fn new(display_handle: V2GraphicsHandle) -> io::Result<Self> {
+        let displays = Displays::new(display_handle)?;
+
         let mut redraws = Vec::new();
         for display in displays.displays.iter() {
             redraws.push(display.screen_rect());
@@ -48,7 +53,7 @@ impl Compositor {
             factored_scale = cmp::max(factored_scale, display.factored_scale());
         }
 
-        Compositor {
+        Ok(Compositor {
             displays,
             scale,
             factored_scale,
@@ -63,7 +68,7 @@ impl Compositor {
             cursor_y: 0,
             cursor_hot_x: 0,
             cursor_hot_y: 0,
-        }
+        })
     }
 
     pub fn displays(&self) -> &[Display] {

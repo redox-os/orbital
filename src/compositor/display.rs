@@ -131,14 +131,14 @@ impl CursorMap {
     }
 }
 
-pub struct Displays {
+pub(super) struct Displays {
     pub(super) display_handle: V2GraphicsHandle,
     supports_hw_cursor: bool,
     pub(super) displays: Vec<Display>,
 }
 
 impl Displays {
-    pub fn new(display_handle: V2GraphicsHandle) -> io::Result<Self> {
+    pub(super) fn new(display_handle: V2GraphicsHandle) -> io::Result<Self> {
         display_handle.set_client_capability(ClientCapability::CursorPlaneHotspot, true)?;
 
         let cursor_width = display_handle.get_driver_capability(DriverCapability::CursorHeight);
@@ -165,6 +165,12 @@ impl Displays {
                 displays.push(Display::new(x, y, &display_handle, i, hw_cursor)?);
             }
         }
+
+        debug!(
+            "found display {}x{}",
+            displays[0].screen_rect().width(),
+            displays[0].screen_rect().height(),
+        );
 
         Ok(Displays {
             display_handle,

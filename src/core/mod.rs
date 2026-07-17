@@ -21,7 +21,7 @@ use syscall::{
     schemev2::NewFdFlags,
 };
 
-use crate::compositor::Displays;
+use crate::compositor::Compositor;
 use crate::scheme::OrbitalScheme;
 use crate::window::WindowId;
 
@@ -59,7 +59,7 @@ pub struct Orbital {
 
 impl Orbital {
     /// Open an orbital display and connect to the scheme
-    pub fn open_display() -> io::Result<(Self, Displays)> {
+    pub fn open_display() -> io::Result<(Self, Compositor)> {
         let input_handle = ConsumerHandle::new_vt()?;
 
         let display = input_handle.open_display_v2().map_err(|err| {
@@ -72,7 +72,7 @@ impl Orbital {
             err
         })?;
 
-        let displays = Displays::new(V2GraphicsHandle::from_file(display)?)?;
+        let compositor = Compositor::new(V2GraphicsHandle::from_file(display)?)?;
 
         Ok((
             Orbital {
@@ -80,7 +80,7 @@ impl Orbital {
                 delayed: VecDeque::new(),
                 input: input_handle,
             },
-            displays,
+            compositor,
         ))
     }
 
