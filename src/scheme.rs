@@ -526,11 +526,6 @@ impl OrbitalScheme {
         };
         self.mouse_event(event);
     }
-    /// Create a clipboard from a window
-    pub fn handle_clipboard_new(&mut self, id: WindowId) -> Result<WindowId> {
-        //TODO: implement better clipboard mechanism
-        Ok(id)
-    }
 
     /// Read window clipboard
     pub fn handle_clipboard_read(
@@ -565,11 +560,6 @@ impl OrbitalScheme {
             i += 1;
         }
         Ok(i)
-    }
-
-    /// Close the window's clipboard access
-    pub fn handle_clipboard_close(&mut self, _id: WindowId) {
-        //TODO: implement better clipboard mechanism
     }
 
     fn redraw(&mut self) {

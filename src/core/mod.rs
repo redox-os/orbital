@@ -353,7 +353,6 @@ impl SchemeSync for OrbitalHandler {
         };
         if buf == b"clipboard" {
             //TODO: implement better clipboard mechanism
-            let id = self.handler.handle_clipboard_new(id)?;
             let new_id = self.next_id;
             self.handles.insert(new_id, Handle::Clipboard(id));
             self.next_id += 1;
@@ -650,7 +649,7 @@ impl OrbitalHandler {
         };
         //TODO: implement better clipboard mechanism
         match handle {
-            Handle::Clipboard(id) => self.handler.handle_clipboard_close(id),
+            Handle::Clipboard(_id) => {}
             Handle::Window(id) => self.handler.handle_window_close(id),
             Handle::SchemeRoot | Handle::DisplaySize(_) => {}
         };
