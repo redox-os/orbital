@@ -21,10 +21,9 @@ use syscall::{
     schemev2::NewFdFlags,
 };
 
+use crate::compositor::Displays;
+use crate::scheme::OrbitalScheme;
 use crate::window::WindowId;
-use crate::{core::display::Displays, scheme::OrbitalScheme};
-
-pub(crate) mod display;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

@@ -132,9 +132,9 @@ impl CursorMap {
 }
 
 pub struct Displays {
-    pub display_handle: V2GraphicsHandle,
+    pub(super) display_handle: V2GraphicsHandle,
     supports_hw_cursor: bool,
-    pub displays: Vec<Display>,
+    pub(super) displays: Vec<Display>,
 }
 
 impl Displays {
@@ -173,7 +173,11 @@ impl Displays {
         })
     }
 
-    pub fn supports_hw_cursor(&self) -> bool {
+    pub(crate) fn displays(&self) -> &[Display] {
+        &self.displays
+    }
+
+    pub(super) fn supports_hw_cursor(&self) -> bool {
         self.supports_hw_cursor
     }
 }
@@ -263,7 +267,7 @@ impl Display {
         self.rect(&rect.edge(thickness, 0, RectEdge::Right), color);
     }
 
-    pub fn resize_if_necessary(&mut self, display_handle: &V2GraphicsHandle) -> bool {
+    pub(super) fn resize_if_necessary(&mut self, display_handle: &V2GraphicsHandle) -> bool {
         match self.map.resize_if_necessary(display_handle) {
             Ok(resized) => {
                 if resized {
@@ -295,7 +299,7 @@ impl Display {
         Rect::new(self.x, self.y, size.0, size.1)
     }
 
-    pub fn move_cursor(
+    pub(super) fn move_cursor(
         &mut self,
         display_handle: &V2GraphicsHandle,
         x: i32,
@@ -305,7 +309,7 @@ impl Display {
         display_handle.move_cursor(self.map.crtc, (x, y))
     }
 
-    pub fn set_cursor(
+    pub(super) fn set_cursor(
         &mut self,
         display_handle: &V2GraphicsHandle,
         hot_x: i32,
@@ -332,7 +336,11 @@ impl Display {
         )
     }
 
-    pub fn sync_rect(&mut self, display_handle: &V2GraphicsHandle, rect: Rect) -> io::Result<()> {
+    pub(super) fn sync_rect(
+        &mut self,
+        display_handle: &V2GraphicsHandle,
+        rect: Rect,
+    ) -> io::Result<()> {
         let x1 = (rect.left() - self.x) as usize;
         let y1 = (rect.top() - self.y) as usize;
         let x2 = (rect.right() - self.x) as usize;

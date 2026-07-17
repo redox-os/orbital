@@ -5,7 +5,9 @@ use log::{error, info};
 use orbclient::rect::Rect;
 use orbclient::{Color, image::Image};
 
-use crate::core::display::{Display, Displays};
+mod display;
+
+pub(crate) use self::display::{Display, Displays, SCALE_BASELINE};
 
 pub struct Compositor {
     displays: Displays,

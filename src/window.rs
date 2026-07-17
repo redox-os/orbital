@@ -1,8 +1,6 @@
 use crate::{
-    core::{
-        Properties,
-        display::{Display, SCALE_BASELINE},
-    },
+    compositor::{Display, SCALE_BASELINE},
+    core::Properties,
     scheme::TilePosition,
     window_order::WindowZOrder,
 };

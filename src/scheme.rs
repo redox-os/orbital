@@ -13,9 +13,8 @@ use redox_scheme::Response;
 use syscall::EVENT_READ;
 use syscall::error::{EBADF, Error, Result};
 
-use crate::compositor::Compositor;
+use crate::compositor::{Compositor, Displays, SCALE_BASELINE};
 use crate::config::Config;
-use crate::core::display::{Displays, SCALE_BASELINE};
 use crate::core::{Orbital, Properties};
 use crate::widget::fps::FpsWidget;
 use crate::widget::shortcuts::ShortcutsWidget;
@@ -113,7 +112,7 @@ impl OrbitalScheme {
     pub(crate) fn new(displays: Displays, config: Rc<Config>) -> Result<OrbitalScheme, String> {
         let mut scale = NonZero::new(1).unwrap();
         let mut factored_scale = 160;
-        for display in displays.displays.iter() {
+        for display in displays.displays().iter() {
             if let Some(s) = NonZero::new(display.scale()) {
                 scale = cmp::max(scale, s);
             }
