@@ -350,6 +350,9 @@ impl OrbitalScheme {
         Self::update_window(&mut self.compositor, window, |_compositor, window| {
             let w = w.unwrap_or(window.width());
             let h = h.unwrap_or(window.height());
+            if w == window.width() && h == window.height() {
+                return;
+            }
             window.set_size(w, h);
         });
 
@@ -1754,6 +1757,9 @@ impl OrbitalScheme {
                 }
                 .to_event(),
             );
+        } else {
+            // needed by winit to send the first redraw event
+            window.event(ResizeEvent { height, width }.to_event());
         }
 
         self.windows.insert(id, window);
