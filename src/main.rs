@@ -1,12 +1,12 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
-use crate::core::Orbital;
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use redox_log::{OutputBuilder, RedoxLogger};
 use std::{env, process::Command, rc::Rc};
 
 use config::Config;
+use core::Orbital;
 use scheme::OrbitalScheme;
 
 mod compositor;
@@ -37,7 +37,7 @@ fn orbital() -> Result<(), String> {
     }
     let login_cmd = args.next().ok_or("no login manager argument")?;
 
-    let (orbital, displays) =
+    let (orbital, compositor) =
         Orbital::open_display().map_err(|e| format!("could not open display, caused by: {}", e))?;
 
     match Command::new("inputd").arg("-A").arg(&vt).status() {
@@ -51,13 +51,8 @@ fn orbital() -> Result<(), String> {
         }
     }
 
-    debug!(
-        "found display {}x{}",
-        displays.displays[0].screen_rect().width(),
-        displays.displays[0].screen_rect().height()
-    );
     let config = Rc::new(Config::from_path("/ui/orbital.toml"));
-    let scheme = OrbitalScheme::new(displays, config)?;
+    let scheme = OrbitalScheme::new(compositor, config)?;
 
     orbital
         .run(scheme, Command::new(login_cmd).args(args))

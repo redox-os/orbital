@@ -1,14 +1,22 @@
 use std::sync::Arc;
 use std::time::Instant;
+use std::{cmp, io};
 
+use graphics_ipc::V2GraphicsHandle;
 use log::{error, info};
 use orbclient::rect::Rect;
 use orbclient::{Color, image::Image};
 
-use crate::core::display::{Display, Displays};
+mod display;
+
+use self::display::Displays;
+
+pub(crate) use self::display::{Display, SCALE_BASELINE};
 
 pub struct Compositor {
     displays: Displays,
+    scale: u32,
+    factored_scale: u32,
 
     redraws: Vec<Rect>,
 
@@ -25,7 +33,9 @@ pub struct Compositor {
 }
 
 impl Compositor {
-    pub fn new(displays: Displays) -> Self {
+    pub fn new(display_handle: V2GraphicsHandle) -> io::Result<Self> {
+        let displays = Displays::new(display_handle)?;
+
         let mut redraws = Vec::new();
         for display in displays.displays.iter() {
             redraws.push(display.screen_rect());
@@ -36,8 +46,17 @@ impl Compositor {
             info!("Hardware cursor detected");
         }
 
-        Compositor {
+        let mut scale = 1;
+        let mut factored_scale = 160;
+        for display in displays.displays().iter() {
+            scale = cmp::max(scale, display.scale());
+            factored_scale = cmp::max(factored_scale, display.factored_scale());
+        }
+
+        Ok(Compositor {
             displays,
+            scale,
+            factored_scale,
 
             redraws,
 
@@ -49,7 +68,7 @@ impl Compositor {
             cursor_y: 0,
             cursor_hot_x: 0,
             cursor_hot_y: 0,
-        }
+        })
     }
 
     pub fn displays(&self) -> &[Display] {
@@ -67,12 +86,12 @@ impl Compositor {
 
     /// Return the first display scale rectangle
     pub fn scale(&self) -> u32 {
-        self.displays()[0].scale()
+        self.scale
     }
 
     /// Return the first display factored scale
     pub fn factored_scale(&self) -> u32 {
-        self.displays()[0].factored_scale()
+        self.factored_scale
     }
 
     /// Find the display that a window (`rect`) most overlaps and return it's screen_rect
@@ -114,6 +133,16 @@ impl Compositor {
                 self.schedule(self.displays.displays[i].screen_rect());
             }
         }
+
+        if any_resized {
+            let mut max_scale = 1;
+            let mut max_factored_scale = 160;
+            for display in self.displays.displays.iter() {
+                max_scale = cmp::max(max_scale, display.scale());
+                max_factored_scale = cmp::max(max_factored_scale, display.factored_scale());
+            }
+        }
+
         any_resized
     }
 
@@ -272,7 +301,7 @@ impl Compositor {
         }
     }
 
-    pub fn sync_rect(&mut self, total_redraw: Rect) {
+    fn sync_rect(&mut self, total_redraw: Rect) {
         // Sync any parts of displays that changed
         for (i, display) in self.displays.displays.iter_mut().enumerate() {
             let display_redraw = total_redraw.intersection(&display.screen_rect());

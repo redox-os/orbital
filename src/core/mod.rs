@@ -21,10 +21,9 @@ use syscall::{
     schemev2::NewFdFlags,
 };
 
+use crate::compositor::Compositor;
+use crate::scheme::OrbitalScheme;
 use crate::window::WindowId;
-use crate::{core::display::Displays, scheme::OrbitalScheme};
-
-pub(crate) mod display;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -51,16 +50,16 @@ pub struct Properties<'a> {
 }
 
 pub struct Orbital {
-    pub scheme: Socket,
-    pub delayed: VecDeque<(CallerCtx, OpRead)>,
+    scheme: Socket,
+    delayed: VecDeque<(CallerCtx, OpRead)>,
 
     /// Handle to "/scheme/input/consumer" to receive input events.
-    pub input: ConsumerHandle,
+    input: ConsumerHandle,
 }
 
 impl Orbital {
     /// Open an orbital display and connect to the scheme
-    pub fn open_display() -> io::Result<(Self, Displays)> {
+    pub fn open_display() -> io::Result<(Self, Compositor)> {
         let input_handle = ConsumerHandle::new_vt()?;
 
         let display = input_handle.open_display_v2().map_err(|err| {
@@ -73,7 +72,7 @@ impl Orbital {
             err
         })?;
 
-        let displays = Displays::new(V2GraphicsHandle::from_file(display)?)?;
+        let compositor = Compositor::new(V2GraphicsHandle::from_file(display)?)?;
 
         Ok((
             Orbital {
@@ -81,7 +80,7 @@ impl Orbital {
                 delayed: VecDeque::new(),
                 input: input_handle,
             },
-            displays,
+            compositor,
         ))
     }
 
@@ -270,7 +269,7 @@ pub(crate) enum Handle {
     Window(WindowId),
     Clipboard(WindowId),
 }
-pub struct OrbitalHandler {
+struct OrbitalHandler {
     orb: Orbital,
     handler: OrbitalScheme,
     handles: HashMap<usize, Handle>,
@@ -354,7 +353,6 @@ impl SchemeSync for OrbitalHandler {
         };
         if buf == b"clipboard" {
             //TODO: implement better clipboard mechanism
-            let id = self.handler.handle_clipboard_new(id)?;
             let new_id = self.next_id;
             self.handles.insert(new_id, Handle::Clipboard(id));
             self.next_id += 1;
@@ -651,7 +649,7 @@ impl OrbitalHandler {
         };
         //TODO: implement better clipboard mechanism
         match handle {
-            Handle::Clipboard(id) => self.handler.handle_clipboard_close(id),
+            Handle::Clipboard(_id) => {}
             Handle::Window(id) => self.handler.handle_window_close(id),
             Handle::SchemeRoot | Handle::DisplaySize(_) => {}
         };

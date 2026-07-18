@@ -6,7 +6,7 @@ use orbfont::Font;
 use crate::config::Config;
 
 pub struct FpsWidget {
-    pub enabled: bool,
+    enabled: bool,
     fps_counted: u64,
     fps_cputime: u64,
     fps_measured: String,

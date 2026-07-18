@@ -13,9 +13,8 @@ use redox_scheme::Response;
 use syscall::EVENT_READ;
 use syscall::error::{EBADF, Error, Result};
 
-use crate::compositor::Compositor;
+use crate::compositor::{Compositor, SCALE_BASELINE};
 use crate::config::Config;
-use crate::core::display::{Displays, SCALE_BASELINE};
 use crate::core::{Orbital, Properties};
 use crate::widget::fps::FpsWidget;
 use crate::widget::shortcuts::ShortcutsWidget;
@@ -96,8 +95,6 @@ pub struct OrbitalScheme {
     windows: BTreeMap<WindowId, Window>,
     font: orbfont::Font,
     clipboard: Vec<u8>,
-    scale: u32,
-    factored_scale: u32,
     config: Rc<Config>,
     // Is the user currently switching windows with win-tab
     // Set true when win-tab is pressed, set false when win is released.
@@ -110,16 +107,8 @@ pub struct OrbitalScheme {
 }
 
 impl OrbitalScheme {
-    pub(crate) fn new(displays: Displays, config: Rc<Config>) -> Result<OrbitalScheme, String> {
-        let mut scale = NonZero::new(1).unwrap();
-        let mut factored_scale = 160;
-        for display in displays.displays.iter() {
-            if let Some(s) = NonZero::new(display.scale()) {
-                scale = cmp::max(scale, s);
-            }
-            factored_scale = cmp::max(factored_scale, display.factored_scale());
-        }
-
+    pub(crate) fn new(compositor: Compositor, config: Rc<Config>) -> Result<OrbitalScheme, String> {
+        let scale = NonZero::new(compositor.scale()).unwrap_or(NonZero::new(1).unwrap());
         let load_image = |path| {
             Image::from_path(path)
                 .unwrap_or(Image::new(0, 0))
@@ -145,7 +134,7 @@ impl OrbitalScheme {
         let font = orbfont::Font::find(Some("Sans"), None, None)?;
 
         let mut orbital_scheme = OrbitalScheme {
-            compositor: Compositor::new(displays),
+            compositor,
 
             window_max: load_image(&config.window_max),
             window_max_unfocused: load_image(&config.window_max_unfocused),
@@ -169,8 +158,6 @@ impl OrbitalScheme {
             windows: BTreeMap::new(),
             font,
             clipboard: Vec::new(),
-            scale: scale.get(),
-            factored_scale: factored_scale,
             config: Rc::clone(&config),
             win_tabbing: false,
             volume_osd: false,
@@ -190,7 +177,7 @@ impl OrbitalScheme {
 
     pub(crate) fn display_size(&self, display: usize) -> (u32, u32, u32) {
         let rect = self.compositor.displays()[display].screen_rect();
-        (rect.width(), rect.height(), self.scale)
+        (rect.width(), rect.height(), self.compositor.scale())
     }
 
     fn update_window(
@@ -431,7 +418,7 @@ impl OrbitalScheme {
             // Send scale event to the window, not part of queue redraw
             if flag == WindowFlag::Scalable && value {
                 let scale_event = ScaleEvent {
-                    scale: self.factored_scale as i32,
+                    scale: self.compositor.factored_scale() as i32,
                     baseline: SCALE_BASELINE as i32,
                 };
                 window.event(scale_event.to_event());
@@ -527,11 +514,6 @@ impl OrbitalScheme {
         };
         self.mouse_event(event);
     }
-    /// Create a clipboard from a window
-    pub fn handle_clipboard_new(&mut self, id: WindowId) -> Result<WindowId> {
-        //TODO: implement better clipboard mechanism
-        Ok(id)
-    }
 
     /// Read window clipboard
     pub fn handle_clipboard_read(
@@ -568,12 +550,7 @@ impl OrbitalScheme {
         Ok(i)
     }
 
-    /// Close the window's clipboard access
-    pub fn handle_clipboard_close(&mut self, _id: WindowId) {
-        //TODO: implement better clipboard mechanism
-    }
-
-    pub fn redraw(&mut self) {
+    fn redraw(&mut self) {
         self.resize_if_necessary();
 
         self.fps_widget.start_measure();
@@ -585,7 +562,7 @@ impl OrbitalScheme {
         let popup = if self.shortcuts_widget.enabled {
             popup_lazy = true; // shortcuts_widget never need to update
             self.shortcuts_widget
-                .draw_osd(self.scale, &self.config, &self.font)
+                .draw_osd(self.compositor.scale(), &self.config, &self.font)
         } else if self.volume_osd {
             popup_lazy = false; // TODO: make it lazy like fps widget
             popup_owned = Some(self.draw_volume_osd());
@@ -626,7 +603,7 @@ impl OrbitalScheme {
         {
             let popup = self
                 .fps_widget
-                .draw_osd(self.scale, &self.config, &self.font);
+                .draw_osd(self.compositor.scale(), &self.config, &self.font);
             if let Some(popup) = popup {
                 let rect = Rect::new(
                     (self.compositor.screen_rect().iwidth() - popup.width() as i32) / 2,
@@ -1600,6 +1577,8 @@ impl OrbitalScheme {
     }
 
     fn resize_if_necessary(&mut self) {
+        let old_scale = self.compositor.factored_scale();
+
         if !self.compositor.resize_if_necessary() {
             return;
         }
@@ -1613,19 +1592,16 @@ impl OrbitalScheme {
             window.event(screen_event);
         }
 
-        let new_scale = self.compositor.factored_scale();
-        if self.factored_scale != new_scale {
-            self.factored_scale = new_scale;
-            self.scale = self.compositor.scale();
+        if old_scale != self.compositor.factored_scale() {
             let scale_event = ScaleEvent {
-                scale: new_scale as i32,
+                scale: self.compositor.factored_scale() as i32,
                 baseline: SCALE_BASELINE as i32,
             }
             .to_event();
             for (_window_id, window) in self.windows.iter_mut() {
                 if window.scalable {
-                    window.scale = self.scale;
-                    window.factored_scale = self.factored_scale;
+                    window.scale = self.compositor.scale();
+                    window.factored_scale = self.compositor.factored_scale();
                     window.event(scale_event);
                 }
             }
@@ -1710,7 +1686,14 @@ impl OrbitalScheme {
             height = height.min(allow_rect.height());
         }
 
-        let mut window = Window::new(x, y, width, height, self.scale, Rc::clone(&self.config));
+        let mut window = Window::new(
+            x,
+            y,
+            width,
+            height,
+            self.compositor.scale(),
+            Rc::clone(&self.config),
+        );
 
         for flag in flags {
             window.set_flag(flag, true);
@@ -1718,14 +1701,14 @@ impl OrbitalScheme {
 
         window.title = title;
         window.render_title(&self.font);
-        let scalable = flags.contains(WindowFlag::Scalable) && self.scale > 1;
+        let scalable = flags.contains(WindowFlag::Scalable) && self.compositor.scale() > 1;
 
         // Automatic placement
         if x < 0 && y < 0 {
             // Center by default in allowed area
             let mut scale = 1;
             if scalable {
-                scale = self.scale;
+                scale = self.compositor.scale();
             }
             let center_x = cmp::max(0, (allow_rect.iwidth() - (width * scale) as i32) / 2);
             let center_y = cmp::max(
@@ -1789,10 +1772,10 @@ impl OrbitalScheme {
         self.order.add_window(id, window.zorder);
 
         if scalable {
-            window.factored_scale = self.factored_scale;
+            window.factored_scale = self.compositor.factored_scale();
             window.event(
                 ScaleEvent {
-                    scale: self.factored_scale as _,
+                    scale: self.compositor.factored_scale() as _,
                     baseline: SCALE_BASELINE as _,
                 }
                 .to_event(),

@@ -13,7 +13,7 @@ use std::{convert::TryInto, io, slice};
 
 pub const SCALE_BASELINE: u32 = 160;
 
-pub struct V2DisplayMap {
+struct V2DisplayMap {
     fb: framebuffer::Handle,
     connector: connector::Handle,
     crtc: crtc::Handle,
@@ -131,14 +131,14 @@ impl CursorMap {
     }
 }
 
-pub struct Displays {
-    pub display_handle: V2GraphicsHandle,
+pub(super) struct Displays {
+    pub(super) display_handle: V2GraphicsHandle,
     supports_hw_cursor: bool,
-    pub displays: Vec<Display>,
+    pub(super) displays: Vec<Display>,
 }
 
 impl Displays {
-    pub fn new(display_handle: V2GraphicsHandle) -> io::Result<Self> {
+    pub(super) fn new(display_handle: V2GraphicsHandle) -> io::Result<Self> {
         display_handle.set_client_capability(ClientCapability::CursorPlaneHotspot, true)?;
 
         let cursor_width = display_handle.get_driver_capability(DriverCapability::CursorHeight);
@@ -166,6 +166,12 @@ impl Displays {
             }
         }
 
+        debug!(
+            "found display {}x{}",
+            displays[0].screen_rect().width(),
+            displays[0].screen_rect().height(),
+        );
+
         Ok(Displays {
             display_handle,
             supports_hw_cursor: hw_cursor.is_some(),
@@ -173,7 +179,11 @@ impl Displays {
         })
     }
 
-    pub fn supports_hw_cursor(&self) -> bool {
+    pub(crate) fn displays(&self) -> &[Display] {
+        &self.displays
+    }
+
+    pub(super) fn supports_hw_cursor(&self) -> bool {
         self.supports_hw_cursor
     }
 }
@@ -188,7 +198,7 @@ pub struct Display {
 }
 
 impl Display {
-    pub fn new(
+    fn new(
         x: i32,
         y: i32,
         display_handle: &V2GraphicsHandle,
@@ -263,7 +273,7 @@ impl Display {
         self.rect(&rect.edge(thickness, 0, RectEdge::Right), color);
     }
 
-    pub fn resize_if_necessary(&mut self, display_handle: &V2GraphicsHandle) -> bool {
+    pub(super) fn resize_if_necessary(&mut self, display_handle: &V2GraphicsHandle) -> bool {
         match self.map.resize_if_necessary(display_handle) {
             Ok(resized) => {
                 if resized {
@@ -295,7 +305,7 @@ impl Display {
         Rect::new(self.x, self.y, size.0, size.1)
     }
 
-    pub fn move_cursor(
+    pub(super) fn move_cursor(
         &mut self,
         display_handle: &V2GraphicsHandle,
         x: i32,
@@ -305,7 +315,7 @@ impl Display {
         display_handle.move_cursor(self.map.crtc, (x, y))
     }
 
-    pub fn set_cursor(
+    pub(super) fn set_cursor(
         &mut self,
         display_handle: &V2GraphicsHandle,
         hot_x: i32,
@@ -332,7 +342,11 @@ impl Display {
         )
     }
 
-    pub fn sync_rect(&mut self, display_handle: &V2GraphicsHandle, rect: Rect) -> io::Result<()> {
+    pub(super) fn sync_rect(
+        &mut self,
+        display_handle: &V2GraphicsHandle,
+        rect: Rect,
+    ) -> io::Result<()> {
         let x1 = (rect.left() - self.x) as usize;
         let y1 = (rect.top() - self.y) as usize;
         let x2 = (rect.right() - self.x) as usize;
@@ -352,8 +366,4 @@ impl Display {
             )
             .map(|_| ())
     }
-}
-
-impl Drop for Display {
-    fn drop(&mut self) {}
 }

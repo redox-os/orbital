@@ -1,8 +1,6 @@
 use crate::{
-    core::{
-        Properties,
-        display::{Display, SCALE_BASELINE},
-    },
+    compositor::{Display, SCALE_BASELINE},
+    core::Properties,
     scheme::TilePosition,
     window_order::WindowZOrder,
 };
@@ -18,7 +16,6 @@ use std::collections::VecDeque;
 
 use std::rc::Rc;
 
-// use theme::{BAR_COLOR, BAR_HIGHLIGHT_COLOR, TEXT_COLOR, TEXT_HIGHLIGHT_COLOR};
 use crate::config::Config;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -31,11 +28,11 @@ pub struct Window {
     pub factored_scale: u32,
     pub title: String,
     pub asynchronous: bool,
-    pub borderless: bool,
+    borderless: bool,
     pub hidden: bool,
     pub resizable: bool,
     pub scalable: bool,
-    pub transparent: bool,
+    transparent: bool,
     pub unclosable: bool,
     pub zorder: WindowZOrder,
     pub restore: Option<(Rect, TilePosition)>,
