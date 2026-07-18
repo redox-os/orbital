@@ -1,21 +1,18 @@
-use std::collections::HashMap;
 use std::num::NonZero;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::{cmp, collections::BTreeMap, fs, io, str};
+use std::{cmp, collections::BTreeMap, fs, str};
 
 use log::{error, info, warn};
 use orbclient::image::Image;
 use orbclient::rect::{Rect, RectEdge};
 use orbclient::*;
-use redox_scheme::Response;
-use syscall::EVENT_READ;
 use syscall::error::{EBADF, Error, Result};
 
 use crate::compositor::{Compositor, SCALE_BASELINE};
 use crate::config::Config;
-use crate::core::{Orbital, Properties};
+use crate::core::Properties;
 use crate::widget::fps::FpsWidget;
 use crate::widget::shortcuts::ShortcutsWidget;
 use crate::window::{Window, WindowId};
@@ -246,31 +243,8 @@ impl OrbitalScheme {
         }
     }
 
-    /// Called after a batch of any events have been handled
-    pub fn handle_after(
-        &mut self,
-        orb: &mut Orbital,
-        handles: &HashMap<usize, crate::core::Handle>,
-    ) -> io::Result<()> {
-        for (handle_id, handle) in handles {
-            let crate::core::Handle::Window(window_id) = handle else {
-                continue;
-            };
-
-            let window = self.windows.get_mut(window_id).unwrap();
-            if !window.events.is_empty() {
-                if !window.notified_read || window.asynchronous {
-                    window.notified_read = true;
-
-                    orb.scheme_write(Response::post_fevent(*handle_id, EVENT_READ.bits()))?;
-                }
-            } else {
-                window.notified_read = false;
-            }
-        }
-
-        self.redraw();
-        Ok(())
+    pub fn get_window_mut(&mut self, id: WindowId) -> Option<&mut Window> {
+        self.windows.get_mut(&id)
     }
 
     /// Called when a new window is requested by the scheme.
@@ -550,7 +524,7 @@ impl OrbitalScheme {
         Ok(i)
     }
 
-    fn redraw(&mut self) {
+    pub(crate) fn redraw(&mut self) {
         self.resize_if_necessary();
 
         self.fps_widget.start_measure();
@@ -1252,7 +1226,7 @@ impl OrbitalScheme {
                                 window,
                                 |_compositor, window| {
                                     window.y = y;
-                                    window.event(MoveEvent { x: window.x, y: y }.to_event());
+                                    window.event(MoveEvent { x: window.x, y }.to_event());
                                 },
                             );
                         }
