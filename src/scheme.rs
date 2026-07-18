@@ -1226,7 +1226,7 @@ impl OrbitalScheme {
                                 window,
                                 |_compositor, window| {
                                     window.y = y;
-                                    window.event(MoveEvent { x: window.x, y: y }.to_event());
+                                    window.event(MoveEvent { x: window.x, y }.to_event());
                                 },
                             );
                         }

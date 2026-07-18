@@ -9,7 +9,7 @@ pub struct ShortcutsWidget {
     cached_scale: u32,
 }
 
-const SHORTCUTS_LIST: &'static [&'static str] = &[
+const SHORTCUTS_LIST: &[&str] = &[
     "Super-Q: Quit current window",
     "Super-TAB: Cycle through active windows bringing to the front of the stack",
     "Super-{: Volume down",
