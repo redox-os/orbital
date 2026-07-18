@@ -7,7 +7,6 @@ use std::{env, process::Command, rc::Rc};
 
 use config::Config;
 use core::Orbital;
-use scheme::OrbitalScheme;
 
 mod compositor;
 mod config;
@@ -37,8 +36,10 @@ fn orbital() -> Result<(), String> {
     }
     let login_cmd = args.next().ok_or("no login manager argument")?;
 
-    let (orbital, compositor) =
-        Orbital::open_display().map_err(|e| format!("could not open display, caused by: {}", e))?;
+    let config = Rc::new(Config::from_path("/ui/orbital.toml"));
+
+    let orbital = Orbital::open_display(config)
+        .map_err(|e| format!("could not open display, caused by: {}", e))?;
 
     match Command::new("inputd").arg("-A").arg(&vt).status() {
         Ok(status) => {
@@ -51,11 +52,8 @@ fn orbital() -> Result<(), String> {
         }
     }
 
-    let config = Rc::new(Config::from_path("/ui/orbital.toml"));
-    let scheme = OrbitalScheme::new(compositor, config)?;
-
     orbital
-        .run(scheme, Command::new(login_cmd).args(args))
+        .run(Command::new(login_cmd).args(args))
         .map_err(|e| format!("error in main loop, caused by {}", e))
 }
 

@@ -3,6 +3,7 @@ use std::{
     io::{self, Write},
     mem,
     os::unix::io::AsRawFd,
+    rc::Rc,
     slice,
     str::{self, FromStr},
 };
@@ -23,6 +24,7 @@ use syscall::{
 };
 
 use crate::compositor::Compositor;
+use crate::config::Config;
 use crate::scheme::OrbitalScheme;
 use crate::window::WindowId;
 
@@ -50,17 +52,28 @@ pub struct Properties<'a> {
     pub title: &'a str,
 }
 
+enum Handle {
+    SchemeRoot,
+    DisplaySize(usize),
+    Window(WindowId),
+    Clipboard(WindowId),
+}
+
 pub struct Orbital {
     scheme: Socket,
     delayed: VecDeque<(CallerCtx, OpRead)>,
 
     /// Handle to "/scheme/input/consumer" to receive input events.
     input: ConsumerHandle,
+
+    handler: OrbitalScheme,
+    handles: HashMap<usize, Handle>,
+    next_id: usize,
 }
 
 impl Orbital {
     /// Open an orbital display and connect to the scheme
-    pub fn open_display() -> io::Result<(Self, Compositor)> {
+    pub fn open_display(config: Rc<Config>) -> io::Result<Self> {
         let input_handle = ConsumerHandle::new_vt()?;
 
         let display = input_handle.open_display_v2().map_err(|err| {
@@ -75,14 +88,18 @@ impl Orbital {
 
         let compositor = Compositor::new(V2GraphicsHandle::from_file(display)?)?;
 
-        Ok((
-            Orbital {
-                scheme,
-                delayed: VecDeque::new(),
-                input: input_handle,
-            },
-            compositor,
-        ))
+        let handler =
+            OrbitalScheme::new(compositor, config).map_err(|err| io::Error::other(err))?;
+
+        Ok(Orbital {
+            scheme,
+            delayed: VecDeque::new(),
+            input: input_handle,
+
+            handler,
+            handles: HashMap::new(),
+            next_id: 0,
+        })
     }
 
     /// Write a Packet to scheme I/O
@@ -93,11 +110,7 @@ impl Orbital {
     }
 
     /// Start the main loop
-    pub fn run(
-        self,
-        handler: OrbitalScheme,
-        login_cmd: &mut std::process::Command,
-    ) -> Result<(), Error> {
+    pub fn run(mut self, login_cmd: &mut std::process::Command) -> Result<(), Error> {
         user_data! {
             enum Source {
                 Scheme,
@@ -113,14 +126,8 @@ impl Orbital {
         let input_fd = self.input.event_handle().as_raw_fd();
 
         let mut state = SchemeState::new();
-        let mut me = OrbitalHandler {
-            orb: self,
-            handler,
-            handles: HashMap::new(),
-            next_id: 0,
-        };
-        let cap_id = me.scheme_root()?;
-        register_scheme_inner(&mut me.orb.scheme, "orbital", cap_id)?;
+        let cap_id = self.scheme_root()?;
+        register_scheme_inner(&mut self.scheme, "orbital", cap_id)?;
 
         unsafe {
             // FIXME remove DISPLAY env var once orbclient no longer depends on it
@@ -142,8 +149,7 @@ impl Orbital {
             match event_res? {
                 Source::Scheme => {
                     loop {
-                        match me
-                            .orb
+                        match self
                             .scheme
                             .read_requests(&mut request_buf, SignalBehavior::Restart)
                         {
@@ -163,23 +169,21 @@ impl Orbital {
                             let req = match request.kind() {
                                 RequestKind::Call(req) => req,
                                 RequestKind::OnClose { id } => {
-                                    me.on_close(id);
+                                    self.on_close(id);
                                     continue;
                                 }
                                 // TODO: faster than search?
                                 RequestKind::Cancellation(req) => {
-                                    if let Some(idx) = me
-                                        .orb
+                                    if let Some(idx) = self
                                         .delayed
                                         .iter()
                                         .position(|(_, op)| op.req_id() == req.id)
                                     {
-                                        let (_, op) = me
-                                            .orb
+                                        let (_, op) = self
                                             .delayed
                                             .remove(idx)
                                             .expect("already found at index");
-                                        me.orb.scheme_write(Response::err(ECANCELED, op))?;
+                                        self.scheme_write(Response::err(ECANCELED, op))?;
                                     }
                                     fake_input_event = Some(Ok(Source::Input));
                                     continue;
@@ -190,13 +194,13 @@ impl Orbital {
                             let op = match req.op() {
                                 Ok(op) => op,
                                 Err(req) => {
-                                    me.orb.scheme_write(Response::err(EOPNOTSUPP, req))?;
+                                    self.scheme_write(Response::err(EOPNOTSUPP, req))?;
                                     continue;
                                 }
                             };
                             if let Op::Read(mut read_op) = op {
-                                let should_delay = me.should_delay(read_op.fd);
-                                let res = me.read(
+                                let should_delay = self.should_delay(read_op.fd);
+                                let res = self.read(
                                     read_op.fd,
                                     read_op.buf(),
                                     // dont-care
@@ -206,35 +210,35 @@ impl Orbital {
                                     &caller_ctx,
                                 );
                                 if should_delay && res == Ok(0) {
-                                    me.orb.delayed.push_back((caller_ctx, read_op));
+                                    self.delayed.push_back((caller_ctx, read_op));
                                 } else {
-                                    me.orb.scheme_write(Response::new(res, read_op))?;
+                                    self.scheme_write(Response::new(res, read_op))?;
                                 }
                             } else {
-                                let resp = op.handle_sync(caller_ctx, &mut me, &mut state);
-                                me.orb.scheme_write(resp)?;
+                                let resp = op.handle_sync(caller_ctx, &mut self, &mut state);
+                                self.scheme_write(resp)?;
                             }
                         }
-                        me.handle_after()?;
+                        self.handle_after()?;
                     }
                 }
                 Source::Input => {
                     let mut events = [Event::new(); 16];
                     loop {
-                        match me.orb.input.read_events(&mut events)? {
+                        match self.input.read_events(&mut events)? {
                             ConsumerHandleEvent::Events(&[]) => break,
                             ConsumerHandleEvent::Events(events) => {
-                                let mut delayed_left = me.orb.delayed.len();
+                                let mut delayed_left = self.delayed.len();
 
                                 while delayed_left > 0
-                                    && let Some((ctx, mut read_op)) = me.orb.delayed.pop_front()
+                                    && let Some((ctx, mut read_op)) = self.delayed.pop_front()
                                 {
                                     delayed_left -= 1;
 
-                                    let should_delay = me.should_delay(read_op.fd);
+                                    let should_delay = self.should_delay(read_op.fd);
 
                                     // TODO: deduplicate with the same code above
-                                    let res = me.read(
+                                    let res = self.read(
                                         read_op.fd,
                                         read_op.buf(),
                                         // dont-care
@@ -244,18 +248,18 @@ impl Orbital {
                                         &ctx,
                                     );
                                     if should_delay && res == Ok(0) {
-                                        me.orb.delayed.push_back((ctx, read_op));
+                                        self.delayed.push_back((ctx, read_op));
                                     } else {
-                                        me.orb.scheme_write(Response::new(res, read_op))?;
+                                        self.scheme_write(Response::new(res, read_op))?;
                                     }
                                 }
 
-                                me.handler.handle_input(events);
+                                self.handler.handle_input(events);
                             }
                             ConsumerHandleEvent::Handoff => {}
                         }
                     }
-                    me.handle_after()?;
+                    self.handle_after()?;
                 }
             }
         }
@@ -264,19 +268,7 @@ impl Orbital {
         Ok(())
     }
 }
-enum Handle {
-    SchemeRoot,
-    DisplaySize(usize),
-    Window(WindowId),
-    Clipboard(WindowId),
-}
-struct OrbitalHandler {
-    orb: Orbital,
-    handler: OrbitalScheme,
-    handles: HashMap<usize, Handle>,
-    next_id: usize,
-}
-impl SchemeSync for OrbitalHandler {
+impl SchemeSync for Orbital {
     fn scheme_root(&mut self) -> syscall::Result<usize> {
         let new_id = self.next_id;
         self.handles.insert(new_id, Handle::SchemeRoot);
@@ -632,7 +624,7 @@ impl SchemeSync for OrbitalHandler {
         Ok(())
     }
 }
-impl OrbitalHandler {
+impl Orbital {
     fn should_delay(&self, id: usize) -> bool {
         if let Some(handle) = self.handles.get(&id) {
             match *handle {
@@ -668,8 +660,7 @@ impl OrbitalHandler {
                 if !window.notified_read || window.asynchronous {
                     window.notified_read = true;
 
-                    self.orb
-                        .scheme_write(Response::post_fevent(*handle_id, EVENT_READ.bits()))?;
+                    self.scheme_write(Response::post_fevent(*handle_id, EVENT_READ.bits()))?;
                 }
             } else {
                 window.notified_read = false;
