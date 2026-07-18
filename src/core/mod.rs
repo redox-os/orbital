@@ -16,6 +16,7 @@ use redox_scheme::{
     CallerCtx, OpenResult, RequestKind, Response, SignalBehavior, Socket,
     scheme::{IntoTag, Op, OpRead, SchemeState, SchemeSync, register_scheme_inner},
 };
+use syscall::EVENT_READ;
 use syscall::{
     EACCES, EAGAIN, EBADF, ECANCELED, EINVAL, EOPNOTSUPP, EWOULDBLOCK, flag::EventFlags,
     schemev2::NewFdFlags,
@@ -85,7 +86,7 @@ impl Orbital {
     }
 
     /// Write a Packet to scheme I/O
-    pub fn scheme_write(&self, response: Response) -> io::Result<()> {
+    fn scheme_write(&self, response: Response) -> io::Result<()> {
         self.scheme
             .write_response(response, SignalBehavior::Restart)?;
         Ok(())
@@ -214,7 +215,7 @@ impl Orbital {
                                 me.orb.scheme_write(resp)?;
                             }
                         }
-                        me.handler.handle_after(&mut me.orb, &me.handles)?;
+                        me.handle_after()?;
                     }
                 }
                 Source::Input => {
@@ -254,7 +255,7 @@ impl Orbital {
                             ConsumerHandleEvent::Handoff => {}
                         }
                     }
-                    me.handler.handle_after(&mut me.orb, &me.handles)?;
+                    me.handle_after()?;
                 }
             }
         }
@@ -263,7 +264,7 @@ impl Orbital {
         Ok(())
     }
 }
-pub(crate) enum Handle {
+enum Handle {
     SchemeRoot,
     DisplaySize(usize),
     Window(WindowId),
@@ -653,5 +654,29 @@ impl OrbitalHandler {
             Handle::Window(id) => self.handler.handle_window_close(id),
             Handle::SchemeRoot | Handle::DisplaySize(_) => {}
         };
+    }
+
+    /// Called after a batch of any events have been handled
+    fn handle_after(&mut self) -> io::Result<()> {
+        for (handle_id, handle) in &self.handles {
+            let crate::core::Handle::Window(window_id) = *handle else {
+                continue;
+            };
+
+            let window = self.handler.get_window_mut(window_id).unwrap();
+            if !window.events.is_empty() {
+                if !window.notified_read || window.asynchronous {
+                    window.notified_read = true;
+
+                    self.orb
+                        .scheme_write(Response::post_fevent(*handle_id, EVENT_READ.bits()))?;
+                }
+            } else {
+                window.notified_read = false;
+            }
+        }
+
+        self.handler.redraw();
+        Ok(())
     }
 }
