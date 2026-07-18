@@ -347,14 +347,34 @@ impl OrbitalScheme {
         h: Option<u32>,
     ) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        let mut resize_event = None;
         Self::update_window(&mut self.compositor, window, |_compositor, window| {
-            let w = w.unwrap_or(window.width());
-            let h = h.unwrap_or(window.height());
-            if w == window.width() && h == window.height() {
+            let w = w.unwrap_or(window.image_width());
+            let h = h.unwrap_or(window.image_height());
+            if w == window.image_width() && h == window.image_height() {
                 return;
             }
             window.set_size(w, h);
+
+            if window.resizing {
+                // when user initiated resizing, application must not ask their own size until it
+                // follows what user is requesting, only then the application can request again.
+                // So far, there's no GUI app that ask any other value when ResizeEvent is received.
+                if w != window.width() || h != window.height() {
+                    // the last resize event is too late, send again
+                    resize_event = Some(ResizeEvent {
+                        height: window.height(),
+                        width: window.width(),
+                    })
+                } else {
+                    window.resizing = false;
+                }
+            }
         });
+
+        if let Some(resize_event) = resize_event {
+            window.event(resize_event.to_event());
+        }
 
         Ok(())
     }
@@ -971,8 +991,7 @@ impl OrbitalScheme {
                 window.x = x;
                 window.y = y;
                 window.event(MoveEvent { x, y }.to_event());
-
-                window.event(ResizeEvent { width, height }.to_event());
+                window.send_resize_event(width, height);
             });
         }
     }
@@ -1235,12 +1254,13 @@ impl OrbitalScheme {
                         }
 
                         if h != window.iheight() {
-                            let resize_event = ResizeEvent {
-                                width: window.width(),
-                                height: h as u32,
-                            }
-                            .to_event();
-                            window.event(resize_event);
+                            Self::update_window(
+                                &mut self.compositor,
+                                window,
+                                |_compositor, window| {
+                                    window.send_resize_event(window.width(), h as u32);
+                                },
+                            );
                         }
                     }
                 } else {
@@ -1267,12 +1287,13 @@ impl OrbitalScheme {
                         }
 
                         if w != window.iwidth() {
-                            let resize_event = ResizeEvent {
-                                width: w as u32,
-                                height: window.height(),
-                            }
-                            .to_event();
-                            window.event(resize_event);
+                            Self::update_window(
+                                &mut self.compositor,
+                                window,
+                                |_compositor, window| {
+                                    window.send_resize_event(w as u32, window.height());
+                                },
+                            );
                         }
                     }
                 } else {
@@ -1284,12 +1305,9 @@ impl OrbitalScheme {
                     new_cursor = CursorKind::RightSide;
                     let w = event.x - off_x - window.x;
                     if w > 0 && w != window.iwidth() {
-                        let resize_event = ResizeEvent {
-                            width: w as u32,
-                            height: window.height(),
-                        }
-                        .to_event();
-                        window.event(resize_event);
+                        Self::update_window(&mut self.compositor, window, |_compositor, window| {
+                            window.send_resize_event(w as u32, window.height());
+                        });
                     }
                 } else {
                     self.dragging = DragMode::None;
@@ -1300,12 +1318,9 @@ impl OrbitalScheme {
                     new_cursor = CursorKind::BottomSide;
                     let h = event.y - off_y - window.y;
                     if h > 0 && h != window.iheight() {
-                        let resize_event = ResizeEvent {
-                            width: window.width(),
-                            height: h as u32,
-                        }
-                        .to_event();
-                        window.event(resize_event);
+                        Self::update_window(&mut self.compositor, window, |_compositor, window| {
+                            window.send_resize_event(window.width(), h as u32);
+                        });
                     }
                 } else {
                     self.dragging = DragMode::None;
@@ -1332,12 +1347,13 @@ impl OrbitalScheme {
                         }
 
                         if w != window.iwidth() || h != window.iheight() {
-                            let resize_event = ResizeEvent {
-                                width: w as u32,
-                                height: h as u32,
-                            }
-                            .to_event();
-                            window.event(resize_event);
+                            Self::update_window(
+                                &mut self.compositor,
+                                window,
+                                |_compositor, window| {
+                                    window.send_resize_event(w as u32, h as u32);
+                                },
+                            );
                         }
                     }
                 } else {
@@ -1350,12 +1366,9 @@ impl OrbitalScheme {
                     let w = event.x - off_x - window.x;
                     let h = event.y - off_y - window.y;
                     if w > 0 && h > 0 && (w != window.iwidth() || h != window.iheight()) {
-                        let resize_event = ResizeEvent {
-                            width: w as u32,
-                            height: h as u32,
-                        }
-                        .to_event();
-                        window.event(resize_event);
+                        Self::update_window(&mut self.compositor, window, |_compositor, window| {
+                            window.send_resize_event(w as u32, h as u32);
+                        });
                     }
                 } else {
                     self.dragging = DragMode::None;
