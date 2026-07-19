@@ -24,7 +24,10 @@ pub struct WindowId(pub usize);
 pub struct Window {
     pub x: i32,
     pub y: i32,
+    pub h: u32,
+    pub w: u32,
     pub scale: u32,
+    pub resizing: bool,
     pub factored_scale: u32,
     pub title: String,
     pub asynchronous: bool,
@@ -60,6 +63,9 @@ impl Window {
         Window {
             x,
             y,
+            w,
+            h,
+            resizing: false,
             scale,
             factored_scale: SCALE_BASELINE,
             title: String::new(),
@@ -87,19 +93,26 @@ impl Window {
     }
 
     pub fn width(&self) -> u32 {
-        self.image.width()
+        self.w
     }
 
     pub fn height(&self) -> u32 {
-        self.image.height()
+        self.h
     }
 
+    pub fn image_width(&self) -> u32 {
+        self.image.width()
+    }
+
+    pub fn image_height(&self) -> u32 {
+        self.image.height()
+    }
     pub fn iwidth(&self) -> i32 {
-        self.image.width() as i32
+        self.w as i32
     }
 
     pub fn iheight(&self) -> i32 {
-        self.image.height() as i32
+        self.h as i32
     }
 
     pub fn rect(&self) -> Rect {
@@ -107,6 +120,14 @@ impl Window {
             Rect::new(self.x, self.y, 0, 0)
         } else {
             Rect::new(self.x, self.y, self.width(), self.height())
+        }
+    }
+
+    pub fn image_rect(&self) -> Rect {
+        if self.hidden {
+            Rect::new(0, 0, 0, 0)
+        } else {
+            Rect::new(0, 0, self.image.width(), self.image.height())
         }
     }
 
@@ -241,16 +262,50 @@ impl Window {
         let intersect = self_rect.intersection(rect);
         if !intersect.is_empty() {
             let window_rect = intersect.translate(-self_rect.left(), -self_rect.top());
+            let image_rect = window_rect.intersection(&self.image_rect());
+
+            if image_rect.right() < window_rect.right() {
+                display.rect(
+                    &intersect.edge(window_rect.width() - image_rect.width(), 0, RectEdge::Right),
+                    Color::rgb(0, 0, 0),
+                );
+            }
+            if image_rect.bottom() < window_rect.bottom() {
+                display.rect(
+                    &intersect.edge(
+                        window_rect.height() - image_rect.height(),
+                        0,
+                        RectEdge::Bottom,
+                    ),
+                    Color::rgb(0, 0, 0),
+                );
+            }
             if self.transparent {
                 display
                     .roi_mut(&intersect)
-                    .blend(&self.image.roi(&window_rect));
+                    .blend(&self.image.roi(&image_rect));
             } else {
                 display
                     .roi_mut(&intersect)
-                    .blit(&self.image.roi(&window_rect));
+                    .blit(&self.image.roi(&image_rect));
             }
         }
+    }
+
+    pub fn send_resize_event(&mut self, w: u32, h: u32) {
+        // if this fail, it means resize event is underway, don't send again
+        if self.w == self.image.width() && self.h == self.image.height() {
+            self.resizing = true;
+            self.event(
+                orbclient::ResizeEvent {
+                    height: h,
+                    width: w,
+                }
+                .to_event(),
+            );
+        }
+        self.w = w;
+        self.h = h;
     }
 
     pub fn event(&mut self, event: Event) {
@@ -332,8 +387,8 @@ impl Window {
             flags,
             x: self.x,
             y: self.y,
-            width: self.width(),
-            height: self.height(),
+            width: self.image.width(),
+            height: self.image.height(),
             title: &self.title,
         }
     }
