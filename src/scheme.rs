@@ -29,6 +29,7 @@ enum CursorKind {
     RightSide,
 }
 
+#[derive(Debug, Clone)]
 enum DragMode {
     None,
     Title(WindowId, i32, i32),
@@ -40,6 +41,7 @@ enum DragMode {
     BottomRightBorder(WindowId, i32, i32),
 }
 
+#[derive(Debug, Clone)]
 enum Volume {
     Down,
     Up,
@@ -83,6 +85,7 @@ pub struct OrbitalScheme {
     cursor_simulate_enabled: bool,
     cursor_simulate_speed: i32,
     dragging: DragMode,
+    dragging_window_initiated: bool,
     modifier_state: u8,
     volume_value: i32,
     volume_toggle: i32,
@@ -146,6 +149,7 @@ impl OrbitalScheme {
             cursor_simulate_speed: 32,
             cursor_simulate_enabled: false,
             dragging: DragMode::None,
+            dragging_window_initiated: false,
             modifier_state: 0,
             volume_value: 0,
             volume_toggle: 0,
@@ -298,6 +302,7 @@ impl OrbitalScheme {
             }
             WindowDragKind::None => DragMode::None,
         };
+        self.dragging_window_initiated = true;
 
         Ok(())
     }
@@ -1440,130 +1445,148 @@ impl OrbitalScheme {
 
     fn button_event(&mut self, event: ButtonEvent) {
         // Check for focus switch, dragging, and forward mouse events to applications
-        match self.dragging {
-            DragMode::None => {
-                let mut focus = WindowId(0);
-                for id in self.order.iter_front_to_back() {
-                    if let Some(window) = self.windows.get(&id) {
-                        if window.rect().contains(self.cursor_x, self.cursor_y) {
-                            if self.modifier_state & SUPER_MODIFIER == SUPER_MODIFIER {
-                                if event.left && !self.cursor_left {
-                                    focus = id;
-                                    self.dragging =
-                                        DragMode::Title(id, self.cursor_x, self.cursor_y);
-                                }
-                            } else if let Some(window) = self.windows.get_mut(&id) {
-                                window.event(event.to_event());
-                                if event.left && !self.cursor_left
-                                    || event.middle && !self.cursor_middle
-                                    || event.right && !self.cursor_right
-                                {
-                                    focus = id;
-                                }
-                            }
-                            break;
-                        } else if window.title_rect().contains(self.cursor_x, self.cursor_y) {
-                            //TODO: Trigger max and exit on release
-                            if event.left && !self.cursor_left {
-                                focus = id;
-                                if (window.max_contains(self.cursor_x, self.cursor_y))
-                                    && (window.resizable)
-                                {
-                                    Self::tile_window(
-                                        &mut self.compositor,
-                                        &mut self.windows,
-                                        id,
-                                        TilePosition::Maximized,
-                                    );
-                                } else if (window.close_contains(self.cursor_x, self.cursor_y))
-                                    && (!window.unclosable)
-                                {
-                                    if let Some(window) = self.windows.get_mut(&id) {
-                                        window.event(QuitEvent.to_event());
-                                    }
-                                } else {
-                                    self.dragging =
-                                        DragMode::Title(id, self.cursor_x, self.cursor_y);
-                                }
-                            }
-                            break;
-                        } else {
-                            let dragging = match (
-                                window
-                                    .border_rect(RectEdge::Left)
-                                    .contains(self.cursor_x, self.cursor_y),
-                                window
-                                    .border_rect(RectEdge::Right)
-                                    .contains(self.cursor_x, self.cursor_y),
-                                window
-                                    .border_rect(RectEdge::Bottom)
-                                    .contains(self.cursor_x, self.cursor_y),
-                            ) {
-                                (true, false, false) => Some(DragMode::LeftBorder(
-                                    id,
-                                    self.cursor_x - window.x,
-                                    window.x + window.iwidth(),
-                                )),
-                                (false, true, false) => Some(DragMode::RightBorder(
-                                    id,
-                                    self.cursor_x - (window.x + window.iwidth()),
-                                )),
-                                (false, false, true) => Some(DragMode::BottomBorder(
-                                    id,
-                                    self.cursor_y - (window.y + window.iheight()),
-                                )),
-                                (true, false, true) => Some(DragMode::BottomLeftBorder(
-                                    id,
-                                    self.cursor_x - window.x,
-                                    self.cursor_y - (window.y + window.iheight()),
-                                    window.x + window.iwidth(),
-                                )),
-                                (false, true, true) => Some(DragMode::BottomRightBorder(
-                                    id,
-                                    self.cursor_x - (window.x + window.iwidth()),
-                                    self.cursor_y - (window.y + window.iheight()),
-                                )),
-                                (_, _, _) => None,
-                            };
-                            if let Some(dragging) = dragging {
-                                if event.left && !self.cursor_left {
-                                    focus = id;
-                                    self.dragging = dragging;
-                                }
-                                break;
-                            }
-                        }
-                    }
+        let focus = match self.dragging {
+            DragMode::None => self.button_event_initiate(event),
+            _ if self.dragging_window_initiated => {
+                // If drag request is initiated from window, keep sending button events
+                let focus = self.button_event_initiate(event);
+                if !event.left {
+                    self.dragging_window_initiated = false;
+                    self.dragging = DragMode::None;
                 }
-
-                if focus.0 > 0 {
-                    // Redraw old focused window
-                    if let Some(id) = self.order.focused() {
-                        self.focus(id, false);
-                    }
-
-                    // Reorder windows
-                    if self.windows.get(&focus).unwrap().zorder != WindowZOrder::Back {
-                        // Transfer focus if a front or normal window
-                        self.order.make_focused(focus);
-                    }
-
-                    // Redraw new focused window
-                    if let Some(id) = self.order.focused() {
-                        self.focus(id, true);
-                    }
-                }
+                focus
             }
             _ => {
                 if !event.left {
                     self.dragging = DragMode::None;
                 }
+                None
+            }
+        };
+
+        if let Some(focus) = focus
+            && self.order.focused() != Some(focus)
+        {
+            // Redraw old focused window
+            if let Some(id) = self.order.focused() {
+                self.focus(id, false);
+            }
+
+            // Reorder windows
+            if self.windows.get(&focus).unwrap().zorder != WindowZOrder::Back {
+                // Transfer focus if a front or normal window
+                self.order.make_focused(focus);
+            }
+
+            // Redraw new focused window
+            if let Some(id) = self.order.focused() {
+                self.focus(id, true);
             }
         }
 
         self.cursor_left = event.left;
         self.cursor_middle = event.middle;
         self.cursor_right = event.right;
+    }
+
+    /// Handles first button events from user, returns WindowId that we think it should focus on.
+    /// May mutate self.dragging
+    fn button_event_initiate(&mut self, event: ButtonEvent) -> Option<WindowId> {
+        for id in self.order.iter_front_to_back() {
+            let Some(window) = self.windows.get(&id) else {
+                continue;
+            };
+            if window.rect().contains(self.cursor_x, self.cursor_y) {
+                if self.modifier_state & SUPER_MODIFIER == SUPER_MODIFIER {
+                    if event.left && !self.cursor_left {
+                        self.dragging = DragMode::Title(id, self.cursor_x, self.cursor_y);
+                        return Some(id);
+                    }
+                } else if let Some(window) = self.windows.get_mut(&id) {
+                    window.event(event.to_event());
+                    if event.left && !self.cursor_left
+                        || event.middle && !self.cursor_middle
+                        || event.right && !self.cursor_right
+                    {
+                        return Some(id);
+                    }
+                }
+                break;
+            } else if window.title_rect().contains(self.cursor_x, self.cursor_y) {
+                let on_max_btn =
+                    window.resizable && window.max_contains(self.cursor_x, self.cursor_y);
+                let on_close_btn =
+                    !window.unclosable && window.close_contains(self.cursor_x, self.cursor_y);
+                // pressed down
+                if event.left && !self.cursor_left {
+                    if !on_max_btn && !on_close_btn {
+                        self.dragging = DragMode::Title(id, self.cursor_x, self.cursor_y);
+                    }
+                }
+                // releasing up
+                if !event.left && self.cursor_left {
+                    if on_max_btn {
+                        Self::tile_window(
+                            &mut self.compositor,
+                            &mut self.windows,
+                            id,
+                            TilePosition::Maximized,
+                        );
+                    } else if on_close_btn {
+                        if let Some(window) = self.windows.get_mut(&id) {
+                            window.event(QuitEvent.to_event());
+                        }
+                    }
+                }
+                return Some(id);
+            } else {
+                let dragging = match (
+                    window
+                        .border_rect(RectEdge::Left)
+                        .contains(self.cursor_x, self.cursor_y),
+                    window
+                        .border_rect(RectEdge::Right)
+                        .contains(self.cursor_x, self.cursor_y),
+                    window
+                        .border_rect(RectEdge::Bottom)
+                        .contains(self.cursor_x, self.cursor_y),
+                ) {
+                    (true, false, false) => Some(DragMode::LeftBorder(
+                        id,
+                        self.cursor_x - window.x,
+                        window.x + window.iwidth(),
+                    )),
+                    (false, true, false) => Some(DragMode::RightBorder(
+                        id,
+                        self.cursor_x - (window.x + window.iwidth()),
+                    )),
+                    (false, false, true) => Some(DragMode::BottomBorder(
+                        id,
+                        self.cursor_y - (window.y + window.iheight()),
+                    )),
+                    (true, false, true) => Some(DragMode::BottomLeftBorder(
+                        id,
+                        self.cursor_x - window.x,
+                        self.cursor_y - (window.y + window.iheight()),
+                        window.x + window.iwidth(),
+                    )),
+                    (false, true, true) => Some(DragMode::BottomRightBorder(
+                        id,
+                        self.cursor_x - (window.x + window.iwidth()),
+                        self.cursor_y - (window.y + window.iheight()),
+                    )),
+                    (_, _, _) => None,
+                };
+                if let Some(dragging) = dragging {
+                    if event.left && !self.cursor_left {
+                        self.dragging = dragging;
+                        return Some(id);
+                    }
+                    break;
+                }
+            }
+        }
+        None
     }
 
     fn resize_if_necessary(&mut self) {
