@@ -267,7 +267,7 @@ impl Window {
             if image_rect.right() < window_rect.right() {
                 display.rect(
                     &intersect.edge(window_rect.width() - image_rect.width(), 0, RectEdge::Right),
-                    Color::rgb(0, 0, 0),
+                    Color::BLACK,
                 );
             }
             if image_rect.bottom() < window_rect.bottom() {
@@ -277,7 +277,7 @@ impl Window {
                         0,
                         RectEdge::Bottom,
                     ),
-                    Color::rgb(0, 0, 0),
+                    Color::BLACK,
                 );
             }
             if self.transparent {

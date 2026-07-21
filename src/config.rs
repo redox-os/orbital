@@ -46,7 +46,7 @@ pub struct Config {
 }
 
 fn background_color_default() -> ConfigColor {
-    Color::rgb(0, 0, 0).into()
+    Color::BLACK.into()
 }
 fn bar_color_default() -> ConfigColor {
     Color::rgba(0x1B, 0x1B, 0x1B, 224).into()
