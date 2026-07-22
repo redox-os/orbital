@@ -40,6 +40,7 @@ pub struct Window {
     pub zorder: WindowZOrder,
     pub restore: Option<(Rect, TilePosition)>,
     image: ImageAligned,
+    image_shadow: ImageAligned,
     title_image: Image,
     title_image_unfocused: Image,
     pub events: VecDeque<Event>,
@@ -80,6 +81,7 @@ impl Window {
             restore: None,
             // TODO: get a system constant for the page size
             image: ImageAligned::new(w, h, 4096), // Ensure that image data is page aligned at beginning and end
+            image_shadow: ImageAligned::new(w, h, 4096), // Ensure that image data is page aligned at beginning and end
             title_image: Image::new(0, 0),
             title_image_unfocused: Image::new(0, 0),
             events: VecDeque::new(),
@@ -281,14 +283,42 @@ impl Window {
                 );
             }
             if self.transparent {
+                // using "image_shadow" which is copied from "handle_window_sync"
                 display
                     .roi_mut(&intersect)
-                    .blend(&self.image.roi(&image_rect));
+                    .blend(&self.image_shadow.roi(&image_rect));
             } else {
                 display
                     .roi_mut(&intersect)
                     .blit(&self.image.roi(&image_rect));
             }
+        }
+    }
+
+    /// Copies window public image into backbuffer to avoid flickering without V-Sync
+    pub fn handle_window_sync(&mut self, damages: &Option<Vec<Rect>>) {
+        // TODO: Avoid us having us to copy into backbuffer by introducing new flags:
+        // - ORBITAL_DOUBLE_BUFFER: use bit flip between using image_shadow and image buffer.
+        // - ORBITAL_LIVE_BUFFER: the window promised to us to directly use its image buffer.
+        // Right now, we do copy into backbuffer only in transparent window as
+        // the issue is coming from softbuffer & iced_wgpu that mutates the main buffer
+        // and causes flickering. In theory ORBITAL_DOUBLE_BUFFER should works for iced_wgpu
+        // because it is always doing full redraw, while softbuffer alone may not.
+        if !self.transparent {
+            return;
+        }
+
+        if let Some(damages) = damages {
+            for damage in damages {
+                self.image_shadow
+                    .roi_mut(damage)
+                    .blit(&self.image.roi(damage));
+            }
+        } else {
+            let rect = self.image_rect();
+            self.image_shadow
+                .roi_mut(&rect)
+                .blit(&self.image.roi(&rect));
         }
     }
 
@@ -450,6 +480,7 @@ impl Window {
 
         //TODO: Invalidate old mappings
         let mut new_image = ImageAligned::new(w, h, 4096);
+        let mut new_image_shadow = ImageAligned::new(w, h, 4096);
         let new_rect = Rect::new(0, 0, w, h);
 
         let rect = Rect::new(0, 0, self.image.width(), self.image.height());
@@ -458,9 +489,13 @@ impl Window {
             new_image
                 .roi_mut(&intersect)
                 .blit(&self.image.roi(&intersect));
+            new_image_shadow
+                .roi_mut(&intersect)
+                .blit(&self.image_shadow.roi(&intersect));
         }
 
         self.image = new_image;
+        self.image_shadow = new_image_shadow;
     }
 }
 
