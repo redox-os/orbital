@@ -477,7 +477,8 @@ impl OrbitalScheme {
 
     /// Called to flush a window. It's usually a good idea to redraw here.
     pub fn handle_window_sync(&mut self, id: WindowId, damages: Option<Vec<Rect>>) -> Result<()> {
-        let window = self.windows.get(&id).ok_or(Error::new(EBADF))?;
+        let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        window.handle_window_sync(&damages);
         let rect = window.rect();
         if let Some(damages) = damages {
             for damage in damages {
