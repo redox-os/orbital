@@ -403,6 +403,9 @@ impl OrbitalScheme {
     ) -> Result<()> {
         // Handle maximized flag custom
         if matches!(flag, WindowFlag::Maximized | WindowFlag::Fullscreen) {
+            if flag == WindowFlag::Fullscreen {
+                window.set_flag(WindowFlag::Borderless, value);
+            }
             let toggle_tile = if value {
                 window.restore = None;
                 true
@@ -1602,6 +1605,9 @@ impl OrbitalScheme {
         .to_event();
         for (_window_id, window) in self.windows.iter_mut() {
             window.event(screen_event);
+            if let Some((_, position)) = window.restore.take() {
+                Self::tile_window(&mut self.compositor, window, position);
+            }
         }
 
         if old_scale != self.compositor.factored_scale() {
@@ -1707,10 +1713,6 @@ impl OrbitalScheme {
             Rc::clone(&self.config),
         );
 
-        for flag in flags {
-            window.set_flag(flag, true);
-        }
-
         window.title = title;
         window.render_title(&self.font);
         let scalable = flags.contains(WindowFlag::Scalable) && self.compositor.scale() > 1;
@@ -1795,6 +1797,10 @@ impl OrbitalScheme {
         } else {
             // needed by winit to send the first redraw event
             window.event(ResizeEvent { height, width }.to_event());
+        }
+
+        for flag in flags {
+            Self::handle_window_set_flag_inner(&mut self.compositor, &mut window, flag, true)?;
         }
 
         self.windows.insert(id, window);
