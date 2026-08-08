@@ -392,6 +392,15 @@ impl OrbitalScheme {
         value: bool,
     ) -> Result<()> {
         let window = self.windows.get_mut(&id).ok_or(Error::new(EBADF))?;
+        Self::handle_window_set_flag_inner(&mut self.compositor, window, flag, value)
+    }
+
+    fn handle_window_set_flag_inner(
+        compositor: &mut Compositor,
+        window: &mut Window,
+        flag: WindowFlag,
+        value: bool,
+    ) -> Result<()> {
         // Handle maximized flag custom
         if matches!(flag, WindowFlag::Maximized | WindowFlag::Fullscreen) {
             let toggle_tile = if value {
@@ -402,7 +411,7 @@ impl OrbitalScheme {
             };
             if toggle_tile {
                 Self::tile_window(
-                    &mut self.compositor,
+                    compositor,
                     window,
                     if flag == WindowFlag::Fullscreen {
                         TilePosition::FullScreen
@@ -413,13 +422,13 @@ impl OrbitalScheme {
             }
         } else {
             // Setting flag may change visibility, make sure to queue redraws both before and after
-            Self::update_window(&mut self.compositor, window, |_compositor, window| {
+            Self::update_window(compositor, window, |_compositor, window| {
                 window.set_flag(flag, value);
             });
             // Send scale event to the window, not part of queue redraw
             if flag == WindowFlag::Scalable && value {
                 let scale_event = ScaleEvent {
-                    scale: self.compositor.factored_scale() as i32,
+                    scale: compositor.factored_scale() as i32,
                     baseline: SCALE_BASELINE as i32,
                 };
                 window.event(scale_event.to_event());
