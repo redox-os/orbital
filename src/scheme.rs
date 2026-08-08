@@ -403,8 +403,7 @@ impl OrbitalScheme {
             if toggle_tile {
                 Self::tile_window(
                     &mut self.compositor,
-                    &mut self.windows,
-                    id,
+                    window,
                     if flag == WindowFlag::Fullscreen {
                         TilePosition::FullScreen
                     } else {
@@ -938,68 +937,63 @@ impl OrbitalScheme {
     /// Tile the focused window to a defined position.
     fn tile_focused_window(&mut self, position: TilePosition) {
         if let Some(id) = self.order.focused() {
-            Self::tile_window(&mut self.compositor, &mut self.windows, id, position);
+            if let Some(window) = self.windows.get_mut(&id) {
+                Self::tile_window(&mut self.compositor, window, position);
+            }
         }
     }
 
-    fn tile_window(
-        compositor: &mut Compositor,
-        windows: &mut BTreeMap<WindowId, Window>,
-        window_id: WindowId,
-        position: TilePosition,
-    ) {
-        if let Some(window) = windows.get_mut(&window_id) {
-            Self::update_window(compositor, window, |compositor, window| {
-                let (x, y, width, height) = match window.restore.take() {
-                    None => {
-                        // we are about to maximize window, so store current size for restore later
-                        window.restore = Some((window.rect(), position));
+    fn tile_window(compositor: &mut Compositor, window: &mut Window, position: TilePosition) {
+        Self::update_window(compositor, window, |compositor, window| {
+            let (x, y, width, height) = match window.restore.take() {
+                None => {
+                    // we are about to maximize window, so store current size for restore later
+                    window.restore = Some((window.rect(), position));
 
-                        let screen_rect = compositor.get_screen_rect_for_window(&window.rect());
-                        let window_rect = if matches!(position, TilePosition::FullScreen) {
-                            screen_rect
-                        } else {
-                            compositor.get_window_rect_from_screen_rect(&screen_rect)
-                        };
-                        let top = window_rect.top() + window.title_rect().iheight();
-                        let left = window_rect.left();
-                        let max_height = window_rect.height() - window.title_rect().height();
-                        let max_width = window_rect.width();
-                        let half_width = (max_width / 2) as u32;
-                        let half_height = (max_height / 2) as u32;
+                    let screen_rect = compositor.get_screen_rect_for_window(&window.rect());
+                    let window_rect = if matches!(position, TilePosition::FullScreen) {
+                        screen_rect
+                    } else {
+                        compositor.get_window_rect_from_screen_rect(&screen_rect)
+                    };
+                    let top = window_rect.top() + window.title_rect().iheight();
+                    let left = window_rect.left();
+                    let max_height = window_rect.height() - window.title_rect().height();
+                    let max_width = window_rect.width();
+                    let half_width = (max_width / 2) as u32;
+                    let half_height = (max_height / 2) as u32;
 
-                        match position {
-                            TilePosition::LeftHalf => (left, top, half_width, max_height as u32),
-                            TilePosition::RightHalf => {
-                                (left + half_width as i32, top, half_width, max_height as u32)
-                            }
-                            TilePosition::TopHalf => (left, top, max_width as u32, half_height),
-                            TilePosition::BottomHalf => (
-                                left,
-                                top + half_height as i32,
-                                max_width as u32,
-                                half_height,
-                            ),
-                            TilePosition::Maximized | TilePosition::FullScreen => {
-                                (left, top, max_width as u32, max_height as u32)
-                            }
+                    match position {
+                        TilePosition::LeftHalf => (left, top, half_width, max_height as u32),
+                        TilePosition::RightHalf => {
+                            (left + half_width as i32, top, half_width, max_height as u32)
+                        }
+                        TilePosition::TopHalf => (left, top, max_width as u32, half_height),
+                        TilePosition::BottomHalf => (
+                            left,
+                            top + half_height as i32,
+                            max_width as u32,
+                            half_height,
+                        ),
+                        TilePosition::Maximized | TilePosition::FullScreen => {
+                            (left, top, max_width as u32, max_height as u32)
                         }
                     }
-                    Some((restore, _)) => (
-                        restore.left(),
-                        restore.top(),
-                        restore.width() as u32,
-                        restore.height() as u32,
-                    ),
-                };
+                }
+                Some((restore, _)) => (
+                    restore.left(),
+                    restore.top(),
+                    restore.width() as u32,
+                    restore.height() as u32,
+                ),
+            };
 
-                // TODO understand why this is needed and why handle_window_position isn't enough
-                window.x = x;
-                window.y = y;
-                window.event(MoveEvent { x, y }.to_event());
-                window.send_resize_event(width, height);
-            });
-        }
+            // TODO understand why this is needed and why handle_window_position isn't enough
+            window.x = x;
+            window.y = y;
+            window.event(MoveEvent { x, y }.to_event());
+            window.send_resize_event(width, height);
+        });
     }
 
     // undraw any overlay that was being displayed and exit the mode causing it to be displayed
@@ -1494,7 +1488,7 @@ impl OrbitalScheme {
     /// May mutate self.dragging
     fn button_event_initiate(&mut self, event: ButtonEvent) -> Option<WindowId> {
         for id in self.order.iter_front_to_back() {
-            let Some(window) = self.windows.get(&id) else {
+            let Some(window) = self.windows.get_mut(&id) else {
                 continue;
             };
             if window.rect().contains(self.cursor_x, self.cursor_y) {
@@ -1527,12 +1521,7 @@ impl OrbitalScheme {
                 // releasing up
                 if !event.left && self.cursor_left {
                     if on_max_btn {
-                        Self::tile_window(
-                            &mut self.compositor,
-                            &mut self.windows,
-                            id,
-                            TilePosition::Maximized,
-                        );
+                        Self::tile_window(&mut self.compositor, window, TilePosition::Maximized);
                     } else if on_close_btn {
                         if let Some(window) = self.windows.get_mut(&id) {
                             window.event(QuitEvent.to_event());
