@@ -496,6 +496,13 @@ impl Window {
 
         self.image = new_image;
         self.image_shadow = new_image_shadow;
+
+        // if window is resizing, caller must send resize event to avoid
+        // this being conflicted with user manually resizing the window
+        if !self.resizing {
+            self.w = w;
+            self.h = h;
+        }
     }
 }
 
