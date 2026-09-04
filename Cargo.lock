@@ -120,7 +120,7 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#a301f50bca302abc35e7a627ef3dee2b0cf6f2c0"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#451dca9519dd52c3f1754dce736b35906a473298"
 dependencies = [
  "libredox",
  "log",
@@ -192,7 +192,7 @@ dependencies = [
 [[package]]
 name = "daemon"
 version = "0.0.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#a301f50bca302abc35e7a627ef3dee2b0cf6f2c0"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#451dca9519dd52c3f1754dce736b35906a473298"
 dependencies = [
  "libc",
  "libredox",
@@ -381,7 +381,7 @@ dependencies = [
 [[package]]
 name = "graphics-ipc"
 version = "0.1.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#a301f50bca302abc35e7a627ef3dee2b0cf6f2c0"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#451dca9519dd52c3f1754dce736b35906a473298"
 dependencies = [
  "drm",
 ]
@@ -455,7 +455,7 @@ dependencies = [
 [[package]]
 name = "inputd"
 version = "0.1.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#a301f50bca302abc35e7a627ef3dee2b0cf6f2c0"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#451dca9519dd52c3f1754dce736b35906a473298"
 dependencies = [
  "anyhow",
  "common",
@@ -494,9 +494,9 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "libredox"
-version = "0.1.18"
+version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c943259e342f1e06ff2da7a83eabdfe7f92ce10262688dbf1895ff0b3e6e4652"
+checksum = "8d8f1ea3f21fd3405dcaf6c9b5c1630af9afc422d9073ea39c5f6d6c772e08ed"
 dependencies = [
  "bitflags 2.11.1",
  "libc",
@@ -725,9 +725,9 @@ dependencies = [
 
 [[package]]
 name = "redox_syscall"
-version = "0.9.0"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5102a6aaa05aa011a238e178e6bca86d2cb56fc9f586d37cb80f5bca6e07759"
+checksum = "d678d17679829e73d371e96880897e98fee2ded7acc0a50bdf8af2affa4b2fe5"
 dependencies = [
  "bitflags 2.11.1",
 ]
@@ -764,7 +764,7 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 [[package]]
 name = "scheme-utils"
 version = "0.0.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#a301f50bca302abc35e7a627ef3dee2b0cf6f2c0"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#451dca9519dd52c3f1754dce736b35906a473298"
 dependencies = [
  "libredox",
  "redox-scheme",

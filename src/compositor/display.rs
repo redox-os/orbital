@@ -139,7 +139,12 @@ pub(super) struct Displays {
 
 impl Displays {
     pub(super) fn new(display_handle: V2GraphicsHandle) -> io::Result<Self> {
-        display_handle.set_client_capability(ClientCapability::CursorPlaneHotspot, true)?;
+        display_handle.set_client_capability(ClientCapability::UniversalPlanes, true)?;
+        // It is fine if this returns an error. It means either there is no support for hardware
+        // cursors, or we are not in a virtualized environment and thus don't need to set the cursor
+        // hotspot.
+        // FIXME technically CursorPlaneHotspot needs Atomic, but we don't support that yet
+        let _ = display_handle.set_client_capability(ClientCapability::CursorPlaneHotspot, true);
 
         let cursor_width = display_handle.get_driver_capability(DriverCapability::CursorHeight);
         let cursor_height = display_handle.get_driver_capability(DriverCapability::CursorWidth);
