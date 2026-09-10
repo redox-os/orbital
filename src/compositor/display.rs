@@ -4,7 +4,7 @@ use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
 use drm::control::{ClipRect, Device as _, crtc, framebuffer};
 use drm::{ClientCapability, Device as _, DriverCapability};
 use graphics_ipc::{CpuBackedBuffer, DrmHandle};
-use log::{debug, error};
+use log::error;
 use orbclient::image::{Image, ImageRef, ImageRoiMut};
 use orbclient::rect::{Rect, RectEdge};
 use orbclient::{Color, Renderer};
@@ -21,10 +21,11 @@ struct V2DisplayMap {
 }
 
 impl V2DisplayMap {
-    fn new(display_handle: &DrmHandle) -> io::Result<Self> {
-        let connector = display_handle.first_display().unwrap().handle();
-        let connector_info = display_handle.get_connector(connector, true).unwrap();
-
+    fn new(
+        display_handle: &DrmHandle,
+        connector: connector::Handle,
+        connector_info: connector::Info,
+    ) -> io::Result<Self> {
         let mode = connector_info.modes()[0];
         let (width, height) = mode.size();
 
@@ -152,14 +153,14 @@ impl Displays {
         let hw_cursor = cursor_width.ok().zip(cursor_height.ok());
 
         let mut displays: Vec<Display> = vec![];
-        for (i, &connector) in display_handle
+        for &connector in display_handle
             .resource_handles()
             .unwrap()
             .connectors()
             .iter()
-            .enumerate()
         {
-            if display_handle.get_connector(connector, true)?.state() == State::Connected {
+            let connector_info = display_handle.get_connector(connector, true)?;
+            if connector_info.state() == State::Connected {
                 let x = if let Some(last) = displays.last() {
                     last.screen_rect().right()
                 } else {
@@ -167,15 +168,16 @@ impl Displays {
                 };
                 let y = 0;
 
-                displays.push(Display::new(x, y, &display_handle, i, hw_cursor)?);
+                displays.push(Display::new(
+                    x,
+                    y,
+                    &display_handle,
+                    connector,
+                    connector_info,
+                    hw_cursor,
+                )?);
             }
         }
-
-        debug!(
-            "found display {}x{}",
-            displays[0].screen_rect().width(),
-            displays[0].screen_rect().height(),
-        );
 
         Ok(Displays {
             display_handle,
@@ -207,24 +209,20 @@ impl Display {
         x: i32,
         y: i32,
         display_handle: &DrmHandle,
-        connector_id: usize,
+        connector: connector::Handle,
+        connector_info: connector::Info,
         hw_cursor: Option<(u64, u64)>,
     ) -> io::Result<Self> {
-        let connector = display_handle.get_connector(
-            display_handle.resource_handles().unwrap().connectors()[connector_id],
-            true,
-        )?;
-        let (width, height) = connector.modes()[0].size();
-
-        log::info!("Display at {}, {}, {}, {}", x, y, width, height);
-
-        let scale = Self::calculate_scale(height as u32);
-        let factored_scale = Self::calculate_factored(height as u32);
-
-        let map = V2DisplayMap::new(display_handle)?;
+        let map = V2DisplayMap::new(display_handle, connector, connector_info)?;
+        let (width, height) = map.buffer.buffer().size();
         let cursor_map = hw_cursor
             .map(|(width, height)| CursorMap::new(&display_handle, width as u32, height as u32))
             .transpose()?;
+        let scale = Self::calculate_scale(height as u32);
+        let factored_scale = Self::calculate_factored(height as u32);
+
+        log::info!("Display at {}, {}, {}, {}", x, y, width, height);
+
         Ok(Self {
             x,
             y,
@@ -354,8 +352,8 @@ impl Display {
         let y2 = (rect.bottom() - self.y) as usize;
 
         self.map.buffer.sync_rect(
-            rect.left() as u32,
-            rect.top() as u32,
+            x1 as u32,
+            y1 as u32,
             rect.width() as u32,
             rect.height() as u32,
         );
