@@ -21,10 +21,11 @@ struct V2DisplayMap {
 }
 
 impl V2DisplayMap {
-    fn new(display_handle: &DrmHandle) -> io::Result<Self> {
-        let connector = display_handle.first_display().unwrap().handle();
-        let connector_info = display_handle.get_connector(connector, true).unwrap();
-
+    fn new(
+        display_handle: &DrmHandle,
+        connector: connector::Handle,
+        connector_info: connector::Info,
+    ) -> io::Result<Self> {
         let mode = connector_info.modes()[0];
         let (width, height) = mode.size();
 
@@ -210,18 +211,16 @@ impl Display {
         connector_id: usize,
         hw_cursor: Option<(u64, u64)>,
     ) -> io::Result<Self> {
-        let connector = display_handle.get_connector(
-            display_handle.resource_handles().unwrap().connectors()[connector_id],
-            true,
-        )?;
-        let (width, height) = connector.modes()[0].size();
+        let connector = display_handle.resource_handles().unwrap().connectors()[connector_id];
+        let connector_info = display_handle.get_connector(connector, true)?;
+        let (width, height) = connector_info.modes()[0].size();
 
         log::info!("Display at {}, {}, {}, {}", x, y, width, height);
 
         let scale = Self::calculate_scale(height as u32);
         let factored_scale = Self::calculate_factored(height as u32);
 
-        let map = V2DisplayMap::new(display_handle)?;
+        let map = V2DisplayMap::new(display_handle, connector, connector_info)?;
         let cursor_map = hw_cursor
             .map(|(width, height)| CursorMap::new(&display_handle, width as u32, height as u32))
             .transpose()?;
