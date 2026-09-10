@@ -315,7 +315,7 @@ impl Display {
         y: i32,
     ) -> io::Result<()> {
         #[allow(deprecated)]
-        display_handle.move_cursor(self.map.crtc, (x, y))
+        display_handle.move_cursor(self.map.crtc, (x - self.x, y - self.y))
     }
 
     pub(super) fn set_cursor(
@@ -343,6 +343,11 @@ impl Display {
             Some(&self.cursor_map.as_ref().unwrap().buffer),
             (hot_x, hot_y),
         )
+    }
+
+    pub(super) fn disable_cursor(&mut self, display_handle: &DrmHandle) -> io::Result<()> {
+        #[allow(deprecated)]
+        display_handle.set_cursor2(self.map.crtc, None::<&DumbBuffer>, (0, 0))
     }
 
     pub(super) fn sync_rect(&mut self, display_handle: &DrmHandle, rect: Rect) -> io::Result<()> {

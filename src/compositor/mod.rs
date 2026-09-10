@@ -26,6 +26,7 @@ pub struct Compositor {
     //and since releasing our gpu cursor makes it disappear, updating it every second fixes it
     update_cursor_timer: Instant,
     cursor: Arc<Image>,
+    cursor_display: Option<usize>,
     cursor_x: i32,
     cursor_y: i32,
     cursor_hot_x: i32,
@@ -64,6 +65,7 @@ impl Compositor {
             damage_borders: false,
             update_cursor_timer: Instant::now(),
             cursor: Arc::new(Image::new(0, 0)),
+            cursor_display: None,
             cursor_x: 0,
             cursor_y: 0,
             cursor_hot_x: 0,
@@ -178,28 +180,63 @@ impl Compositor {
         }
 
         if self.hw_cursor {
+            // FIXME support cursor spanning displays
+            let cursor_display = self
+                .displays
+                .displays()
+                .iter()
+                .enumerate()
+                .find(|(_, display)| display.screen_rect().contains(x, y))
+                .map(|(i, _)| i);
+
             if Arc::ptr_eq(&self.cursor, cursor)
+                && self.cursor_display == cursor_display
                 && self.cursor_hot_x == hot_x
                 && self.cursor_hot_y == hot_y
             {
-                match self.displays.displays[0].move_cursor(&self.displays.display_handle, x, y) {
-                    Ok(_) => (),
-                    Err(err) => error!("failed to move cursor: {}", err),
+                if let Some(cursor_display) = cursor_display {
+                    match self.displays.displays[cursor_display].move_cursor(
+                        &self.displays.display_handle,
+                        x,
+                        y,
+                    ) {
+                        Ok(_) => (),
+                        Err(err) => error!("failed to move cursor: {}", err),
+                    }
                 }
             } else {
-                match self.displays.displays[0].set_cursor(
-                    &self.displays.display_handle,
-                    hot_x,
-                    hot_y,
-                    cursor,
-                ) {
-                    Ok(_) => (),
-                    Err(err) => error!("failed to update cursor: {}", err),
+                if self.cursor_display != cursor_display
+                    && let Some(old_cursor_display) = self.cursor_display
+                {
+                    match self.displays.displays[old_cursor_display]
+                        .disable_cursor(&self.displays.display_handle)
+                    {
+                        Ok(()) => {}
+                        Err(err) => error!("failed to disable cursor: {err}"),
+                    }
                 }
 
-                match self.displays.displays[0].move_cursor(&self.displays.display_handle, x, y) {
-                    Ok(_) => (),
-                    Err(err) => error!("failed to move cursor: {}", err),
+                self.cursor_display = cursor_display;
+
+                if let Some(cursor_display) = cursor_display {
+                    match self.displays.displays[cursor_display].set_cursor(
+                        &self.displays.display_handle,
+                        hot_x,
+                        hot_y,
+                        cursor,
+                    ) {
+                        Ok(_) => (),
+                        Err(err) => error!("failed to update cursor: {}", err),
+                    }
+
+                    match self.displays.displays[cursor_display].move_cursor(
+                        &self.displays.display_handle,
+                        x,
+                        y,
+                    ) {
+                        Ok(_) => (),
+                        Err(err) => error!("failed to move cursor: {}", err),
+                    }
                 }
             }
         }
@@ -254,24 +291,27 @@ impl Compositor {
 
     fn redraw_cursor(&mut self, total_redraw: Option<Rect>) {
         if self.hw_cursor {
+            // QEMU QUIRK: Without this toggling cursor grabbing will keep the cursor hidden
             if self.update_cursor_timer.elapsed().as_millis() > 1000 {
-                match self.displays.displays[0].set_cursor(
-                    &self.displays.display_handle,
-                    self.cursor_hot_x,
-                    self.cursor_hot_y,
-                    &self.cursor,
-                ) {
-                    Ok(_) => (),
-                    Err(err) => error!("failed to update cursor: {}", err),
-                }
+                if let Some(cursor_display) = self.cursor_display {
+                    match self.displays.displays[cursor_display].set_cursor(
+                        &self.displays.display_handle,
+                        self.cursor_hot_x,
+                        self.cursor_hot_y,
+                        &self.cursor,
+                    ) {
+                        Ok(_) => (),
+                        Err(err) => error!("failed to update cursor: {}", err),
+                    }
 
-                match self.displays.displays[0].move_cursor(
-                    &self.displays.display_handle,
-                    self.cursor_x,
-                    self.cursor_y,
-                ) {
-                    Ok(_) => (),
-                    Err(err) => error!("failed to move cursor: {}", err),
+                    match self.displays.displays[cursor_display].move_cursor(
+                        &self.displays.display_handle,
+                        self.cursor_x,
+                        self.cursor_y,
+                    ) {
+                        Ok(_) => (),
+                        Err(err) => error!("failed to move cursor: {}", err),
+                    }
                 }
 
                 self.update_cursor_timer = Instant::now();
