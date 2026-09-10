@@ -353,8 +353,8 @@ impl Display {
         let y2 = (rect.bottom() - self.y) as usize;
 
         self.map.buffer.sync_rect(
-            rect.left() as u32,
-            rect.top() as u32,
+            x1 as u32,
+            y1 as u32,
             rect.width() as u32,
             rect.height() as u32,
         );
