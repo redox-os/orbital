@@ -4,7 +4,7 @@ use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
 use drm::control::{ClipRect, Device as _, crtc, framebuffer};
 use drm::{ClientCapability, Device as _, DriverCapability};
 use graphics_ipc::{CpuBackedBuffer, DrmHandle};
-use log::{debug, error};
+use log::error;
 use orbclient::image::{Image, ImageRef, ImageRoiMut};
 use orbclient::rect::{Rect, RectEdge};
 use orbclient::{Color, Renderer};
@@ -153,14 +153,14 @@ impl Displays {
         let hw_cursor = cursor_width.ok().zip(cursor_height.ok());
 
         let mut displays: Vec<Display> = vec![];
-        for (i, &connector) in display_handle
+        for &connector in display_handle
             .resource_handles()
             .unwrap()
             .connectors()
             .iter()
-            .enumerate()
         {
-            if display_handle.get_connector(connector, true)?.state() == State::Connected {
+            let connector_info = display_handle.get_connector(connector, true)?;
+            if connector_info.state() == State::Connected {
                 let x = if let Some(last) = displays.last() {
                     last.screen_rect().right()
                 } else {
@@ -168,15 +168,16 @@ impl Displays {
                 };
                 let y = 0;
 
-                displays.push(Display::new(x, y, &display_handle, i, hw_cursor)?);
+                displays.push(Display::new(
+                    x,
+                    y,
+                    &display_handle,
+                    connector,
+                    connector_info,
+                    hw_cursor,
+                )?);
             }
         }
-
-        debug!(
-            "found display {}x{}",
-            displays[0].screen_rect().width(),
-            displays[0].screen_rect().height(),
-        );
 
         Ok(Displays {
             display_handle,
@@ -208,11 +209,10 @@ impl Display {
         x: i32,
         y: i32,
         display_handle: &DrmHandle,
-        connector_id: usize,
+        connector: connector::Handle,
+        connector_info: connector::Info,
         hw_cursor: Option<(u64, u64)>,
     ) -> io::Result<Self> {
-        let connector = display_handle.resource_handles().unwrap().connectors()[connector_id];
-        let connector_info = display_handle.get_connector(connector, true)?;
         let (width, height) = connector_info.modes()[0].size();
 
         log::info!("Display at {}, {}, {}, {}", x, y, width, height);
