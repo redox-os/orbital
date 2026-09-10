@@ -213,17 +213,16 @@ impl Display {
         connector_info: connector::Info,
         hw_cursor: Option<(u64, u64)>,
     ) -> io::Result<Self> {
-        let (width, height) = connector_info.modes()[0].size();
-
-        log::info!("Display at {}, {}, {}, {}", x, y, width, height);
-
-        let scale = Self::calculate_scale(height as u32);
-        let factored_scale = Self::calculate_factored(height as u32);
-
         let map = V2DisplayMap::new(display_handle, connector, connector_info)?;
+        let (width, height) = map.buffer.buffer().size();
         let cursor_map = hw_cursor
             .map(|(width, height)| CursorMap::new(&display_handle, width as u32, height as u32))
             .transpose()?;
+        let scale = Self::calculate_scale(height as u32);
+        let factored_scale = Self::calculate_factored(height as u32);
+
+        log::info!("Display at {}, {}, {}, {}", x, y, width, height);
+
         Ok(Self {
             x,
             y,
