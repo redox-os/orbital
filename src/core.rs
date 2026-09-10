@@ -9,7 +9,7 @@ use std::{
 };
 
 use event::{EventQueue, user_data};
-use graphics_ipc::V2GraphicsHandle;
+use graphics_ipc::DrmHandle;
 use inputd::{ConsumerHandle, ConsumerHandleEvent};
 use log::error;
 use orbclient::{Color, Event, WindowDragKind, WindowFlags, rect::Rect};
@@ -76,7 +76,7 @@ impl Orbital {
     pub fn open_display(config: Rc<Config>) -> io::Result<Self> {
         let input_handle = ConsumerHandle::new_vt()?;
 
-        let display = input_handle.open_display_v2().map_err(|err| {
+        let display = input_handle.open_display().map_err(|err| {
             error!("failed to open display: {}", err);
             err
         })?;
@@ -86,7 +86,7 @@ impl Orbital {
             err
         })?;
 
-        let compositor = Compositor::new(V2GraphicsHandle::from_file(display)?)?;
+        let compositor = Compositor::new(DrmHandle::from_file(display)?)?;
 
         let handler =
             OrbitalScheme::new(compositor, config).map_err(|err| io::Error::other(err))?;

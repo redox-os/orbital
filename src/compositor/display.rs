@@ -3,7 +3,7 @@ use drm::control::connector::{self, State};
 use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
 use drm::control::{ClipRect, Device as _, crtc, framebuffer};
 use drm::{ClientCapability, Device as _, DriverCapability};
-use graphics_ipc::{CpuBackedBuffer, V2GraphicsHandle};
+use graphics_ipc::{CpuBackedBuffer, DrmHandle};
 use log::{debug, error};
 use orbclient::image::{Image, ImageRef, ImageRoiMut};
 use orbclient::rect::{Rect, RectEdge};
@@ -21,7 +21,7 @@ struct V2DisplayMap {
 }
 
 impl V2DisplayMap {
-    fn new(display_handle: &V2GraphicsHandle) -> io::Result<Self> {
+    fn new(display_handle: &DrmHandle) -> io::Result<Self> {
         let connector = display_handle.first_display().unwrap().handle();
         let connector_info = display_handle.get_connector(connector, true).unwrap();
 
@@ -54,7 +54,7 @@ impl V2DisplayMap {
         })
     }
 
-    fn resize_if_necessary(&mut self, display_handle: &V2GraphicsHandle) -> io::Result<bool> {
+    fn resize_if_necessary(&mut self, display_handle: &DrmHandle) -> io::Result<bool> {
         let connector_info = display_handle.get_connector(self.connector, false).unwrap();
 
         let mode = connector_info.modes()[0];
@@ -106,7 +106,7 @@ struct CursorMap {
 }
 
 impl CursorMap {
-    fn new(display_handle: &V2GraphicsHandle, width: u32, height: u32) -> io::Result<Self> {
+    fn new(display_handle: &DrmHandle, width: u32, height: u32) -> io::Result<Self> {
         let mut buffer =
             display_handle.create_dumb_buffer((width, height), DrmFourcc::Argb8888, 32)?;
 
@@ -132,13 +132,13 @@ impl CursorMap {
 }
 
 pub(super) struct Displays {
-    pub(super) display_handle: V2GraphicsHandle,
+    pub(super) display_handle: DrmHandle,
     supports_hw_cursor: bool,
     pub(super) displays: Vec<Display>,
 }
 
 impl Displays {
-    pub(super) fn new(display_handle: V2GraphicsHandle) -> io::Result<Self> {
+    pub(super) fn new(display_handle: DrmHandle) -> io::Result<Self> {
         display_handle.set_client_capability(ClientCapability::UniversalPlanes, true)?;
         // It is fine if this returns an error. It means either there is no support for hardware
         // cursors, or we are not in a virtualized environment and thus don't need to set the cursor
@@ -206,7 +206,7 @@ impl Display {
     fn new(
         x: i32,
         y: i32,
-        display_handle: &V2GraphicsHandle,
+        display_handle: &DrmHandle,
         connector_id: usize,
         hw_cursor: Option<(u64, u64)>,
     ) -> io::Result<Self> {
@@ -216,7 +216,7 @@ impl Display {
         )?;
         let (width, height) = connector.modes()[0].size();
 
-        debug!("Display at {}, {}, {}, {}", x, y, width, height);
+        log::info!("Display at {}, {}, {}, {}", x, y, width, height);
 
         let scale = Self::calculate_scale(height as u32);
         let factored_scale = Self::calculate_factored(height as u32);
@@ -278,7 +278,7 @@ impl Display {
         self.rect(&rect.edge(thickness, 0, RectEdge::Right), color);
     }
 
-    pub(super) fn resize_if_necessary(&mut self, display_handle: &V2GraphicsHandle) -> bool {
+    pub(super) fn resize_if_necessary(&mut self, display_handle: &DrmHandle) -> bool {
         match self.map.resize_if_necessary(display_handle) {
             Ok(resized) => {
                 if resized {
@@ -312,7 +312,7 @@ impl Display {
 
     pub(super) fn move_cursor(
         &mut self,
-        display_handle: &V2GraphicsHandle,
+        display_handle: &DrmHandle,
         x: i32,
         y: i32,
     ) -> io::Result<()> {
@@ -322,7 +322,7 @@ impl Display {
 
     pub(super) fn set_cursor(
         &mut self,
-        display_handle: &V2GraphicsHandle,
+        display_handle: &DrmHandle,
         hot_x: i32,
         hot_y: i32,
         image: &Image,
@@ -347,11 +347,7 @@ impl Display {
         )
     }
 
-    pub(super) fn sync_rect(
-        &mut self,
-        display_handle: &V2GraphicsHandle,
-        rect: Rect,
-    ) -> io::Result<()> {
+    pub(super) fn sync_rect(&mut self, display_handle: &DrmHandle, rect: Rect) -> io::Result<()> {
         let x1 = (rect.left() - self.x) as usize;
         let y1 = (rect.top() - self.y) as usize;
         let x2 = (rect.right() - self.x) as usize;

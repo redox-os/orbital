@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use std::{cmp, io};
 
-use graphics_ipc::V2GraphicsHandle;
+use graphics_ipc::DrmHandle;
 use log::{error, info};
 use orbclient::rect::Rect;
 use orbclient::{Color, image::Image};
@@ -33,7 +33,7 @@ pub struct Compositor {
 }
 
 impl Compositor {
-    pub fn new(display_handle: V2GraphicsHandle) -> io::Result<Self> {
+    pub fn new(display_handle: DrmHandle) -> io::Result<Self> {
         let displays = Displays::new(display_handle)?;
 
         let mut redraws = Vec::new();
