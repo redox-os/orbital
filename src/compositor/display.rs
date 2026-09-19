@@ -242,6 +242,7 @@ impl Displays {
                                 )
                             };
 
+                            // FIXME handle connecting and disconnecting displays
                             for display in &mut self.displays {
                                 if event.connector == display.map.connector.into() {
                                     any_resized |=
