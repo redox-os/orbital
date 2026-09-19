@@ -3,6 +3,7 @@ use drm::control::connector::{self, State};
 use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
 use drm::control::{ClipRect, Device as _, crtc, framebuffer};
 use drm::{ClientCapability, Device as _, DriverCapability};
+use drm_ffi::DRM_PLANE_TYPE_CURSOR;
 use graphics_ipc::{CpuBackedBuffer, DrmHandle};
 use log::error;
 use orbclient::image::{Image, ImageRef, ImageRoiMut};
@@ -147,10 +148,32 @@ impl Displays {
         // FIXME technically CursorPlaneHotspot needs Atomic, but we don't support that yet
         let _ = display_handle.set_client_capability(ClientCapability::CursorPlaneHotspot, true);
 
-        let cursor_width = display_handle.get_driver_capability(DriverCapability::CursorHeight);
-        let cursor_height = display_handle.get_driver_capability(DriverCapability::CursorWidth);
-        // We only support 64x64 cursors currently
-        let hw_cursor = cursor_width.ok().zip(cursor_height.ok());
+        // NOTE: This assumes either all CRTCs have a cursor plane or none have one
+        let hw_cursor = if display_handle
+            .plane_handles()
+            .unwrap()
+            .iter()
+            .any(|&plane| {
+                display_handle
+                    .get_properties(plane)
+                    .unwrap()
+                    .iter()
+                    .any(|(&prop, &val)| {
+                        let prop = display_handle.get_property(prop).unwrap();
+                        prop.name() == c"type" && val == u64::from(DRM_PLANE_TYPE_CURSOR)
+                    })
+            }) {
+            let cursor_width = display_handle
+                .get_driver_capability(DriverCapability::CursorHeight)
+                .unwrap();
+            let cursor_height = display_handle
+                .get_driver_capability(DriverCapability::CursorWidth)
+                .unwrap();
+            // We only support 64x64 cursors currently
+            Some((cursor_width, cursor_height))
+        } else {
+            None
+        };
 
         let mut displays: Vec<Display> = vec![];
         for &connector in display_handle
