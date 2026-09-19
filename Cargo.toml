@@ -10,6 +10,7 @@ edition = "2024"
 
 [dependencies]
 drm = "0.15"
+drm-ffi = "0.9.1"
 graphics-ipc = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
 inputd = { git = "https://gitlab.redox-os.org/redox-os/base.git" }
 log = "0.4.14"

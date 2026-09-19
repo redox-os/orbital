@@ -119,6 +119,7 @@ impl Orbital {
             enum Source {
                 Scheme,
                 Input,
+                DisplayHandle,
             }
         }
 
@@ -142,6 +143,11 @@ impl Orbital {
 
         event_queue.subscribe(scheme_fd, Source::Scheme, event::EventFlags::READ)?;
         event_queue.subscribe(input_fd as usize, Source::Input, event::EventFlags::READ)?;
+        event_queue.subscribe(
+            self.handler.display_event_handle().as_raw_fd() as usize,
+            Source::DisplayHandle,
+            event::EventFlags::READ,
+        )?;
 
         login_cmd.spawn()?;
 
@@ -263,6 +269,10 @@ impl Orbital {
                             ConsumerHandleEvent::Handoff => {}
                         }
                     }
+                    self.handle_after()?;
+                }
+                Source::DisplayHandle => {
+                    self.handler.handle_display_event();
                     self.handle_after()?;
                 }
             }

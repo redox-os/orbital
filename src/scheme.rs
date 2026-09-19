@@ -1,4 +1,5 @@
 use std::num::NonZero;
+use std::os::fd::BorrowedFd;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -565,8 +566,6 @@ impl OrbitalScheme {
     }
 
     pub(crate) fn redraw(&mut self) {
-        self.resize_if_necessary();
-
         self.fps_widget.start_measure();
         self.order
             .rezbuffer(&|id| self.windows.get(&id).unwrap().zorder);
@@ -1591,10 +1590,14 @@ impl OrbitalScheme {
         None
     }
 
-    fn resize_if_necessary(&mut self) {
+    pub(crate) fn display_event_handle(&self) -> BorrowedFd<'_> {
+        self.compositor.display_event_handle()
+    }
+
+    pub(crate) fn handle_display_event(&mut self) {
         let old_scale = self.compositor.factored_scale();
 
-        if !self.compositor.resize_if_necessary() {
+        if !self.compositor.handle_display_event() {
             return;
         }
 

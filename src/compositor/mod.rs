@@ -1,3 +1,4 @@
+use std::os::fd::BorrowedFd;
 use std::sync::Arc;
 use std::time::Instant;
 use std::{cmp, io};
@@ -124,17 +125,19 @@ impl Compositor {
         )
     }
 
-    pub fn resize_if_necessary(&mut self) -> bool {
+    pub fn display_event_handle(&self) -> BorrowedFd<'_> {
+        self.displays.event_handle()
+    }
+
+    pub fn handle_display_event(&mut self) -> bool {
         //TODO: should screens be moved after a resize?
-        let mut any_resized = false;
-        for i in 0..self.displays.displays.len() {
-            let resized =
-                self.displays.displays[i].resize_if_necessary(&self.displays.display_handle);
-            any_resized |= resized;
-            if resized {
-                self.schedule(self.displays.displays[i].screen_rect());
+        let any_resized = match self.displays.handle_display_event() {
+            Ok(any_resized) => any_resized,
+            Err(err) => {
+                error!("failed to handle display events: {}", err);
+                return false;
             }
-        }
+        };
 
         if any_resized {
             let mut max_scale = 1;
