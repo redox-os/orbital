@@ -1,16 +1,21 @@
 use drm::buffer::{Buffer as _, DrmFourcc};
 use drm::control::connector::{self, State};
 use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
-use drm::control::{ClipRect, Device as _, crtc, framebuffer};
+use drm::control::{self, ClipRect, Device as _, crtc, framebuffer};
 use drm::{ClientCapability, Device as _, DriverCapability};
-use drm_ffi::DRM_PLANE_TYPE_CURSOR;
+use drm_ffi::{DRM_PLANE_TYPE_CURSOR, drm_event};
+use graphics_ipc::redox_uapi_exts::{
+    REDOX_DRM_CLIENT_CAP_HOTPLUG_EVENTS, REDOX_DRM_EVENT_CONNECTOR_HOTPLUG,
+    RedoxDrmEventConnectorHotplug,
+};
 use graphics_ipc::{CpuBackedBuffer, DrmHandle};
 use log::error;
 use orbclient::image::{Image, ImageRef, ImageRoiMut};
 use orbclient::rect::{Rect, RectEdge};
 use orbclient::{Color, Renderer};
-use std::mem;
+use std::os::fd::{AsFd, BorrowedFd};
 use std::{convert::TryInto, io, slice};
+use std::{mem, ptr};
 
 pub const SCALE_BASELINE: u32 = 160;
 
@@ -57,7 +62,7 @@ impl V2DisplayMap {
     }
 
     fn resize_if_necessary(&mut self, display_handle: &DrmHandle) -> io::Result<bool> {
-        let connector_info = display_handle.get_connector(self.connector, false).unwrap();
+        let connector_info = display_handle.get_connector(self.connector, true).unwrap();
 
         let mode = connector_info.modes()[0];
         let (width, height) = mode.size();
@@ -148,6 +153,13 @@ impl Displays {
         // FIXME technically CursorPlaneHotspot needs Atomic, but we don't support that yet
         let _ = display_handle.set_client_capability(ClientCapability::CursorPlaneHotspot, true);
 
+        drm_ffi::set_capability(
+            display_handle.as_fd(),
+            u64::from(REDOX_DRM_CLIENT_CAP_HOTPLUG_EVENTS),
+            true,
+        )
+        .unwrap();
+
         // NOTE: This assumes either all CRTCs have a cursor plane or none have one
         let hw_cursor = if display_handle
             .plane_handles()
@@ -207,6 +219,42 @@ impl Displays {
             supports_hw_cursor: hw_cursor.is_some(),
             displays,
         })
+    }
+
+    pub(super) fn event_handle(&self) -> BorrowedFd<'_> {
+        self.display_handle.as_fd()
+    }
+
+    pub(super) fn handle_display_event(&mut self) -> io::Result<bool> {
+        let mut any_resized = false;
+        for event in self.display_handle.receive_events()? {
+            match event {
+                control::Event::Vblank(_) | control::Event::PageFlip(_) => todo!(),
+                control::Event::Unknown(data) => {
+                    assert!(data.len() >= size_of::<drm_event>());
+                    let event = unsafe { ptr::read_unaligned(data.as_ptr().cast::<drm_event>()) };
+                    match event.type_ {
+                        REDOX_DRM_EVENT_CONNECTOR_HOTPLUG => {
+                            assert_eq!(data.len(), size_of::<RedoxDrmEventConnectorHotplug>());
+                            let event = unsafe {
+                                ptr::read_unaligned(
+                                    data.as_ptr().cast::<RedoxDrmEventConnectorHotplug>(),
+                                )
+                            };
+
+                            for display in &mut self.displays {
+                                if event.connector == display.map.connector.into() {
+                                    any_resized |=
+                                        display.resize_if_necessary(&mut self.display_handle);
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        Ok(any_resized)
     }
 
     pub(crate) fn displays(&self) -> &[Display] {
