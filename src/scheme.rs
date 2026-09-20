@@ -891,6 +891,9 @@ impl OrbitalScheme {
     fn move_front_window(&mut self, h_movement: i32, v_movement: i32) {
         if let Some(id) = self.order.focused() {
             if let Some(window) = self.windows.get_mut(&id) {
+                if window.restore.is_some() || window.zorder == WindowZOrder::Back {
+                    return; // either background, maximized or full screen
+                }
                 let display_width = self.compositor.screen_rect().iwidth();
                 let display_height = self.compositor.screen_rect().iheight();
                 Self::update_window(&mut self.compositor, window, |_compositor, window| {
