@@ -1,21 +1,18 @@
 use drm::buffer::{Buffer as _, DrmFourcc};
 use drm::control::connector::{self, State};
 use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
-use drm::control::{self, ClipRect, Device as _, crtc, framebuffer};
+use drm::control::{ClipRect, Device as _, crtc, framebuffer};
 use drm::{ClientCapability, Device as _, DriverCapability};
-use drm_ffi::{DRM_PLANE_TYPE_CURSOR, drm_event};
-use graphics_ipc::redox_uapi_exts::{
-    REDOX_DRM_CLIENT_CAP_HOTPLUG_EVENTS, REDOX_DRM_EVENT_CONNECTOR_HOTPLUG,
-    RedoxDrmEventConnectorHotplug,
-};
-use graphics_ipc::{CpuBackedBuffer, DrmHandle};
+use drm_ffi::DRM_PLANE_TYPE_CURSOR;
+use graphics_ipc::redox_uapi_exts::REDOX_DRM_CLIENT_CAP_HOTPLUG_EVENTS;
+use graphics_ipc::{CpuBackedBuffer, DrmHandle, RedoxDrmEvent};
 use log::error;
 use orbclient::image::{Image, ImageRef, ImageRoiMut};
 use orbclient::rect::{Rect, RectEdge};
 use orbclient::{Color, Renderer};
+use std::mem;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::{convert::TryInto, io, slice};
-use std::{mem, ptr};
 
 pub const SCALE_BASELINE: u32 = 160;
 
@@ -227,32 +224,19 @@ impl Displays {
 
     pub(super) fn handle_display_event(&mut self) -> io::Result<bool> {
         let mut any_resized = false;
-        for event in self.display_handle.receive_events()? {
+        for event in self.display_handle.redox_receive_events()? {
             match event {
-                control::Event::Vblank(_) | control::Event::PageFlip(_) => todo!(),
-                control::Event::Unknown(data) => {
-                    assert!(data.len() >= size_of::<drm_event>());
-                    let event = unsafe { ptr::read_unaligned(data.as_ptr().cast::<drm_event>()) };
-                    match event.type_ {
-                        REDOX_DRM_EVENT_CONNECTOR_HOTPLUG => {
-                            assert_eq!(data.len(), size_of::<RedoxDrmEventConnectorHotplug>());
-                            let event = unsafe {
-                                ptr::read_unaligned(
-                                    data.as_ptr().cast::<RedoxDrmEventConnectorHotplug>(),
-                                )
-                            };
-
-                            // FIXME handle connecting and disconnecting displays
-                            for display in &mut self.displays {
-                                if event.connector == display.map.connector.into() {
-                                    any_resized |=
-                                        display.resize_if_necessary(&mut self.display_handle);
-                                }
-                            }
+                RedoxDrmEvent::RedoxConnectorHotplug(event) => {
+                    // FIXME handle connecting and disconnecting displays
+                    for display in &mut self.displays {
+                        if event.connector == display.map.connector.into() {
+                            any_resized |= display.resize_if_necessary(&mut self.display_handle);
                         }
-                        _ => {}
                     }
                 }
+                RedoxDrmEvent::Vblank(_)
+                | RedoxDrmEvent::PageFlip(_)
+                | RedoxDrmEvent::Unknown(_) => todo!(),
             }
         }
         Ok(any_resized)
