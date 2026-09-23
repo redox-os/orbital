@@ -120,7 +120,7 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#efad0ab304cd2636ece9bcb23abbe2c91552e5c8"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#c4f68cdce365713a9557c84a98642226ae62b073"
 dependencies = [
  "libredox",
  "log",
@@ -192,7 +192,7 @@ dependencies = [
 [[package]]
 name = "daemon"
 version = "0.0.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#efad0ab304cd2636ece9bcb23abbe2c91552e5c8"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#c4f68cdce365713a9557c84a98642226ae62b073"
 dependencies = [
  "libc",
  "libredox",
@@ -382,7 +382,7 @@ dependencies = [
 [[package]]
 name = "graphics-ipc"
 version = "0.1.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#efad0ab304cd2636ece9bcb23abbe2c91552e5c8"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#c4f68cdce365713a9557c84a98642226ae62b073"
 dependencies = [
  "drm",
  "drm-sys",
@@ -457,7 +457,7 @@ dependencies = [
 [[package]]
 name = "inputd"
 version = "0.1.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#efad0ab304cd2636ece9bcb23abbe2c91552e5c8"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#c4f68cdce365713a9557c84a98642226ae62b073"
 dependencies = [
  "anyhow",
  "common",
@@ -776,7 +776,7 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 [[package]]
 name = "scheme-utils"
 version = "0.0.0"
-source = "git+https://gitlab.redox-os.org/redox-os/base.git#efad0ab304cd2636ece9bcb23abbe2c91552e5c8"
+source = "git+https://gitlab.redox-os.org/redox-os/base.git#c4f68cdce365713a9557c84a98642226ae62b073"
 dependencies = [
  "libredox",
  "redox-scheme",
